@@ -120,13 +120,14 @@ def test_a_running_lab_is_isolated(cli: Any, runtime: str, labs: list[str], tmp_
     assert _sh(cli, name, f"{script} && /tmp/s.sh").exit_code == 126  # noexec
     assert _sh(cli, name, f"{script} && sh /tmp/s.sh").stdout == "ran\n"
 
-    # limits: processes, run time
-    forks = _sh(cli, name, "for i in $(seq 1 300); do sleep 5 & done; wait", "--timeout", "30")
-    assert forks.exit_code != 0 and "can't fork" in forks.stderr
+    # limits: run time, then processes (the sleeps keep the process table full until the lab stops,
+    # so nothing else can be started in it meanwhile: not even the runtime's own exec helper)
     slow = _sh(cli, name, "sleep 30", "--timeout", "2")
     assert slow.exit_code == 124 and "did not finish within 2 s" in slow.stderr
+    forks = _sh(cli, name, "for i in $(seq 1 300); do sleep 60 & done; wait", "--timeout", "30")
+    assert forks.exit_code != 0 and "can't fork" in forks.stderr
 
-    # stop empties the memory-backed directories; destroy removes the container
+    # stop ends every process and empties the memory-backed directories; destroy removes the container
     assert cli("lab", "stop", name).exit_code == 0
     assert cli("lab", "start", name).exit_code == 0
     empty = _sh(cli, name, "ls -A /lab/work /tmp")
