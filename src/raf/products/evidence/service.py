@@ -178,6 +178,18 @@ class EvidenceService:
             found = [i for i in found if i.case == wanted]
         return sorted(found, key=lambda i: i.id)
 
+    def items_for_object(self, object_id: str, case: str | None = None) -> list[EvidenceItem]:
+        """Evidence items whose parsed events involve ``object_id`` (via ``evidence:<id>#...`` references)."""
+        ids: set[str] = set()
+        for event in self.ctx.store.events.iter(EventQuery(object_ids=[object_id]), with_objects=False):
+            ref = event.raw_reference or ""
+            if ref.startswith("evidence:"):
+                ids.add(ref.split(":", 1)[1].split("#", 1)[0])
+            if len(ids) >= 1000:
+                break
+        found = [i for i in self.items(case) if i.id in ids]
+        return found
+
     def get_item(self, item_id: str) -> EvidenceItem:
         key = item_id.strip().lower().removeprefix("evidence:")
         raw = self.kv.get(ITEM_NS, key)
@@ -297,6 +309,7 @@ class EvidenceService:
                             "source": item.source,
                             "imported_at": item.imported_at.isoformat(),
                             "derived_from": item.derived_from,
+                            "job": item.job,
                         },
                     }
                 )

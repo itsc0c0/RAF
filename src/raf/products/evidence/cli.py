@@ -196,9 +196,13 @@ def import_cmd(
 
 
 @app.command("list", help="Evidence items (optionally of one case).")
-def list_cmd(case: str | None = typer.Option(None, "--case")) -> None:
+def list_cmd(
+    case: str | None = typer.Option(None, "--case"),
+    object_ref: str | None = typer.Option(None, "--object", help="Only items with events involving this object."),
+) -> None:
     ctx = rt.ctx()
-    items = EvidenceService(ctx).items(case)
+    service = EvidenceService(ctx)
+    items = service.items_for_object(ctx.resolve(object_ref).id, case) if object_ref else service.items(case)
     rt.output(
         "raf.evidence.list/v1", {"case": case, "items": [i.to_json_dict() for i in items]}, lambda: render_items(items)
     )

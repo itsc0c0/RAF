@@ -392,6 +392,20 @@ class EventRepository:
                     counts[idx] += 1
         return [{"start": lo + timedelta(seconds=i * width), "count": n} for i, n in enumerate(counts)]
 
+    def object_counts(self, q: EventQuery, limit: int = 2000) -> list[tuple[str, int]]:
+        """Objects involved in the matching events, most involved first: ``[(object_id, events)]``."""
+        eo = s.event_objects.c
+        ids = self._where(select(s.events.c.id), q)
+        stmt = (
+            select(eo.object_id, func.count(func.distinct(eo.event_id)).label("n"))
+            .where(eo.event_id.in_(ids))
+            .group_by(eo.object_id)
+            .order_by(func.count(func.distinct(eo.event_id)).desc(), eo.object_id)
+            .limit(limit)
+        )
+        with self.engine.connect() as c:
+            return [(str(oid), int(n)) for oid, n in c.execute(stmt)]
+
     def object_activity(self, object_ids: Sequence[str]) -> dict[str, tuple[datetime | None, datetime | None, int]]:
         """First/last event time and event count per object (via the event_objects index)."""
         eo = s.event_objects.c
