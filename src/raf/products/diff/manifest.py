@@ -12,5 +12,5 @@ MANIFEST = ProductManifest(
     cli="raf.products.diff.cli:app",
     api="raf.products.diff.api:router",
     docs="docs/products/diff.md",
-    ui={"route": "/investigate", "nav": None},
+    ui={"route": "/diff", "nav": "Diff"},
 )

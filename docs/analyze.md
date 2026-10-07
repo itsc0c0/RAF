@@ -107,7 +107,7 @@ joins it for a single file, with the scope narrowed to that file's source name. 
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/v1/analyze` (multipart `file`, optional form fields `incident`, `correlate`) | analyze an uploaded file → the analysis |
+| POST | `/api/v1/analyze` (multipart `file`, optional form fields `incident`, `correlate`, `synthetic`) | analyze an uploaded file → the analysis (`synthetic` is `raf analyze --synthetic`) |
 | GET | `/api/v1/analyses?limit=` | `{items, total}` |
 | GET | `/api/v1/analyses/{id}` | one analysis with `job_ids` |
 

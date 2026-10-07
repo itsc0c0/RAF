@@ -177,11 +177,11 @@ export function GhostModelList({
                     render: (m) => (
                       <span className="stack stack--tight">
                         <strong className="break">{m.name}</strong>
-                        <span className="small muted break">{m.base}</span>
+                        <span className="small muted break">{m.base_label}</span>
                       </span>
                     ),
                   },
-                  { key: 'ops', header: 'Ops', align: 'right', render: (m) => formatNumber(m.ops) },
+                  { key: 'ops', header: 'Ops', align: 'right', render: (m) => formatNumber(m.ops_count) },
                   {
                     key: 'updated',
                     header: 'Updated',

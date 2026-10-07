@@ -689,7 +689,12 @@ def analyze_path(ctx: RafContext, path: Path, options: AnalyzeOptions | None = N
     )
     record.status = status
     record.steps = [s.to_json_dict() for s in run.steps]
-    record.stats = run.stats | {"detected_label": det.label, "input_name": result.input_name}
+    record.stats = run.stats | {
+        "detected_label": det.label,
+        "input_name": result.input_name,
+        "detection": det.reasons,
+        "duration_ms": result.duration_ms,
+    }
     record.suggestions = suggestions
     record.job_id = result.job_id
     ctx.store.analyses.save(record)

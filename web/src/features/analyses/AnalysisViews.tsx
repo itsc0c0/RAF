@@ -429,6 +429,7 @@ export function AnalyzeForm() {
   const [file, setFile] = useState<File | null>(null);
   const [incident, setIncident] = useState('');
   const [correlate, setCorrelate] = useState(true);
+  const [synthetic, setSynthetic] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [inputKey, setInputKey] = useState(0);
   const fileId = useId();
@@ -441,7 +442,7 @@ export function AnalyzeForm() {
         event.preventDefault();
         if (!file) return;
         setError(null);
-        analyze({ file, incident, correlate }).then(
+        analyze({ file, incident, correlate, synthetic }).then(
           () => {
             setFile(null);
             setIncident('');
@@ -487,6 +488,11 @@ export function AnalyzeForm() {
         label="Correlate (re-run the workspace-wide IAM and exposure analyses)"
         checked={correlate}
         onChange={setCorrelate}
+      />
+      <Checkbox
+        label="Synthetic data (demo, Range or Forge output)"
+        checked={synthetic}
+        onChange={setSynthetic}
       />
       {error ? <ErrorState title="The analysis did not run" error={error} compact /> : null}
       <div>

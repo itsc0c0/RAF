@@ -110,9 +110,28 @@ describe('Snapshots & Diff', () => {
     );
   });
 
-  it('offers current and every snapshot for comparison', async () => {
+  it('offers current, every snapshot and every Ghost model for comparison', async () => {
     const user = userEvent.setup();
-    mockFetch([{ path: '/snapshots', body: SNAPSHOTS }]);
+    mockFetch([
+      { path: '/snapshots', body: SNAPSHOTS },
+      {
+        path: '/ghost/models',
+        body: {
+          items: [
+            {
+              name: 'exp',
+              base_snapshot: 'ghost-exp-base',
+              base_label: 'current at 2026-10-07T13:13:18Z',
+              parent: null,
+              ops_count: 1,
+              created_at: '2026-10-07T13:13:18Z',
+              updated_at: '2026-10-07T13:14:30Z',
+              description: '',
+            },
+          ],
+        },
+      },
+    ]);
     const { router } = renderWithApp(<></>, {
       route: '/diff',
       extraRoutes: [{ path: 'diff', element: <DiffPage /> }],
@@ -122,6 +141,7 @@ describe('Snapshots & Diff', () => {
     await waitFor(() => expect(screen.getByLabelText('A (before)')).toHaveValue('a'));
     const form = screen.getByRole('form', { name: 'Compare security states' });
     expect(within(form).getByLabelText('B (after)')).toHaveValue('current');
+    expect(await within(form).findAllByRole('option', { name: 'ghost:exp (what-if model)' })).toHaveLength(2);
     await user.click(within(form).getByRole('button', { name: 'Compare' }));
     await waitFor(() => expect(router.state.location.search).toBe('?a=a&b=current'));
   });

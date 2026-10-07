@@ -215,20 +215,23 @@ export interface AnalyzeUploadInput {
   incident?: string;
   /** Correlation re-runs the workspace-wide IAM and exposure analyses (server default: true). */
   correlate?: boolean;
+  /** Mark what the file creates as synthetic (demo, Range or Forge data; server default: false). */
+  synthetic?: boolean;
 }
 
 /**
- * `POST /analyze` (multipart `file`, form fields `incident`, `correlate`). The analysis runs during
+ * `POST /analyze` (multipart `file`, form fields `incident`, `correlate`, `synthetic`). The analysis runs during
  * the request and the response is the complete record; the import changes data everywhere, so every
  * cached query is invalidated.
  */
 export function useAnalyzeUpload() {
   return useApiMutation(
-    ({ file, incident, correlate }: AnalyzeUploadInput, workspace) => {
+    ({ file, incident, correlate, synthetic }: AnalyzeUploadInput, workspace) => {
       const form = new FormData();
       form.append('file', file, file.name);
       if (incident?.trim()) form.append('incident', incident.trim());
       if (correlate !== undefined) form.append('correlate', correlate ? 'true' : 'false');
+      if (synthetic) form.append('synthetic', 'true');
       return api.post<AnalysisRecord>('/analyze', { workspace, form });
     },
     ['*'],

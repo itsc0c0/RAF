@@ -302,7 +302,7 @@ class DependencyService:
 
     def advisories(self) -> list[dict[str, Any]]:
         return [
-            _advisory_view(Advisory.from_metadata(obj.name, obj.metadata)) | {"id_object": obj.id}
+            _advisory_view(Advisory.from_metadata(obj.name, obj.metadata)) | {"object_id": obj.id}
             for obj in sorted(self._advisory_objects(), key=lambda o: o.name)
         ]
 
@@ -524,28 +524,47 @@ class DependencyService:
         }
 
     def vulnerable(self, *, include_unused: bool = False) -> list[dict[str, Any]]:
-        """Packages with active AFFECTS edges; by default only those a project still depends on."""
+        """Packages with active AFFECTS edges; by default only those a project still depends on.
+
+        Two kinds of match (``basis``): ``exact`` - an installed version is affected (confidence 0.9);
+        ``constraint`` - only a version constraint is declared and it admits affected versions
+        (confidence 0.5): such entries describe the declared dependency (``package.version`` is
+        null, ``package.constraint`` is set). Exact matches come first."""
         rels = [r for r in self.store.relationships.iter_all(types=["AFFECTS"]) if r.valid_to is None]
-        rels = [r for r in rels if r.source == SOURCE and r.target_object.startswith("package:")]
-        by_package: dict[str, list[Relationship]] = defaultdict(list)
+        rels = [r for r in rels if r.source == SOURCE and r.target_object.startswith(("package:", "dependency:"))]
+        by_target: dict[str, list[Relationship]] = defaultdict(list)
         for rel in rels:
-            by_package[rel.target_object].append(rel)
-        objects = self.store.objects.get_many(set(by_package) | {r.source_object for r in rels})
+            by_target[rel.target_object].append(rel)
+        objects = self.store.objects.get_many(set(by_target) | {r.source_object for r in rels})
         users: dict[str, set[str]] = defaultdict(set)
-        if by_package:
-            for rel in self.store.relationships.edges(sorted(by_package), direction="in", types=["DEPENDS_ON"]):
+        if by_target:
+            for rel in self.store.relationships.edges(
+                sorted(by_target), direction="in", types=["DEPENDS_ON", "DECLARES"]
+            ):
                 if rel.source_object.startswith("project:"):
                     users[rel.target_object].add(rel.source_object)
         items: list[dict[str, Any]] = []
-        for pkg_id, package_rels in sorted(by_package.items()):
-            if not include_unused and not users.get(pkg_id):
+        for target_id, target_rels in by_target.items():
+            if not include_unused and not users.get(target_id):
                 continue
-            package = objects.get(pkg_id)
-            advisories = [_affects_view(r, objects.get(r.source_object)) for r in package_rels]
+            target = objects.get(target_id)
+            advisories = [_affects_view(r, objects.get(r.source_object)) for r in target_rels]
             advisories.sort(key=lambda a: (-int(a["severity_rank"]), str(a["id"])))
-            details: dict[str, Any] = {"id": pkg_id}
-            details.update(package.metadata if package else {})
-            items.append({"package": details, "advisories": advisories, "projects": sorted(users.get(pkg_id, set()))})
+            details: dict[str, Any] = {"id": target_id}
+            details.update(target.metadata if target else {})
+            if target_id.startswith("dependency:"):
+                details.setdefault("version", None)
+            basis = "exact" if target_id.startswith("package:") else "constraint"
+            items.append(
+                {
+                    "package": details,
+                    "basis": basis,
+                    "confidence": max(float(a["confidence"]) for a in advisories),
+                    "advisories": advisories,
+                    "projects": sorted(users.get(target_id, set())),
+                }
+            )
+        items.sort(key=lambda i: (i["basis"] != "exact", str(i["package"]["id"])))
         return items
 
 
@@ -592,6 +611,9 @@ def _affects_view(rel: Relationship, vulnerability: SecurityObject | None) -> di
         "aliases": meta.get("aliases", []),
         "fixed": rel.metadata.get("fixed", []),
         "reason": rel.metadata.get("reason"),
+        "basis": rel.metadata.get("basis", "exact"),
+        "constraint": rel.metadata.get("constraint"),
+        "confidence": round(rel.confidence, 2),
         "since": format_ts(rel.first_seen),
     }
 

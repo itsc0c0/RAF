@@ -765,7 +765,16 @@ def test_cli_json_outputs(cli: Any, tmp_path: Path) -> None:
     projects = cli("dependency", "projects", "--json").json()
     assert projects["total"] == 1 and projects["items"][0]["open_findings"] == 3
     vulnerable = cli("dependency", "vulnerable", "--json").json()
-    assert {v["package"]["name"] for v in vulnerable["items"]} == {"raven-auth", "raven-ui-kit"}
+    by_name = {v["package"]["name"]: v for v in vulnerable["items"]}
+    assert set(by_name) == {"raven-auth", "raven-ui-kit", "raven-telemetry"}  # the same three as the check
+    assert by_name["raven-auth"]["basis"] == "exact" and by_name["raven-auth"]["confidence"] == 0.9
+    possible = by_name["raven-telemetry"]  # declared with a constraint only (no lockfile entry)
+    assert (
+        possible["basis"] == "constraint" and possible["confidence"] == 0.5 and possible["package"]["version"] is None
+    )
+    assert vulnerable["items"][-1]["basis"] == "constraint"  # exact matches first
+    table = cli("dependency", "vulnerable").stdout
+    assert "possible" in table and "installed" in table
     out = tmp_path / "sbom.json"
     export = cli("dependency", "sbom", "export", "raven-shop", "--output", str(out), "--json").json()
     assert export["schema"] == "raf.dependency.sbom.export/v1" and out.exists()
@@ -803,7 +812,10 @@ def test_api_routes(cli: Any, api: Any, tmp_path: Path) -> None:
     by_name = api.get("/api/v1/dependency/projects/raven-shop/graph").json()
     assert by_name["project"]["id"] == project_id
     vulnerable = api.get("/api/v1/dependency/vulnerable").json()
-    assert vulnerable["total"] == 2 and vulnerable["items"][0]["projects"] == [project_id]
+    assert vulnerable["total"] == 3 and vulnerable["items"][0]["projects"] == [project_id]
+    assert all("confidence" in a and "basis" in a for item in vulnerable["items"] for a in item["advisories"])
+    advisories = api.get("/api/v1/dependency/advisories").json()["items"]
+    assert all(a["object_id"].startswith("vulnerability:") for a in advisories)
     assert api.get("/api/v1/dependency/projects/nope/graph").status_code == 404
     assert api.post("/api/v1/dependency/scan", json={"path": "/etc"}).status_code in (404, 405)
     assert api.get("/api/v1/dependency/advisories").json()["total"] == 4

@@ -190,7 +190,7 @@ def api(raf_home: Path) -> Iterator[Any]:
         yield client
 
 
-def test_api_analyze(api: Any) -> None:
+def test_api_analyze(api: Any, raf_home: Path) -> None:
     capture = (FIXTURES / "pcap" / "raven-inc001.pcap").read_bytes()
     response = api.post(
         "/api/v1/analyze", files={"file": ("../../etc/capture.pcap", capture, "application/octet-stream")}
@@ -199,12 +199,27 @@ def test_api_analyze(api: Any) -> None:
     data = response.json()
     assert data["detected_type"] == "pcap" and data["status"] == "completed" and data["input"] == "capture.pcap"
     assert data["stats"]["flows"] == 4 and data["id"] == "analysis-1"
+    assert "raf protocol inspect capture.pcap" in data["suggestions"]
     listing = api.get("/api/v1/analyses").json()
     assert listing["total"] == 1 and listing["items"][0]["input"] == "capture.pcap"
     shown = api.get("/api/v1/analyses/analysis-1").json()
     assert shown["job_ids"] and "/" not in shown["input"]
+    # stored analyses come back in the shape POST /analyze returns, and never reveal server paths
+    for document in (data, listing["items"][0], shown):
+        assert "uploads/analyze" not in json.dumps(document) and str(raf_home) not in json.dumps(document)
+    assert {k for k in data if k != "input"} <= set(shown)
+    assert shown["detected_label"] == data["detected_label"] and shown["incidents"] == data["incidents"]
+    assert shown["detection"] == data["detection"] and shown["duration_ms"] == data["duration_ms"]
     assert api.get("/api/v1/analyses/analysis-9").status_code == 404
     assert api.post("/api/v1/analyze", data={"path": "/etc/passwd"}).status_code == 422
+    marked = api.post(
+        "/api/v1/analyze",
+        files={"file": ("events.jsonl", (FIXTURES / "raven-events.jsonl").read_bytes(), "application/x-ndjson")},
+        data={"synthetic": "true", "correlate": "false"},
+    )
+    assert marked.status_code == 200, marked.text
+    users = api.get("/api/v1/objects", params={"type": "user", "limit": 5}).json()["items"]
+    assert users and all(u["synthetic"] for u in users)
     empty = api.post("/api/v1/analyze", files={"file": ("empty.json", b"", "application/json")})
     assert empty.status_code == 422 and "empty" in empty.json()["error"]["message"]
 

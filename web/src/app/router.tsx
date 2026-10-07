@@ -93,7 +93,7 @@ export const routes: RouteObject[] = [
       { path: 'oracle', element: <OraclePage /> },
       { path: 'products', element: <ProductsPage /> },
       { path: 'settings', element: <SettingsPage /> },
-      // `ui.route` of the range/forge manifests, and the previous Lab route.
+      // Earlier routes (Range/Forge manifests used /range; the Lab page was /labs).
       { path: 'range', element: <RedirectTo to="/ranges" /> },
       { path: 'labs', element: <RedirectTo to="/lab" /> },
       {

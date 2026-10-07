@@ -92,9 +92,9 @@ interactive docs at `/api/docs`.
 | GET | `/jobs?status=`, `/jobs/{id}`; POST `/jobs/{id}/cancel` | job status/progress/result |
 | GET/POST | `/snapshots` | list / create `{name, source: "current"|"ghost:<model>", description}` |
 | GET/DELETE | `/snapshots/{name}` | read / delete |
-| POST | `/analyze` (multipart `file`; form `incident?`, `correlate?`) | upload and analyze (see [analyze.md](analyze.md)); returns `{id, input, input_sha256, detected_type, detected_label, detection, status, steps: [{name, product, status, detail, duration_ms, stats}], stats, suggestions, job_id, job_ids, incidents}`; no route accepts a server path |
-| GET | `/analyses?limit=` | `{items: [AnalysisRecord], total}` |
-| GET | `/analyses/{id}` | one record (+ `job_ids`) |
+| POST | `/analyze` (multipart `file`; form `incident?`, `correlate?`, `synthetic?`) | upload and analyze (see [analyze.md](analyze.md)); returns `{id, input, input_name, input_sha256, detected_type, detected_label, detection, status, steps: [{name, product, status, detail, duration_ms, stats}], stats, suggestions, job_id, job_ids, incidents, created_at, duration_ms}`; no route accepts a server path, and server paths never appear in responses |
+| GET | `/analyses?limit=` | `{items: [Analysis], total}`, newest first |
+| GET | `/analyses/{id}` | one analysis, in the shape `POST /analyze` returns (`detection` and `duration_ms` are null for analyses recorded before 0.1.0 stored them); server paths are never returned |
 
 ## Investigation products
 
@@ -136,16 +136,16 @@ interactive docs at `/api/docs`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/ghost/models` | `{items: [{name, base_snapshot, base, parent, ops: n, created_at, updated_at, description}]}` |
-| POST | `/ghost/models` `{name, base: "current"|"<snapshot>", description?}` | create a model (a frozen base snapshot) |
-| POST | `/ghost/models/{name}/clone` `{name}` | clone |
+| GET | `/ghost/models` | `{items: [{name, base_snapshot, base_label, parent, ops_count, created_at, updated_at, description}]}` |
+| POST | `/ghost/models` `{name, base: "current"|"<snapshot>", description?}` | 201: create a model (a frozen base snapshot) |
+| POST | `/ghost/models/{name}/clone` `{name}` | 201: clone |
 | GET | `/ghost/models/{name}` | model with operations log (each op: `{op, arg, summary, explanation, effects, applied_at}`) |
 | POST | `/ghost/models/{name}/ops` `{op, arg}` | apply a what-if operation -> `{model, applied}` |
 | POST | `/ghost/models/{name}/undo` | remove the last operation |
 | GET | `/ghost/models/{name}/simulate?limit=` | `{summary: {label, metrics, levels, user_control}, items: [AssetExposure]}` |
 | DELETE | `/ghost/models/{name}` | delete (and its base snapshot when unused) |
 | GET | `/ghost/operations` | supported operations |
-| GET | `/ghost/compare?a=&b=` | `{a, b, delta, assets: [{id, name, before, after}], users: [{id, before, after, lost, gained}], a_metrics, b_metrics}`; Metrics = `{attack_paths, critical_paths, reachable_assets, entry_points, exposed_critical_assets}` |
+| GET | `/ghost/compare?a=&b=` | `{a, b, delta, assets: [{id, name, before, after}], users: [{id, name, before, after, lost, gained}], relationships_removed, relationships_added, a_metrics, b_metrics}`; Metrics = `{attack_paths, critical_paths, reachable_assets, entry_points, exposed_critical_assets}`; `a`/`b` may be `current`, a model or a snapshot |
 | GET | `/range/presets` | presets with their configuration |
 | GET | `/range/ranges` | `{items: [RangeState]}`; RangeState = `{name, preset, seed, config, status, start, clock, periods, jobs, counts}` |
 | POST | `/range/ranges` `{name, preset?, seed?, config?, start?}` | create (inventory ingested) -> `{state, job, report}` |
@@ -187,15 +187,15 @@ protocol. Ghost experiments shown here run in an unsaved in-memory model.
 | GET | `/oracle/status` | `{provider, enabled, ready, mode, detail, max_facts, tools, stores_answers}` + model settings; never the API key |
 | POST | `/protocol/inspect` (multipart `file`, `?protocol=&host=&port=&flow=&limit=`) | capture summary + `upload` id (uploads are size-checked, verified as captures and addressed only by id) |
 | GET | `/protocol/inspect?upload=&...` | re-inspect a stored upload with filters |
-| GET | `/protocol/packet?upload=&n=` | one packet: layered fields with explanations |
+| GET | `/protocol/packet?upload=&n=` | one packet: layered fields with explanations (`file.sha256` is the upload's) |
 | GET | `/protocol/flows?upload=&sort=id|bytes|packets|duration&limit=` | flow table with client/server inference and Community ID |
 | GET | `/vault/findings?status=&limit=` | secret findings (values always redacted) |
 | GET | `/vault/secrets` | discovered secret objects (redacted, fingerprinted) |
 | GET | `/vault/rules` | detection rules with severity and confidence |
 | GET | `/dependency/projects` | scanned projects |
 | GET | `/dependency/projects/{ref}/graph` | dependency tree of a project |
-| GET | `/dependency/vulnerable?include_unused=` | packages matched by advisories, with confidence |
-| GET | `/dependency/advisories` | imported (OSV) advisories |
+| GET | `/dependency/vulnerable?include_unused=` | `{items: [{package, basis, confidence, advisories: [{id, object_id, severity, cvss, fixed, reason, basis, constraint, confidence, …}], projects}], total}`; `basis` `exact` (an installed version is affected, 0.9) comes first, then `constraint` (only a declared range admits affected versions, 0.5; `package` is the declared dependency) |
+| GET | `/dependency/advisories` | imported (OSV) advisories (`object_id` is the vulnerability object) |
 | GET | `/surface/summary?at=&expiring_days=`, `/surface/assets?kind=&scope=in\|out\|all&references=&limit=&offset=`, `/surface/scope`, `/surface/findings?rule=&min_severity=&status=` | summary tree, assets, authorized scope, findings |
 | POST, DELETE | `/surface/scope` `{target, kind?, owner?, authorization?, replace?}`, `/surface/scope/{target}` | manage the authorized scope (201 / 409 on conflict) |
 | POST | `/surface/import?apply_scope=&format=&source_name=` (body: the inventory; never a path), `/surface/analyze?at=&expiring_days=&persist=` | import an inventory (20 MB, 413 above), analyze — see [products/surface.md](products/surface.md) |

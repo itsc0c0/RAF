@@ -291,4 +291,3 @@ resolved or fetched.
 * Owners and records accumulate across imports: an owner change adds an `OWNS` relationship (end the
   old one with an `owner` record with status `removed`), and an asset's status is only changed by
   records that state it. TXT values are replaced by the latest import that has any for the name.
-* The web workbench has no Surface page yet (the manifest declares the `/surface` route).

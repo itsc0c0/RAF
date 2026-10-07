@@ -189,7 +189,10 @@ class ProtocolService:
         max_packets: int | None = None,
         name: str | None = None,
         expose_path: bool = True,
+        sha256: str | None = None,
     ) -> PacketDetail:
+        """Packet ``number`` with every layer decoded. Reading stops at that packet, so the capture's
+        SHA-256 is only reported when the caller already knows it (``sha256``, e.g. an upload's)."""
         if number < 1:
             raise InvalidInputError("Packet numbers start at 1.")
         stat = self._check(path)
@@ -204,7 +207,7 @@ class ProtocolService:
                 pkt = decode_packet(raw)
                 flow = table.add(pkt)
                 if raw.number == number:
-                    capture = self._file(reader.info, path, name, expose_path, size=stat.st_size, sha256=None)
+                    capture = self._file(reader.info, path, name, expose_path, size=stat.st_size, sha256=sha256)
                     return packet_detail(pkt, flow, capture)
         raise NotFoundError(
             f"{label} has {seen:,} readable packets; there is no packet {number}.",

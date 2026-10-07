@@ -12,5 +12,5 @@ MANIFEST = ProductManifest(
     cli="raf.products.range.cli:app",
     api="raf.products.range.api:router",
     docs="docs/products/range.md",
-    ui={"route": "/range", "nav": "Range"},
+    ui={"route": "/ranges", "nav": "Ranges"},
 )

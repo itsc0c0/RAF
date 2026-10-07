@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import random
 import re
@@ -868,6 +869,7 @@ def test_api_upload_inspect_packet_and_flows(client: Any, raf_home: Path) -> Non
     packet = client.get("/api/v1/protocol/packet", params={"upload": upload, "n": 22}).json()
     assert packet["flow_id"] == 4 and packet["tree"][-1].endswith("(SNI files.exfil-test.example)")
     assert packet["upload"]["name"] == "evil name.pcap" and packet["file"]["path"] is None
+    assert packet["file"]["sha256"] == packet["upload"]["sha256"] == hashlib.sha256(FIXTURE.read_bytes()).hexdigest()
     flows = client.get("/api/v1/protocol/flows", params={"upload": upload, "sort": "bytes"}).json()
     assert flows["flows"][0]["server"] == EXFIL_IP
     again = client.get("/api/v1/protocol/inspect", params={"upload": upload, "protocol": "dns"}).json()

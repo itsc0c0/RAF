@@ -131,10 +131,20 @@ function ChangeDetails({ change }: { change: DiffChange }) {
   );
 }
 
-/** Snapshot references offered for comparison: `current` plus every snapshot (and URL extras). */
-function refOptions(snapshots: readonly Snapshot[], extra: ReadonlyArray<string | null>) {
+/**
+ * States offered for comparison: `current`, every snapshot and every Ghost model (`ghost:<name>`),
+ * plus URL extras.
+ */
+function refOptions(
+  snapshots: readonly Snapshot[],
+  models: ReadonlyArray<{ name: string }>,
+  extra: ReadonlyArray<string | null>,
+) {
   const options = [{ value: 'current', label: 'current (live workspace)' }];
   for (const snapshot of snapshots) options.push({ value: snapshot.name, label: snapshot.name });
+  for (const model of models) {
+    options.push({ value: `ghost:${model.name}`, label: `ghost:${model.name} (what-if model)` });
+  }
   for (const ref of extra) {
     if (ref && !options.some((option) => option.value === ref)) options.push({ value: ref, label: ref });
   }
@@ -156,13 +166,14 @@ export function CompareForm({
   onCompare: (next: CompareParams) => void;
 }) {
   const snapshots = useSnapshots();
+  const ghost = useGhostModels();
   const items = snapshots.data?.items ?? [];
   const latest = items.length > 0 ? items[items.length - 1]!.name : null;
   const [a, setA] = useState(value.a ?? latest ?? 'current');
   const [b, setB] = useState(value.b ?? 'current');
   const [category, setCategory] = useState(value.category ?? '');
   const [limit, setLimit] = useState(value.limit);
-  const options = refOptions(items, [value.a, value.b, a, b]);
+  const options = refOptions(items, ghost.data?.items ?? [], [value.a, value.b, a, b]);
   return (
     <form
       className="filters filters--inline"

@@ -228,7 +228,9 @@ export function VulnerablePackagesView({ onOpenFinding }: { onOpenFinding: (id: 
     >
       <QueryView query={vulnerable} feature="Dependency">
         {(data) => {
-          const rows: VulnerableRow[] = data.items.flatMap((item) =>
+          // constraint-only matches are listed below with their findings
+          const exact = data.items.filter((item) => item.basis !== 'constraint');
+          const rows: VulnerableRow[] = exact.flatMap((item) =>
             item.advisories.map((advisory) => ({
               key: `${item.package.id}|${advisory.id}`,
               packageId: item.package.id,

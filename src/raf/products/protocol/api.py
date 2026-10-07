@@ -90,7 +90,8 @@ def packet(
     """All decoded layers and explained fields of packet ``n`` of an uploaded capture."""
     service = ProtocolService(ctx)
     path, info = service.uploads.get(upload)
-    return {"upload": info.to_json_dict(), **service.packet(path, n, name=info.name, expose_path=False).to_json_dict()}
+    detail = service.packet(path, n, name=info.name, expose_path=False, sha256=info.sha256)
+    return {"upload": info.to_json_dict(), **detail.to_json_dict()}
 
 
 @router.get("/flows")

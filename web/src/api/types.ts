@@ -419,13 +419,13 @@ export interface DiffResult {
 
 // ------------------------------------------------------------------ ghost
 
-/** `GET /ghost/models` items (summary: `base` label, `ops` count). */
+/** `GET /ghost/models` items: a model without its operations log (`ops_count` instead of `ops`). */
 export interface GhostModelSummary {
   name: string;
   base_snapshot: string;
-  base: string;
+  base_label: string;
   parent: string | null;
-  ops: number;
+  ops_count: number;
   created_at: IsoTime;
   updated_at: IsoTime;
   description: string;
@@ -1108,11 +1108,18 @@ export interface VulnerableAdvisory {
   fixed: string[];
   /** Why the version matches, e.g. `2.2.0 is in the affected range >=2.0.0, <2.3.1`. */
   reason: string;
+  /** `exact`: an installed version is affected; `constraint`: only a declared range admits affected versions. */
+  basis?: 'exact' | 'constraint';
+  constraint?: string | null;
+  confidence?: number;
   since: IsoTime | null;
 }
 
 export interface VulnerablePackage {
+  /** For `constraint` matches this is the declared dependency (`version` is null). */
   package: DependencyPackage & Metadata;
+  basis?: 'exact' | 'constraint';
+  confidence?: number;
   advisories: VulnerableAdvisory[];
   projects: string[];
 }
@@ -1126,7 +1133,7 @@ export interface Advisory {
   aliases: string[];
   withdrawn: IsoTime | null;
   affected: Array<{ ecosystem: string; name: string; ranges: string; fixed: string[] }>;
-  id_object?: string;
+  object_id?: string;
 }
 
 // ------------------------------------------------------------------ graph

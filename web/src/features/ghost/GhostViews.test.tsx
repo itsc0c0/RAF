@@ -54,9 +54,9 @@ describe('Ghost', () => {
             {
               name: 'exp',
               base_snapshot: 'ghost-exp-base',
-              base: 'current at 2026-10-07T13:13:18+00:00',
+              base_label: 'current at 2026-10-07T13:13:18Z',
               parent: null,
-              ops: ops.length,
+              ops_count: ops.length,
               created_at: '2026-10-07T13:13:18.657733Z',
               updated_at: '2026-10-07T13:14:30.283133Z',
               description: '',

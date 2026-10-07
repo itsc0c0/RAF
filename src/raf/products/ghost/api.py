@@ -36,12 +36,13 @@ class OpRequest(BaseModel):
 
 
 def _summary(model: Any) -> dict[str, Any]:
+    """A model without its operations log (same field names as the full model, plus ``ops_count``)."""
     return {
         "name": model.name,
         "base_snapshot": model.base_snapshot,
-        "base": model.base_label,
+        "base_label": model.base_label,
         "parent": model.parent,
-        "ops": len(model.ops),
+        "ops_count": len(model.ops),
         "created_at": model.created_at,
         "updated_at": model.updated_at,
         "description": model.description,
@@ -53,7 +54,7 @@ def list_models(ctx: Ctx) -> dict[str, Any]:
     return {"items": [_summary(m) for m in GhostService(ctx).models()]}
 
 
-@router.post("/models")
+@router.post("/models", status_code=201)
 def create_model(request: CreateRequest, ctx: Ctx) -> dict[str, Any]:
     data: dict[str, Any] = (
         GhostService(ctx).create(request.name, base=request.base, description=request.description).to_json_dict()
@@ -79,7 +80,7 @@ def get_model(name: str, ctx: Ctx) -> dict[str, Any]:
     return data
 
 
-@router.post("/models/{name}/clone")
+@router.post("/models/{name}/clone", status_code=201)
 def clone_model(name: str, request: CloneRequest, ctx: Ctx) -> dict[str, Any]:
     data: dict[str, Any] = GhostService(ctx).clone(name, request.name).to_json_dict()
     return data

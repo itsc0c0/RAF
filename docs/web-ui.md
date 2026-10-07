@@ -245,7 +245,8 @@ reminder that correlation is not causation.
 
 ### Snapshots & Diff (`features/diff`, `/diff`)
 
-* Compare form: A and B are `current` (the live workspace) or any snapshot from `GET /snapshots`;
+* Compare form: A and B are `current` (the live workspace), any snapshot from `GET /snapshots` or any
+  Ghost model (`ghost:<model>`, from `GET /ghost/models`);
   optional category (privileges, exposure, vulnerabilities, network, policies, hosts, services,
   identities, packages, findings, objects, relationships) and limit (100–2000). Swap exchanges A/B.
 * Result (`GET /diff?a=&b=&category=&limit=`): `a → b` header with object and relationship totals,
@@ -355,9 +356,10 @@ reminder that correlation is not causation.
 * Dependencies (`features/dependency`): projects (`GET /dependency/projects`), the selected
   project's tree (`?project=`, `GET /dependency/projects/{id}/graph`, built client-side with cycles
   and repeated packages marked, capped at 2000 nodes), vulnerable packages
-  (`GET /dependency/vulnerable`, optionally including packages no project uses any more) with
-  severity and confidence taken from the matching dependency findings and a link to each finding,
-  declared constraints that may match (findings without a resolved version), and advisories
+  (`GET /dependency/vulnerable`, optionally including packages no project uses any more; the table
+  lists exact version matches) with severity and confidence taken from the matching dependency
+  findings and a link to each finding, declared constraints that may match (findings without a
+  resolved version; the API lists them too, with `basis: constraint`), and advisories
   (`GET /dependency/advisories`). Scans, SBOM imports and advisory imports read local paths and run
   from the CLI only.
 
@@ -521,33 +523,8 @@ Tests (`src/**/*.test.ts(x)`, fetch is mocked with `src/test/utils.tsx#mockFetch
 
 ### Backend issues the UI works around
 
-* `GET /diff` with `ghost:<model>` fails with "Unknown state provider 'ghost'" (the hint suggests
-  `ghost:<model>` itself): the Diff route (`src/raf/products/diff/api.py:17` →
-  `service.py:108-109` → `core/snapshots/service.py:460`) never installs the state providers, which
-  only `apps/api/routers/snapshots.py:34` does. The Diff page offers `current` and snapshots; Ghost's
-  "Save as snapshot" makes a model comparable.
-* Analysis suggestions for packet captures contain the server's upload path
-  (`src/raf/analysis/analyze.py:622`, `raf protocol inspect {path}`); the API replaces only
-  `input` (`apps/api/routers/analysis.py:84`, `:94`, `:103`). The UI replaces absolute paths in
-  suggestions with the upload name and notes it.
-* Stored analyses (`GET /analyses`, `GET /analyses/{id}`) lack `detected_label`, `detection`,
-  `incidents` and the total `duration_ms`, which `POST /analyze` returns; the list also lacks
-  `job_ids`. The UI falls back to `stats.incidents` / `stats.job_ids` / `job_id` and shows the
-  other fields only when present.
-* `GET /objects/{id}` and `GET /objects/{id}/pivots` answer 500 for event and finding IDs
-  (`assert resolved.obj is not None`, `apps/api/routers/core.py:200` and `:190`). Oracle citations
-  are therefore dispatched by type: events open `GET /events/{id}`, findings the findings drawer.
-* `GET /dependency/vulnerable` carries no confidence and declared-constraint matches exist only as
-  findings (`src/raf/products/dependency/service.py:582-596`); the UI joins the dependency findings
-  for confidence and the constraint list. Advisories name their object `id_object`
-  (`service.py:305`), vulnerable entries `object_id` (`service.py:587`).
-
-Other inconsistencies observed: `GET /ghost/models` summarizes `base` (a label) and `ops` (a count)
-while a model has `base_label` and an `ops` list (`src/raf/products/ghost/api.py:42-44`);
-`POST /ghost/models` answers 200 while other creates answer 201 (`ghost/api.py:56`, compare
-`lab/api.py:69`); `docs/api.md:148` omits `relationships_added`/`relationships_removed` from
-`GET /ghost/compare`; `GET /protocol/packet` returns `file.sha256: null` although the summary and
-the `upload` object carry it (`src/raf/products/protocol/service.py:207`); the Diff manifest declares `ui.route = "/investigate"`
-(`src/raf/products/diff/manifest.py:15`) and Range/Forge declare `/range`
-(`range/manifest.py:15`, `forge/manifest.py:15`, redirected to `/ranges`);
-`docs/products/surface.md:294` still says there is no Surface page.
+* `GET /objects/{id}` and `GET /objects/{id}/pivots` do not describe event and finding IDs. Oracle
+  citations are therefore dispatched by type: events open `GET /events/{id}`, findings the findings
+  drawer.
+* Analyses stored before `detection` and `duration_ms` were recorded return them as empty/null; the
+  UI shows those fields only when present.

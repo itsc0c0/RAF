@@ -20,12 +20,41 @@ from fastapi import APIRouter, File, Form, Query, UploadFile
 from raf.analysis.analyze import AnalyzeOptions, analyze_path, get_analysis
 from raf.apps.api.deps import Ctx
 from raf.core.errors import InvalidInputError, ResourceLimitExceeded
+from raf.core.storage.repos.analyses import AnalysisRecord
 
 router = APIRouter(tags=["analysis"])
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 _SUFFIXES = {".pcap", ".pcapng", ".cap", ".json", ".jsonl", ".ndjson", ".csv", ".tsv", ".log", ".txt", ".raf", ".xml"}
 _CHUNK = 1024 * 1024
+
+
+def _scrub(value: Any, server_path: str, name: str) -> Any:
+    """Replace the server-side path of an upload by its public name in every string of a response."""
+    if isinstance(value, str):
+        return value.replace(server_path, name) if server_path in value else value
+    if isinstance(value, dict):
+        return {k: _scrub(v, server_path, name) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub(v, server_path, name) for v in value]
+    return value
+
+
+def public_analysis(record: AnalysisRecord) -> dict[str, Any]:
+    """A stored analysis in the shape ``POST /analyze`` returns, without server paths."""
+    stats = record.stats
+    name = str(stats.get("input_name") or Path(record.input).name)
+    data: dict[str, Any] = record.to_json_dict()
+    data.update(
+        input=name,
+        input_name=name,
+        detected_label=stats.get("detected_label") or record.detected_type,
+        detection=list(stats.get("detection") or []),
+        job_ids=record.job_ids,
+        incidents=list(stats.get("incidents") or []),
+        duration_ms=stats.get("duration_ms"),
+    )
+    return dict(_scrub(data, record.input, name))
 
 
 def safe_upload_name(filename: str | None) -> str:
@@ -70,6 +99,7 @@ def analyze_upload(
     file: Annotated[UploadFile, File(description="File to analyze (size limited by api.max_upload_mb).")],
     incident: Annotated[str | None, Form(max_length=128)] = None,
     correlate: Annotated[bool, Form()] = True,
+    synthetic: Annotated[bool, Form(description="The file holds synthetic data (raf analyze --synthetic).")] = False,
 ) -> dict[str, Any]:
     """Upload a file (pcap, JSON/JSONL/CSV/log, SBOM, R$F bundle, policy document) and analyze it.
 
@@ -79,27 +109,19 @@ def analyze_upload(
     limit = int(ctx.settings.get("api.max_upload_mb")) * 1024 * 1024
     path, digest = _store_upload(ctx.workspace.uploads_dir / "analyze", file.file, name, limit)
     ctx.audit.record("analysis.upload", affected=[digest], details={"name": name, "size": path.stat().st_size})
-    options = AnalyzeOptions(incident=incident, source_name=name, correlate=correlate)
-    data: dict[str, Any] = analyze_path(ctx, path, options).to_json_dict()
-    data["input"] = name  # never reveal server paths
-    return data
+    options = AnalyzeOptions(incident=incident, source_name=name, correlate=correlate, synthetic=synthetic)
+    result = analyze_path(ctx, path, options)
+    data: dict[str, Any] = result.to_json_dict()
+    data["input"] = name  # never reveal server paths, also not inside suggestions or step details
+    return dict(_scrub(data, result.input, name))
 
 
 @router.get("/analyses")
 def list_analyses(ctx: Ctx, limit: Annotated[int, Query(ge=1, le=500)] = 50) -> dict[str, Any]:
     records = ctx.store.analyses.list(limit=limit)
-    items = []
-    for record in records:
-        item = record.to_json_dict()
-        item["input"] = record.stats.get("input_name") or Path(record.input).name
-        items.append(item)
-    return {"items": items, "total": ctx.store.analyses.count()}
+    return {"items": [public_analysis(r) for r in records], "total": ctx.store.analyses.count()}
 
 
 @router.get("/analyses/{analysis_id}")
 def show_analysis(ctx: Ctx, analysis_id: str) -> dict[str, Any]:
-    record = get_analysis(ctx, analysis_id)
-    data: dict[str, Any] = record.to_json_dict()
-    data["input"] = record.stats.get("input_name") or Path(record.input).name
-    data["job_ids"] = record.job_ids
-    return data
+    return public_analysis(get_analysis(ctx, analysis_id))

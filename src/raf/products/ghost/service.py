@@ -19,7 +19,7 @@ from raf.core.objects.models import RafModel
 from raf.core.objects.semantics import NON_PROPAGATING_TYPES, PROPAGATION_RELATIONSHIPS
 from raf.core.risk.exposure import AssetExposure, ExposureMetrics, ExposureModel
 from raf.core.snapshots.service import SnapshotService, StateView, resolve_state
-from raf.core.timeutil import utcnow
+from raf.core.timeutil import format_ts, utcnow
 from raf.products.ghost.ops import OPERATIONS, run_operation
 from raf.products.ghost.state import ModelState, OpEffects
 
@@ -119,7 +119,7 @@ class GhostService:
         now = utcnow()
         if base.strip().lower() in RESERVED:
             snapshot = self._base_snapshot_for_current(name)
-            label = f"current at {now.isoformat(timespec='seconds')}"
+            label = f"current at {format_ts(now)}"
         else:
             snapshot = self.snapshots.require(base).name
             label = f"snapshot {snapshot}"

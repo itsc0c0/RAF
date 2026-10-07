@@ -228,17 +228,26 @@ def vulnerable_cmd(
         rows = []
         for entry in items:
             pkg = entry["package"]
+            exact = entry["basis"] == "exact"
+            version = pkg.get("version") if exact else f"(declared {pkg.get('constraint') or 'any version'})"
             for adv in entry["advisories"]:
                 rows.append(
                     (
                         rt.sev_text(adv["severity"]),
                         adv["id"],
-                        f"{pkg.get('ecosystem')}/{pkg.get('name')} {pkg.get('version')}",
+                        f"{pkg.get('ecosystem')}/{pkg.get('name')} {version}",
+                        "installed" if exact else "possible",
+                        f"{adv['confidence']:.2f}",
                         ", ".join(adv["fixed"]) or "-",
                         len(entry["projects"]),
                     )
                 )
-        rt.table(["SEV", "ADVISORY", "PACKAGE", "FIXED", "PROJECTS"], rows)
+        rt.table(["SEV", "ADVISORY", "PACKAGE", "MATCH", "CONFIDENCE", "FIXED", "PROJECTS"], rows)
+        if any(entry["basis"] == "constraint" for entry in items):
+            rt.note(
+                "possible: only a version constraint is declared and it admits affected versions; commit a "
+                "lockfile so the installed version is known."
+            )
 
     rt.output("raf.dependency.vulnerable/v1", {"items": items, "total": len(items)}, render)
 

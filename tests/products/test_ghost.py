@@ -212,12 +212,16 @@ def api(raven_home: Path) -> Iterator[Any]:
 
 
 def test_api_ghost(api: Any) -> None:
-    assert api.post("/api/v1/ghost/models", json={"name": "baseline"}).status_code == 200
-    assert api.post("/api/v1/ghost/models/baseline/clone", json={"name": "exp"}).status_code == 200
+    assert api.post("/api/v1/ghost/models", json={"name": "baseline"}).status_code == 201
+    assert api.post("/api/v1/ghost/models/baseline/clone", json={"name": "exp"}).status_code == 201
     applied = api.post("/api/v1/ghost/models/exp/ops", json={"op": "isolate", "arg": "DEV-01"}).json()
     assert applied["applied"][0]["effects"]["removed_relationships"]
     models = api.get("/api/v1/ghost/models").json()["items"]
     assert {m["name"] for m in models} == {"baseline", "exp"}
+    full = api.get("/api/v1/ghost/models/exp").json()
+    summary = next(m for m in models if m["name"] == "exp")
+    assert summary["ops_count"] == len(full["ops"]) == 1 and summary["base_label"] == full["base_label"]
+    assert full["base_label"].endswith("Z")
     compare = api.get("/api/v1/ghost/compare", params={"a": "baseline", "b": "exp"}).json()
     assert set(compare["a_metrics"]) >= {
         "attack_paths",

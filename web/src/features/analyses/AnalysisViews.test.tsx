@@ -134,6 +134,7 @@ describe('Analyses', () => {
     await user.upload(within(form).getByLabelText('File'), file);
     await user.type(within(form).getByLabelText('Incident (optional)'), 'INC-002');
     await user.click(within(form).getByLabelText(/Correlate/));
+    await user.click(within(form).getByLabelText(/Synthetic data/));
     await user.click(within(form).getByRole('button', { name: 'Analyze' }));
 
     await waitFor(() => expect(router.state.location.search).toBe('?analysis=analysis-3'));
@@ -143,6 +144,7 @@ describe('Analyses', () => {
     expect((sent.get('file') as File).name).toBe('events.jsonl');
     expect(sent.get('incident')).toBe('INC-002');
     expect(sent.get('correlate')).toBe('false');
+    expect(sent.get('synthetic')).toBe('true');
     expect(post.headers.get('Content-Type')).toBeNull();
   });
 
