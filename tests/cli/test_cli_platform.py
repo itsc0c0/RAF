@@ -12,6 +12,18 @@ def test_help_and_version(cli: Any) -> None:
     assert version.json()["schema"] == "raf.version/v1"
 
 
+def test_an_unreadable_configuration_does_not_stop_raf(cli: Any, monkeypatch: Any) -> None:
+    # RAF_HOME of another user (an installation run with sudo, a shared environment): the defaults apply
+    from raf.sdk import cli as runtime
+
+    def denied() -> None:
+        raise PermissionError(13, "Permission denied", "/home/other/.raf/config.toml")
+
+    monkeypatch.setattr(runtime, "settings", denied)
+    result = cli("--version")
+    assert result.exit_code == 0 and "0." in result.stdout
+
+
 def test_status_empty_state(cli: Any) -> None:
     result = cli("status")
     assert result.exit_code == 0

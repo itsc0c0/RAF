@@ -1,0 +1,111 @@
+name: Release
+
+# Builds the offline installation bundles (x86_64 and aarch64), checks each one on clean Linux
+# distributions without network access, and publishes them with their checksums as a GitHub
+# release. Run it by pushing a tag vX.Y.Z, or from the Actions tab with the tag to create.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (vX.Y.Z): it must match RAF_VERSION in src/raf/version.py"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    name: Bundle ${{ matrix.arch }} (build, offline install on clean distributions)
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag names this version
+        run: |
+          version=$(sed -n 's/^RAF_VERSION = "\(.*\)"$/\1/p' src/raf/version.py)
+          echo "tag $TAG, RAF_VERSION $version"
+          [ "$TAG" = "v$version" ] || { echo "::error::tag $TAG does not match RAF_VERSION $version"; exit 1; }
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.arch }}-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tui
+          key: release-${{ matrix.arch }}
+      - name: Build the bundle
+        run: python3 scripts/build-release
+      - name: Install and use it on clean distributions (no network, no Python)
+        run: |
+          scripts/check-release dist/release/raf-*-linux-${{ matrix.arch }}.tar.gz \
+            debian:12-slim ubuntu:24.04 almalinux:8 fedora:42
+      - name: The zip archive too
+        run: scripts/check-release dist/release/raf-*-linux-${{ matrix.arch }}.zip debian:12-slim
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.arch }}
+          path: |
+            dist/release/raf-*.tar.gz
+            dist/release/raf-*.zip
+            dist/release/raf-*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the release
+    needs: bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums and release notes
+        run: |
+          cd assets
+          cat raf-*.sha256 | sort -k 2 > SHA256SUMS
+          rm raf-*.sha256
+          sha256sum -c SHA256SUMS
+          ls -l
+          cd ..
+          sed "s/@VERSION@/${TAG#v}/g; s/@TAG@/$TAG/g; s|@REPO@|$GITHUB_REPOSITORY|g" packaging/RELEASE_NOTES.md > notes.md
+      - name: Publish
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+          else
+            gh release create "$TAG" assets/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "R\$F ${TAG#v}" --notes-file notes.md
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY"

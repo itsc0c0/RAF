@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+"""Build the R$F offline installation bundle for Linux on this machine's architecture.
+
+    scripts/build-release                  dist/release/raf-<version>-linux-<arch>.{tar.gz,zip}
+    scripts/build-release --skip-web       reuse web/dist (npm ci && npm run build otherwise)
+    scripts/build-release --out DIR        another output directory
+
+The bundle holds a Python runtime (python-build-standalone, as `uv python install` downloads and
+verifies it), the R$F wheel with the built web workbench, every dependency as a wheel (the
+versions and hashes of uv.lock, PostgreSQL and keyring extras included), the raf-os terminal
+panel as a static musl binary, the documentation, the demo fixtures, install.sh and uninstall.sh;
+SHA256SUMS covers every file. Building needs uv, npm, cargo with the <arch>-unknown-linux-musl
+target and network access; installing needs none. Wheels and the runtime match the build
+machine, so build each architecture on a machine of that architecture.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gzip
+import hashlib
+import os
+import platform
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+import zipfile
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PYTHON = "3.12"
+EXTRAS = ("postgres", "keyring")
+#: Oldest glibc first: the first level every dependency has wheels for is the bundle's minimum.
+GLIBC_LEVELS = (17, 28)
+
+
+def say(text: str) -> None:
+    print(f"\033[1m==> {text}\033[0m", flush=True)
+
+
+def run(cmd: list[str], **kwargs: object) -> None:
+    print("+ " + " ".join(cmd), flush=True)
+    subprocess.run(cmd, check=True, **kwargs)  # type: ignore[call-overload]
+
+
+def output(cmd: list[str], **kwargs: object) -> str:
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True, **kwargs)  # type: ignore[call-overload]
+    return str(result.stdout).strip()
+
+
+def raf_version() -> str:
+    text = (ROOT / "src/raf/version.py").read_text()
+    match = re.search(r'^RAF_VERSION = "([^"]+)"', text, re.M)
+    if not match:
+        sys.exit("RAF_VERSION not found in src/raf/version.py")
+    return match.group(1)
+
+
+def machine() -> str:
+    arch = platform.machine().lower()
+    return {"amd64": "x86_64", "arm64": "aarch64"}.get(arch, arch)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def manylinux_tags(arch: str, level: int) -> list[str]:
+    tags = [f"manylinux_2_{minor}_{arch}" for minor in range(level, 4, -1)]
+    legacy = {17: "manylinux2014", 12: "manylinux2010", 5: "manylinux1"}
+    tags += [f"{name}_{arch}" for minor, name in legacy.items() if minor <= level]
+    return tags
+
+
+def build_web(skip: bool) -> None:
+    if skip:
+        say("Web workbench: reusing web/dist")
+    else:
+        say("Web workbench")
+        run(["npm", "ci", "--no-audit", "--no-fund"], cwd=ROOT / "web")
+        run(["npm", "run", "build"], cwd=ROOT / "web")
+    if not (ROOT / "web/dist/index.html").is_file():
+        sys.exit("web/dist/index.html is missing: build the workbench (cd web && npm ci && npm run build)")
+
+
+def build_wheel(work: Path) -> Path:
+    say("R$F wheel (with the web workbench)")
+    run(
+        ["uv", "build", "--wheel", "--out-dir", str(work / "dist")],
+        cwd=ROOT,
+        env={**os.environ, "RAF_REQUIRE_WEB_DIST": "1"},
+    )
+    wheels = sorted((work / "dist").glob("raf-*.whl"))
+    if len(wheels) != 1:
+        sys.exit(f"expected one raf wheel, found {[w.name for w in wheels]}")
+    with zipfile.ZipFile(wheels[0]) as wheel:
+        if "raf/apps/web_dist/index.html" not in wheel.namelist():
+            sys.exit("the wheel does not carry the web workbench")
+    return wheels[0]
+
+
+def python_runtime(work: Path, arch: str, epoch: int) -> tuple[Path, str, Path]:
+    """The runtime, packed as runtime/<name>.tar.gz with a top-level python/ directory."""
+    say(f"Python {PYTHON} runtime (python-build-standalone via uv)")
+    target = work / "python"
+    run(["uv", "python", "install", PYTHON, "--install-dir", str(target), "--no-bin"])
+    pattern = rf"cpython-{re.escape(PYTHON)}\.\d+-linux-{arch}-gnu"
+    installs = [d for d in target.iterdir() if d.is_dir() and not d.is_symlink() and re.fullmatch(pattern, d.name)]
+    if len(installs) != 1:
+        sys.exit(f"expected one Python {PYTHON} installation for {arch}, found {[d.name for d in installs]}")
+    install = installs[0]
+    full = install.name.split("-")[1]
+    archive = work / f"cpython-{full}-{arch}-unknown-linux-gnu.tar.gz"
+    with (
+        archive.open("wb") as raw,
+        gzip.GzipFile(fileobj=raw, mode="wb", mtime=epoch) as zipped,
+        tarfile.open(fileobj=zipped, mode="w") as tar,
+    ):
+        tar.add(install, arcname="python", filter=_owned_by_root)
+    return install / "bin" / "python3", full, archive
+
+
+def _owned_by_root(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    # modification times stay: the runtime's .pyc files are checked against their sources' times
+    info.uid = info.gid = 0
+    info.uname = info.gname = "root"
+    return info
+
+
+def dependency_wheels(work: Path, python: Path, arch: str, wheels: Path) -> int:
+    say("Dependency wheels (uv.lock versions and hashes)")
+    requirements = work / "requirements.txt"
+    extras = [f"--extra={name}" for name in EXTRAS]
+    run(
+        [
+            "uv", "export", "--frozen", "--no-dev", "--no-emit-project", "--no-header", *extras,
+            "--format", "requirements.txt", "--output-file", str(requirements),
+        ],
+        cwd=ROOT,
+    )  # fmt: skip
+    venv = work / "download-venv"
+    run([str(python), "-m", "venv", str(venv)])
+    pip = [str(venv / "bin" / "python"), "-m", "pip", "--disable-pip-version-check", "--no-input"]
+    for level in GLIBC_LEVELS:
+        shutil.rmtree(wheels, ignore_errors=True)
+        wheels.mkdir(parents=True)
+        platforms = [arg for tag in manylinux_tags(arch, level) for arg in ("--platform", tag)]
+        cmd = [
+            *pip, "download", "--only-binary=:all:", "--no-deps", "-r", str(requirements), "-d", str(wheels),
+            "--python-version", PYTHON, "--implementation", "cp",
+            "--abi", f"cp{PYTHON.replace('.', '')}", "--abi", "abi3", "--abi", "none", *platforms,
+        ]  # fmt: skip
+        try:
+            run(cmd, env={**os.environ, "PIP_CONFIG_FILE": os.devnull})
+            return level
+        except subprocess.CalledProcessError:
+            print(f"   (not every dependency has wheels for glibc 2.{level}: trying a newer level)", flush=True)
+    sys.exit("could not download wheels for every dependency")
+
+
+def check_wheelhouse(work: Path, python: Path, wheels: Path, version: str) -> None:
+    say("Offline install check")
+    venv = work / "check-venv"
+    run([str(python), "-m", "venv", str(venv)])
+    run(
+        [
+            str(venv / "bin" / "python"), "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+            "--no-index", "--find-links", str(wheels), f"raf[{','.join(EXTRAS)}]=={version}",
+        ],
+        env={**os.environ, "PIP_CONFIG_FILE": os.devnull},
+    )  # fmt: skip
+    print("   " + output([str(venv / "bin" / "raf"), "--version"]), flush=True)
+
+
+def build_tui(arch: str) -> Path:
+    target = f"{arch}-unknown-linux-musl"
+    say(f"R$F OS terminal panel ({target}, static)")
+    run(
+        ["cargo", "build", "--release", "--locked", "--manifest-path", "tui/Cargo.toml", "--target", target],
+        cwd=ROOT,
+    )
+    binary = ROOT / "tui" / "target" / target / "release" / "raf-os"
+    print("   " + output([str(binary), "--version"]), flush=True)
+    return binary
+
+
+def assemble(stage: Path, **parts: object) -> None:
+    say(f"Bundle {stage.name}")
+    version, arch = str(parts["version"]), str(parts["arch"])
+    (stage / "runtime").mkdir(parents=True)
+    runtime = Path(str(parts["runtime"]))
+    shutil.copy2(runtime, stage / "runtime" / runtime.name)
+    shutil.copytree(Path(str(parts["wheels"])), stage / "wheels")
+    shutil.copy2(Path(str(parts["raf_wheel"])), stage / "wheels")
+    (stage / "bin").mkdir()
+    shutil.copy2(Path(str(parts["tui"])), stage / "bin" / "raf-os")
+    share = stage / "share"
+    shutil.copytree(ROOT / "docs", share / "docs")
+    shutil.copy2(ROOT / "README.md", share / "docs" / "README.md")
+    shutil.copytree(ROOT / "fixtures", share / "fixtures")
+    shutil.copytree(ROOT / "packaging" / "examples", share / "examples")
+    for script in ("install.sh", "uninstall.sh"):
+        shutil.copy2(ROOT / "packaging" / script, stage / script)
+    shutil.copy2(ROOT / "LICENSE", stage / "LICENSE")
+    readme = (ROOT / "packaging" / "README.txt").read_text()
+    values = {"VERSION": version, "ARCH": arch, "PYTHON": parts["python"], "GLIBC_MIN": parts["glibc"]}
+    for key, value in values.items():
+        readme = readme.replace(f"@{key}@", str(value))
+    (stage / "README.txt").write_text(readme)
+    (stage / "VERSION").write_text(version + "\n")
+    bundle = {
+        "version": version,
+        "arch": arch,
+        "python": parts["python"],
+        "python_archive": runtime.name,
+        "glibc_min": parts["glibc"],
+        "extras": ",".join(EXTRAS),
+        "commit": parts["commit"],
+        "built": parts["built"],
+    }
+    (stage / "BUNDLE").write_text("".join(f"{key}={value}\n" for key, value in bundle.items()))
+    for path in stage.rglob("*"):
+        if path.is_file():
+            executable = path.name in ("install.sh", "uninstall.sh", "raf-os")
+            path.chmod(0o755 if executable else 0o644)
+        elif path.is_dir():
+            path.chmod(0o755)
+    files = sorted(p for p in stage.rglob("*") if p.is_file())
+    sums = "".join(f"{sha256(p)}  {p.relative_to(stage).as_posix()}\n" for p in files)
+    (stage / "SHA256SUMS").write_text(sums)
+    (stage / "SHA256SUMS").chmod(0o644)
+
+
+def pack(stage: Path, out: Path, epoch: int) -> list[Path]:
+    say("Archives")
+    name = stage.name
+    tar_path, zip_path = out / f"{name}.tar.gz", out / f"{name}.zip"
+    files = sorted(stage.rglob("*"))
+    with (
+        tar_path.open("wb") as raw,
+        gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=epoch) as zipped,
+        tarfile.open(fileobj=zipped, mode="w", format=tarfile.PAX_FORMAT) as tar,
+    ):
+        tar.add(stage, arcname=name, recursive=False, filter=lambda i: _stamped(i, epoch))
+        for path in files:
+            arcname = f"{name}/{path.relative_to(stage).as_posix()}"
+            tar.add(path, arcname=arcname, recursive=False, filter=lambda i: _stamped(i, epoch))
+    stamp = datetime.fromtimestamp(epoch, UTC).timetuple()[:6]
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for path in [stage, *files]:
+            relative = path.relative_to(stage).as_posix()
+            arcname = name + "/" + ("" if relative == "." else relative + ("/" if path.is_dir() else ""))
+            arcname = arcname.replace("//", "/")
+            info = zipfile.ZipInfo(arcname, date_time=stamp)  # type: ignore[arg-type]
+            mode = stat.S_IMODE(path.stat().st_mode)
+            if path.is_dir():
+                info.external_attr = (stat.S_IFDIR | mode) << 16 | 0x10
+                archive.writestr(info, b"")
+            else:
+                info.external_attr = (stat.S_IFREG | mode) << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                with path.open("rb") as handle, archive.open(info, "w") as target:
+                    shutil.copyfileobj(handle, target, 1 << 20)
+    return [tar_path, zip_path]
+
+
+def _stamped(info: tarfile.TarInfo, epoch: int) -> tarfile.TarInfo:
+    info.uid = info.gid = 0
+    info.uname = info.gname = "root"
+    info.mtime = epoch
+    return info
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--out", default=str(ROOT / "dist" / "release"), help="output directory")
+    parser.add_argument("--skip-web", action="store_true", help="reuse web/dist")
+    parser.add_argument("--keep", action="store_true", help="keep the work directory")
+    args = parser.parse_args()
+    if platform.system() != "Linux":
+        sys.exit("the bundle is built on Linux (its wheels and runtime match the build machine)")
+    for tool in ("uv", "cargo", *(() if args.skip_web else ("npm",))):
+        if shutil.which(tool) is None:
+            sys.exit(f"{tool} is needed")
+    version, arch = raf_version(), machine()
+    if arch not in ("x86_64", "aarch64"):
+        sys.exit(f"unsupported architecture {arch}")
+    commit = output(["git", "rev-parse", "HEAD"], cwd=ROOT) if (ROOT / ".git").exists() else "unknown"
+    epoch = int(output(["git", "log", "-1", "--format=%ct"], cwd=ROOT)) if commit != "unknown" else 0
+    out = Path(args.out).resolve()
+    stage = out / f"raf-{version}-linux-{arch}"
+    shutil.rmtree(stage, ignore_errors=True)
+    out.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix="raf-release-"))
+    try:
+        build_web(args.skip_web)
+        raf_wheel = build_wheel(work)
+        python, full, runtime = python_runtime(work, arch, epoch)
+        wheels = work / "wheels"
+        level = dependency_wheels(work, python, arch, wheels)
+        all_wheels = work / "all-wheels"
+        shutil.copytree(wheels, all_wheels)
+        shutil.copy2(raf_wheel, all_wheels)
+        check_wheelhouse(work, python, all_wheels, version)
+        tui = build_tui(arch)
+        built = datetime.fromtimestamp(epoch, UTC).strftime("%Y-%m-%dT%H:%M:%SZ") if epoch else "unknown"
+        assemble(
+            stage,
+            version=version,
+            arch=arch,
+            runtime=runtime,
+            wheels=wheels,
+            raf_wheel=raf_wheel,
+            tui=tui,
+            python=full,
+            glibc=f"2.{level}",
+            commit=commit,
+            built=built,
+        )
+        archives = pack(stage, out, epoch)
+    finally:
+        if args.keep:
+            print(f"kept: {work}")
+        else:
+            shutil.rmtree(work, ignore_errors=True)
+    lines = [f"{sha256(p)}  {p.name}\n" for p in archives]
+    sums = out / f"raf-{version}-linux-{arch}.sha256"
+    sums.write_text("".join(lines))
+    say("Done")
+    for path in [*archives, sums]:
+        shown = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+        print(f"   {shown}  ({path.stat().st_size / 1e6:.1f} MB)")
+    print("".join(lines), end="")
+
+
+if __name__ == "__main__":
+    main()

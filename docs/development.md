@@ -29,12 +29,15 @@ cd web && npm run typecheck && npm run lint && npm run format:check && npm run t
 cd web && npm run test:e2e            # browser end-to-end suite (needs the build and .venv/bin/raf)
 ```
 
-`.github/workflows/ci.yml` runs six jobs on every push and pull request: Python (lint, format,
+`.github/workflows/ci.yml` runs seven jobs on every push and pull request: Python (lint, format,
 mypy, pytest, demo smoke test), PostgreSQL (migrations and the SQLite/PostgreSQL equivalence
 workflow against a `postgres:16` service), Lab (isolation checks inside labs on the runner's Docker
 daemon), web (typecheck, lint, format, tests, build), e2e (the Playwright suite in Chromium against
-`raf serve`, and the wheel) and the R$F OS terminal panel (fmt, clippy, tests, build, `raf tui
---dump` of every page).
+`raf serve`, and the wheel), the R$F OS terminal panel (fmt, clippy, tests, build, `raf tui
+--dump` of every page) and the release bundle (`scripts/build-release`, then `scripts/check-release`
+installs and uses it in a clean Debian container without network). `.github/workflows/release.yml`
+builds the bundles for x86_64 and aarch64, checks them on Debian, Ubuntu, AlmaLinux and Fedora, and
+publishes a GitHub release ([install.md](install.md)).
 
 `tests/integration/test_postgres.py` is skipped unless `RAF_TEST_POSTGRES_URL` names a PostgreSQL
 server whose user may create databases (each test creates and drops its own):

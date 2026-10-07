@@ -1,0 +1,28 @@
+# Example systemd unit for the R$F web workbench (not installed or enabled automatically).
+#
+#   sudo useradd --system --create-home --home-dir /var/lib/raf raf
+#   sudo cp /opt/raf/share/examples/raf-serve.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now raf-serve
+#
+# It listens on 127.0.0.1:8765 only. To reach it from elsewhere, put an authenticating reverse
+# proxy (TLS) in front of it, or bind another address with an API token (see docs/web-ui.md).
+
+[Unit]
+Description=R$F web workbench (raf serve)
+After=network.target
+
+[Service]
+Type=simple
+User=raf
+Group=raf
+Environment=RAF_HOME=/var/lib/raf/.raf
+ExecStart=/opt/raf/bin/raf serve --host 127.0.0.1 --port 8765
+Restart=on-failure
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/raf
+
+[Install]
+WantedBy=multi-user.target

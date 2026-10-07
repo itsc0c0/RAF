@@ -183,3 +183,27 @@ jobs:
             uv run raf tui --dump "$page" --width 120 > "$RUNNER_TEMP/$page.txt"
             test -s "$RUNNER_TEMP/$page.txt"
           done
+
+  bundle:
+    name: Release bundle (x86_64, offline install on a clean Debian)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tui
+          key: bundle
+      - name: Build the bundle (runtime, wheels, workbench, static raf-os)
+        run: python3 scripts/build-release
+      - name: Install and use it on Debian without network or Python
+        run: scripts/check-release dist/release/raf-*-linux-x86_64.tar.gz debian:12-slim

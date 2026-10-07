@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Check an R$F release archive on clean Linux distributions, in containers without network access
+# and without Python, Node.js or Rust: install it as root (/opt/raf, links in /usr/local/bin), load
+# the demo, check policies, the terminal panel and the web workbench, upgrade it in place,
+# uninstall it (user data stays), then install it for an unprivileged user (--user).
+#
+#   scripts/check-release dist/release/raf-0.1.0-linux-x86_64.tar.gz [IMAGE ...]
+#
+# Default images: debian:12-slim ubuntu:24.04 almalinux:8 fedora:42 (glibc 2.36, 2.39, 2.28,
+# 2.41). Needs docker (DOCKER=podman for Podman). A .zip archive is unpacked on this machine first.
+set -euo pipefail
+
+[ $# -ge 1 ] || { sed -n '2,10p' "$0"; exit 2; }
+ARCHIVE=$(realpath "$1")
+shift
+IMAGES=("$@")
+[ ${#IMAGES[@]} -gt 0 ] || IMAGES=(debian:12-slim ubuntu:24.04 almalinux:8 fedora:42)
+DOCKER=${DOCKER:-docker}
+command -v "$DOCKER" >/dev/null 2>&1 || { echo "check-release needs $DOCKER" >&2; exit 1; }
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+case $ARCHIVE in
+  *.tar.gz) tar -xzf "$ARCHIVE" -C "$TMP" ;;
+  *.zip) (cd "$TMP" && unzip -q "$ARCHIVE") ;;
+  *) echo "expected a .tar.gz or .zip archive" >&2; exit 2 ;;
+esac
+BUNDLE=$(find "$TMP" -mindepth 1 -maxdepth 1 -type d -name 'raf-*' | head -n 1)
+[ -n "$BUNDLE" ] || { echo "no raf-* directory in $ARCHIVE" >&2; exit 1; }
+chmod -R a+rX "$TMP"
+
+# Runs inside each container (POSIX sh, as root). The bundle is mounted read-only at /bundle.
+read -r -d '' CHECK <<'SCRIPT' || true
+set -eu
+say() { printf '  * %s\n' "$*"; }
+cp -R /bundle /tmp/bundle
+cd /tmp/bundle
+if command -v python3 >/dev/null 2>&1; then say "this image has a python3: the installation must not use it"; fi
+
+say "install as root"
+./install.sh >/tmp/install.log 2>&1 || { cat /tmp/install.log; exit 1; }
+test -L /usr/local/bin/raf && test -L /usr/local/bin/raf-os
+grep -q "is installed" /tmp/install.log
+test ! -e /root/.raf || { echo "the installer created /root/.raf"; exit 1; }
+export RAF_HOME=/tmp/home
+raf --version
+PY=/opt/raf/venv/bin/python
+
+say "demo, status, policies"
+raf --quiet --yes demo load >/dev/null
+raf --json status | "$PY" -c 'import json, sys; d = json.load(sys.stdin)["data"]; assert d["objects"] > 0 and d["events"] > 0, d; print("    objects", d["objects"], "events", d["events"])'
+raf --json policy check /opt/raf/share/fixtures/policies/raven-edge.nft >/tmp/check.json
+"$PY" -c 'import json; d = json.load(open("/tmp/check.json")); assert any(f["rule_id"] == "shadowed-rule" for f in d["analysis"]["findings"]); print("    nftables policy check: ok")'
+
+say "terminal panel (raf tui --dump)"
+raf tui --dump home --width 100 >/tmp/tui.txt
+grep -q "R\$F" /tmp/tui.txt || { head -20 /tmp/tui.txt; exit 1; }
+
+say "web workbench (raf serve)"
+raf serve --port 8765 >/tmp/serve.log 2>&1 &
+server=$!
+"$PY" - <<'PY'
+import time, urllib.request
+for _ in range(150):
+    try:
+        urllib.request.urlopen("http://127.0.0.1:8765/api/v1/health", timeout=1)
+        break
+    except OSError:
+        time.sleep(0.2)
+page = urllib.request.urlopen("http://127.0.0.1:8765/").read().decode()
+assert "<script" in page and "</html>" in page, page[:300]
+print("    the workbench and the API answer")
+PY
+kill "$server"
+wait "$server" 2>/dev/null || true
+
+say "upgrade in place"
+./install.sh >/tmp/upgrade.log 2>&1 || { cat /tmp/upgrade.log; exit 1; }
+grep -q "Upgrading R\$F" /tmp/upgrade.log
+raf --version >/dev/null
+ls /opt | grep -q previous && { echo "a backup was left behind"; exit 1; }
+
+say "a damaged bundle is refused, a failed upgrade restores the installation"
+cp -R /bundle /tmp/damaged
+wheel=$(cd /tmp/damaged/wheels && ls raf-*.whl)
+printf 'x' >>"/tmp/damaged/wheels/$wheel"
+(cd /tmp/damaged && ./install.sh >/tmp/damaged.log 2>&1) && { echo "a damaged bundle was installed"; exit 1; }
+grep -q "checksum mismatch" /tmp/damaged.log
+rm "/tmp/damaged/wheels/$wheel"
+(cd /tmp/damaged && ./install.sh --skip-verify >/tmp/failed.log 2>&1) && { echo "an incomplete bundle was installed"; exit 1; }
+grep -q "previous installation was restored" /tmp/failed.log || { cat /tmp/failed.log; exit 1; }
+raf --version >/dev/null
+ls /opt | grep -q previous && { echo "a backup was left behind"; exit 1; }
+
+say "a directory that is not R\$F is left alone"
+mkdir -p /srv/other && touch /srv/other/keep
+./install.sh --prefix /srv/other --no-link >/tmp/other.log 2>&1 && { echo "/srv/other was replaced"; exit 1; }
+grep -q "is not an R.F installation" /tmp/other.log && test -e /srv/other/keep
+
+say "uninstall"
+/opt/raf/uninstall.sh --yes
+test ! -e /opt/raf && test ! -e /usr/local/bin/raf && test ! -e /usr/local/bin/raf-os
+test -d /tmp/home/workspaces
+
+say "install for a user (--user)"
+unset RAF_HOME
+if command -v useradd >/dev/null 2>&1 && command -v su >/dev/null 2>&1; then
+	useradd -m tester
+	cp -R /bundle /home/tester/bundle && chown -R tester /home/tester/bundle
+	su -s /bin/sh tester -c 'cd ~/bundle && ./install.sh --user >/tmp/user.log 2>&1 || { cat /tmp/user.log; exit 1; }; ~/.local/bin/raf --version && ~/.local/opt/raf/uninstall.sh --yes >/dev/null'
+else
+	say "(no useradd/su in this image: skipped)"
+fi
+say "all checks passed"
+SCRIPT
+
+status=0
+for image in "${IMAGES[@]}"; do
+  echo "==> $image"
+  if ! "$DOCKER" run --rm --network none -v "$BUNDLE:/bundle:ro" "$image" sh -c "$CHECK"; then
+    echo "FAILED: $image" >&2
+    status=1
+  fi
+done
+exit $status

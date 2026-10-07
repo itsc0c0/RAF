@@ -32,7 +32,7 @@ integration, and documentation that describes the actual behavior.
 | R$F OS terminal panel (`raf tui`) | done | Rust + Ratatui `raf-os` (`tui/`): 12 pages, keyboard and mouse, inspector, plain-text `--dump`; served by read-only `/api/v1/tui` routes over loopback with a one-time token; see [tui.md](tui.md). Built with Cargo (no prebuilt binaries yet); tested on Linux |
 | Plugins | done | manifests, install/trust (hash pinned)/verify/uninstall; see [plugin-development.md](plugin-development.md) |
 | Architecture rules | done | layering and declared product dependencies enforced by `tests/unit/test_architecture.py` |
-| Packaging | partial | `scripts/bootstrap` and `uv sync`; a wheel with the built web workbench (`uv build` after `npm run build`), installed and served from a clean environment in CI (`scripts/check-wheel`); not published yet, and R$F OS is built with Cargo |
+| Packaging | done | Linux release bundles for x86_64 and aarch64 (Python runtime, every dependency as a wheel, web workbench, static R$F OS binary, docs, fixtures) with an offline installer into `/opt/raf` (upgrade with rollback, `--user`, uninstaller), checked on Debian, Ubuntu, AlmaLinux and Fedora without network before every release (`scripts/build-release`, `scripts/check-release`, [install.md](install.md)); from source: `scripts/bootstrap`, `uv sync`, a wheel with the workbench (`scripts/check-wheel`). Not on PyPI; no macOS or Windows bundles |
 | CI | done | `.github/workflows/ci.yml` (Python lint/types/tests/smoke, web lint/types/tests/build, the web workbench end to end in Chromium, PostgreSQL migrations and SQLite/PostgreSQL equivalence, Lab on a real Docker daemon, R$F OS fmt/clippy/tests/build and an end-to-end `raf tui --dump` of every page) |
 
 ## Products

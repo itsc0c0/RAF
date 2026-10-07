@@ -70,7 +70,19 @@ below works on the demo dataset.
 
 ## Installation
 
-Requirements: Python 3.12+. Optional: Node.js 20.19+ to build the web workbench, Rust (stable,
+On Linux (x86_64 or aarch64), take the offline bundle of a
+[release](https://github.com/itsc0c0/RAF/releases): it holds a Python runtime, every dependency,
+the web workbench and R$F OS, and needs nothing on the machine but glibc 2.17+.
+
+```bash
+tar -xzf raf-0.1.0-linux-x86_64.tar.gz && cd raf-0.1.0-linux-x86_64
+sudo ./install.sh              # /opt/raf, with raf and raf-os in /usr/local/bin (or: ./install.sh --user)
+```
+
+Upgrades, uninstalling, what the installer does and how bundles are built and tested:
+[docs/install.md](docs/install.md).
+
+From source: Python 3.12+. Optional: Node.js 20.19+ to build the web workbench, Rust (stable,
 1.88+) to build R$F OS, Docker or Podman for Lab, the `keyring` extra for OS keyring secrets.
 
 ```bash
@@ -234,6 +246,7 @@ fails when they are out of date. More: [docs/development.md](docs/development.md
 
 | Topic | Document |
 |---|---|
+| Installing (release bundles, from source) | [docs/install.md](docs/install.md) |
 | Architecture and design decisions | [docs/architecture.md](docs/architecture.md) |
 | Security model (safety boundaries, untrusted data, secrets, API) | [docs/security-model.md](docs/security-model.md) |
 | Threat model | [docs/threat-model.md](docs/threat-model.md) |
@@ -251,4 +264,4 @@ fails when they are out of date. More: [docs/development.md](docs/development.md
 
 ## License
 
-Apache-2.0.
+Apache License 2.0: [LICENSE](LICENSE).

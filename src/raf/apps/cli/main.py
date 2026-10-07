@@ -292,7 +292,7 @@ def _log_settings() -> tuple[str, bool]:
     try:
         settings = rt.settings()
         return str(settings.get("core.log_level")), bool(settings.get("core.log_file"))
-    except RafError:
+    except (RafError, OSError):  # OSError: RAF_HOME belongs to someone else, for example
         return "WARNING", True
     finally:
         logging.disable(logging.NOTSET)
