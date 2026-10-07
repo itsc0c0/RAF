@@ -10,8 +10,9 @@ Known gaps and the planned order of work after 0.1.0. Nothing here is implemente
    job), then decide whether it can leave EXPERIMENTAL.
 3. **PostgreSQL in CI.** The storage layer supports PostgreSQL; add a CI job that runs the suite
    against it before calling it supported.
-4. **Web workbench coverage.** Every product with an API should have a view (see the page list in
-   [web-ui.md](web-ui.md)); add browser end-to-end tests of the signature workflow.
+4. **Web workbench coverage.** The browser end-to-end suite (`web/e2e`) covers the signature
+   workflow, triage and the token prompt; extend it to the other write flows (Ghost operations,
+   Surface and Protocol uploads, snapshots, Lab).
 5. **Performance budgets.** Benchmarks for million-event imports, timeline queries and propagation on
    large graphs, with regression thresholds in CI (`slow` marker). Measured today on a workspace
    with 150,000 events, 51,000 objects and 200,000 relationships (mostly process activity), command

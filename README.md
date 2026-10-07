@@ -214,11 +214,12 @@ Details: [docs/architecture.md](docs/architecture.md).
 .venv/bin/ruff check src tests scripts && .venv/bin/ruff format --check src tests scripts
 .venv/bin/mypy                               # strict
 cd web && npm run typecheck && npm run lint && npm run test && npm run build
+cd web && npm run test:e2e                   # the workbench in headless Chromium against raf serve
 cd tui && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo build --release
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above. Tests never need network access or external
-infrastructure. Fixtures are generated deterministically by `scripts/generate_fixtures.py`; a test
+infrastructure (the end-to-end suite starts its own servers with demo workspaces on 127.0.0.1). Fixtures are generated deterministically by `scripts/generate_fixtures.py`; a test
 fails when they are out of date. More: [docs/development.md](docs/development.md).
 
 ## Documentation

@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { OracleAnswer, OracleCitation, OracleFact } from '../../api/types';
 import { useInspector } from '../../app/shellState';
@@ -97,6 +98,7 @@ function citationKey(citation: OracleCitation, index: number): string {
 
 /** Renders an Oracle answer. Everything is text; cited IDs become chips into the cited data. */
 export function OracleAnswerView({ answer }: { answer: OracleAnswer }) {
+  const citationsId = useId();
   const citations = Array.isArray(answer.citations) ? answer.citations : [];
   const invalid = Array.isArray(answer.invalid_references) ? answer.invalid_references : [];
   const facts = Array.isArray(answer.facts) ? answer.facts : [];
@@ -146,8 +148,8 @@ export function OracleAnswerView({ answer }: { answer: OracleAnswer }) {
         </div>
       ) : null}
       {citations.length > 0 ? (
-        <div className="stack stack--tight">
-          <h4>Cited R$F data</h4>
+        <div className="stack stack--tight" role="group" aria-labelledby={citationsId}>
+          <h4 id={citationsId}>Cited R$F data</h4>
           <div className="row row--wrap">
             {citations.map((citation, index) => (
               <ReferenceChip

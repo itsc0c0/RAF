@@ -497,6 +497,7 @@ npm run lint         # eslint .
 npm run format       # prettier --write .  (format:check for CI)
 npm run test         # vitest run
 npm run build        # tsc -b && vite build -> web/dist (served by `raf serve`)
+npm run test:e2e     # Playwright end-to-end suite against real servers (after npm run build)
 ```
 
 Against demo data:
@@ -526,7 +527,35 @@ Tests (`src/**/*.test.ts(x)`, fetch is mocked with `src/test/utils.tsx#mockFetch
 | `features/protocol/ProtocolViews.test.tsx` | a packet with every decoded layer, field explanations and malformed markers; value formatting; earlier uploads (name, size, time, SHA-256 prefix; hostile names stay text) open through the upload ID flow |
 | `features/vault/FindingsTabs.test.tsx` | Vault values only as redacted text + fingerprint; dependency tree (cycles, repeats) and finding join for confidence |
 | `components/Badge.test.tsx` | severity and confidence badges render independently (incl. in the findings table) |
+| `features/findings/FindingDetail.test.tsx` | triage sends the status and the note and confirms it, although the saved finding remounts the form |
 | others | fuzzy ranking, internal route validation (incl. the new routes and redirects), graph model (merge/collapse/filter/path), histogram brush math, trace tree, timeline filters, formatting, factor lists, Oracle panel, global search |
+
+### End-to-end tests (`web/e2e`)
+
+`npm run test:e2e` drives the production build in headless Chromium (Playwright, pinned to
+1.56.1) against real R$F servers. The global setup starts a shared server for the tests that change
+nothing: a private temporary R$F home with `raf demo load --yes`, and `raf serve` on 127.0.0.1 and a
+free port, serving `web/dist` (the suite stops with a clear message when the build is missing).
+Tests that change data, and the token test, start a server and demo workspace of their own; every
+server is stopped by its PID and its home removed at the end, also after a crash. `RAF_BIN` selects
+the raf executable (default `../.venv/bin/raf`); `RAF_*` settings of the calling shell are not passed
+on. Nothing needs Internet access.
+
+| Spec | Covers |
+|---|---|
+| `overview.spec.ts` | the workspace, its open findings, INC-001 and every product status, as the API reports them |
+| `search.spec.ts` | the global search finds alice, opens her in the inspector and pivots to her timeline; the command palette opens alice and replays INC-001 |
+| `investigate.spec.ts` | Lens scopes the events of INC-001 and a group narrows them; Trace follows alice backward and forward and opens the events behind its links |
+| `timeline.spec.ts` | a filter narrows the timeline, and the CSV export carries it |
+| `graph.spec.ts` | alice's neighborhood renders, filters by type and selects a node |
+| `blast.spec.ts` | alice's blast radius: risk score, factors and the primary path |
+| `findings.spec.ts` | triage acknowledges a finding with a note: the drawer, the list, the finding's history and the audit log agree |
+| `oracle.spec.ts` | an answer about INC-001 cites R$F data, and each citation opens what it cites |
+| `replay.spec.ts` | replay of INC-001 steps forward and rebuilds the state the server computes |
+| `token.spec.ts` | a token-protected server: the prompt, a rejected token, the working UI once the right one is entered, the token kept in `sessionStorage` only and never shown, a token-authenticated export |
+
+CI runs the suite in the `e2e` job (with one retry, and the Playwright report kept as an artifact
+when it fails).
 
 ## Not implemented yet / known limitations
 
@@ -541,9 +570,9 @@ Tests (`src/**/*.test.ts(x)`, fetch is mocked with `src/test/utils.tsx#mockFetch
   are read defensively, so a changed shape degrades the affected view to partial data rather than
   failing.
 * Graph expansions/collapses and positions are client-side only (lost on reload).
-* There is no end-to-end browser test suite in the repository. The views were smoke-tested with
-  headless Chromium against `raf demo load` data (every route, the write flows, and a
-  token-protected server for the token prompt and token downloads).
+* The end-to-end suite covers the signature workflow, triage and the token prompt; the other write
+  flows (Ghost operations, Surface and Protocol uploads, snapshots, Lab) are covered by unit tests
+  with a mocked API and were checked by hand in headless Chromium.
 
 ### Backend issues the UI works around
 

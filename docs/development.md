@@ -24,12 +24,20 @@ raf demo load
 ruff check src tests scripts
 ruff format --check src tests scripts
 mypy                                  # strict, configured in pyproject.toml
-pytest -q                             # ~380 tests, about a minute
+pytest -q                             # ~520 tests, about a minute and a half
 cd web && npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build
+cd web && npm run test:e2e            # browser end-to-end suite (needs the build and .venv/bin/raf)
 ```
 
-`.github/workflows/ci.yml` runs the Python job (lint, format, mypy, pytest, demo smoke test) and the
-web job (typecheck, lint, format, tests, build) on every push and pull request.
+`.github/workflows/ci.yml` runs four jobs on every push and pull request: Python (lint, format,
+mypy, pytest, demo smoke test), web (typecheck, lint, format, tests, build), e2e (the Playwright suite
+in Chromium against `raf serve`) and the R$F OS terminal panel (fmt, clippy, tests, build, `raf tui
+--dump` of every page).
+
+The end-to-end suite starts its own servers with private demo workspaces on 127.0.0.1 (see
+[web-ui.md](web-ui.md#end-to-end-tests-webe2e)). Locally it uses the Chromium Playwright 1.56.1
+downloads (`npx playwright install chromium` once, or `PLAYWRIGHT_BROWSERS_PATH` pointing to an
+existing installation) and `../.venv/bin/raf` (set `RAF_BIN` for another one).
 
 ## Tests
 

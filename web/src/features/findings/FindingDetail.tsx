@@ -73,20 +73,19 @@ function TriageForm({ finding }: { finding: Finding }) {
       className="stack triage"
       onSubmit={(event) => {
         event.preventDefault();
-        update.mutate(
-          { id: finding.id, status, note: note.trim() || null },
-          {
-            onSuccess: () => {
-              notify({ tone: 'good', title: `Finding marked ${status.replace('_', ' ')}` });
-              setNote('');
-            },
-            onError: (error) =>
-              notify({
-                tone: 'bad',
-                title: 'Triage failed',
-                description: isApiError(error) ? error.message : undefined,
-              }),
+        // Not mutate(…, { onSuccess }): the refetched finding re-keys (remounts) this form before the
+        // mutation settles, and callbacks passed to mutate() never run for an unmounted component.
+        update.mutateAsync({ id: finding.id, status, note: note.trim() || null }).then(
+          () => {
+            notify({ tone: 'good', title: `Finding marked ${status.replace('_', ' ')}` });
+            setNote('');
           },
+          (error: unknown) =>
+            notify({
+              tone: 'bad',
+              title: 'Triage failed',
+              description: isApiError(error) ? error.message : undefined,
+            }),
         );
       }}
     >

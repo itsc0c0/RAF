@@ -372,7 +372,8 @@ def get_finding(finding_id: str, ctx: Ctx) -> dict[str, Any]:
 @router.patch("/findings/{finding_id:path}", tags=["findings"])
 def update_finding(finding_id: str, body: FindingStatusUpdate, ctx: Ctx) -> dict[str, Any]:
     finding = ctx.store.findings.set_status(finding_id, body.status, body.note)
-    ctx.audit.record("finding.status", affected=[finding_id], details={"status": body.status.value})
+    # The same audit record as `raf finding ack` and the other CLI triage commands, note included.
+    ctx.audit.record("finding.status", affected=[finding_id], details={"status": body.status.value, "note": body.note})
     return finding.to_json_dict()
 
 

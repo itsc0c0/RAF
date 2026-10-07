@@ -36,9 +36,10 @@ const securityRules = {
 };
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', 'node_modules']),
+  globalIgnores(['dist', 'coverage', 'node_modules', 'playwright-report', 'test-results', 'blob-report']),
   {
     files: ['**/*.{ts,tsx}'],
+    ignores: ['e2e/**', 'playwright.config.ts'],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommendedTypeChecked,
@@ -68,6 +69,28 @@ export default defineConfig([
       '@typescript-eslint/unbound-method': 'off',
       // Tests feed hostile payloads (javascript: URLs) to prove they are neutralized.
       'no-script-url': 'off',
+    },
+  },
+  {
+    // Playwright end-to-end tests run in Node; their fixtures are not React hooks.
+    files: ['e2e/**/*.ts', 'playwright.config.ts'],
+    extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.node,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      ...securityRules,
+      eqeqeq: ['error', 'smart'],
+      'no-console': ['error', { allow: ['warn', 'error'] }],
+      '@typescript-eslint/consistent-type-imports': ['error', { fixStyle: 'inline-type-imports' }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // Playwright reads a fixture's dependencies from its object pattern: `{}` when it has none.
+      'no-empty-pattern': ['error', { allowObjectPatternsAsParameters: true }],
     },
   },
   {

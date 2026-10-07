@@ -53,3 +53,15 @@ def test_replay_trace_diff_snapshot_routes(api: Any) -> None:
     diff = api.get("/api/v1/diff", params={"a": "s1", "b": "current"}).json()
     assert diff["totals"]["changes"] == 0
     assert api.delete("/api/v1/snapshots/s1").status_code == 200
+
+
+def test_finding_triage_records_the_note(api: Any) -> None:
+    finding = api.get("/api/v1/findings", params={"status": "OPEN", "limit": 1}).json()["items"][0]
+    body = {"status": "ACKNOWLEDGED", "note": "seen in the web workbench"}
+    updated = api.patch(f"/api/v1/findings/{finding['id']}", json=body).json()
+    assert updated["status"] == "ACKNOWLEDGED"
+    assert updated["metadata"]["status_history"][-1]["note"] == body["note"]
+    # The audit record is the one `raf finding ack --note` writes: status and note.
+    entry = api.get("/api/v1/audit", params={"limit": 1}).json()["items"][0]
+    assert entry["operation"] == "finding.status" and entry["affected"] == [finding["id"]]
+    assert entry["details"] == body
