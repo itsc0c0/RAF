@@ -10,6 +10,7 @@ from fastapi.responses import PlainTextResponse
 from raf.core.errors import InvalidInputError
 from raf.core.graph.export import export_subgraph
 from raf.core.graph.source import Direction
+from raf.core.objects.types import validate_object_type, validate_relationship_type
 from raf.core.query.scope import resolve_scope
 from raf.core.timeutil import parse_timestamp
 from raf.products.graph.service import GraphService
@@ -32,6 +33,16 @@ def _scope_words(ref: str | None) -> list[str]:
     return [ref]
 
 
+def _rel_types(values: list[str] | None) -> list[str] | None:
+    """Relationship type filters, normalized and validated like the CLI's ``--rel`` (invalid: 422)."""
+    return [validate_relationship_type(v) for v in values] if values else None
+
+
+def _node_types(values: list[str] | None) -> list[str] | None:
+    """Object type filters, normalized and validated like the CLI's ``--node-type`` (unknown: 422)."""
+    return [validate_object_type(v) for v in values] if values else None
+
+
 @router.get("/view")
 def view(
     ctx: Ctx,
@@ -45,12 +56,13 @@ def view(
 ) -> dict[str, Any]:
     if direction not in ("in", "out", "both"):
         raise InvalidInputError("direction must be in, out or both")
+    rel_types, node_types = _rel_types(rel), _node_types(type)
     scope = resolve_scope(ctx, _scope_words(ref))
     graph = GraphService(ctx).view(
         scope,
         depth=depth,
-        rel_types=rel,
-        node_types=type,
+        rel_types=rel_types,
+        node_types=node_types,
         at=parse_timestamp(at) if at else None,
         max_nodes=max_nodes,
         direction=cast(Direction, direction),
@@ -69,13 +81,14 @@ def neighbors(
 ) -> dict[str, Any]:
     if direction not in ("in", "out", "both"):
         raise InvalidInputError("direction must be in, out or both")
+    rel_types = _rel_types(rel)
     target = ctx.resolve(ref)
     return (
         GraphService(ctx)
         .neighbors(
             target.id,
             direction=cast(Direction, direction),
-            rel_types=rel,
+            rel_types=rel_types,
             at=parse_timestamp(at) if at else None,
             limit=limit,
         )
@@ -93,9 +106,10 @@ def path(
     at: str | None = None,
     max_depth: Annotated[int, Query(ge=1, le=12)] = 8,
 ) -> dict[str, Any]:
+    rel_types = _rel_types(rel)
     a, b = ctx.resolve(source), ctx.resolve(target)
     result = GraphService(ctx).path(
-        a.id, b.id, directed=directed, rel_types=rel, max_depth=max_depth, at=parse_timestamp(at) if at else None
+        a.id, b.id, directed=directed, rel_types=rel_types, max_depth=max_depth, at=parse_timestamp(at) if at else None
     )
     return result.to_json_dict() | {"length": result.length}
 
@@ -106,7 +120,7 @@ def export(
 ) -> PlainTextResponse:
     scope = resolve_scope(ctx, _scope_words(ref))
     graph = GraphService(ctx).view(scope, depth=depth)
-    return PlainTextResponse(export_subgraph(graph, format), media_type=_MEDIA.get(format, "text/plain"))
+    return PlainTextResponse(export_subgraph(graph, format), media_type=_MEDIA.get(format.lower(), "text/plain"))
 
 
 @router.get("/stats")

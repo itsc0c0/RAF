@@ -214,7 +214,10 @@ class TestTrace:
     def test_process_chain_reaches_external_ip(self, raven: RafContext) -> None:
         process = raven.resolve("cat [20903]").id
         result = TraceService(raven).trace(process, direction="back", depth=6)
-        assert result.chain[0].cause == "ip:203.0.113.45"
+        # The backward links reach the attacker's address; the chain itself never revisits an object, so it
+        # stops at bob's SSH session from WS-02 instead of alternating bob -> host -> bob back to the VPN login.
+        assert any(lk.cause == "ip:203.0.113.45" for lk in result.backward)
+        assert [lk.cause for lk in result.chain] == ["host:ws-02", "user:bob"]
         assert all(a.timestamp <= b.timestamp for a, b in zip(result.chain, result.chain[1:], strict=False))
 
 

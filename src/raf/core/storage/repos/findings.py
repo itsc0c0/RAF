@@ -7,7 +7,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Connection, Engine, delete, func, or_, select, update
+from sqlalchemy import Connection, Engine, bindparam, delete, func, or_, select, update
 
 from raf.core.errors import NotFoundError
 from raf.core.objects.models import EvidenceRef, Finding
@@ -15,10 +15,26 @@ from raf.core.objects.types import FindingStatus, Severity
 from raf.core.storage import schema as s
 from raf.core.storage.database import chunks, transaction, upsert
 from raf.core.storage.repos.objects import UpsertStats, escape_like
-from raf.core.timeutil import utcnow
+from raf.core.timeutil import format_ts, utcnow
 
 #: Statuses an analyzer re-run must not override (analyst decisions).
 _STICKY = {FindingStatus.FALSE_POSITIVE.value, FindingStatus.SUPPRESSED.value, FindingStatus.ACKNOWLEDGED.value}
+#: Entries kept in ``metadata.status_history``.
+_HISTORY_LIMIT = 50
+#: Notes of the transitions R$F makes itself when an analysis runs again (entries also carry ``automatic: true``).
+REAPPEARED_NOTE = "reappeared in a new analysis"
+RESOLVED_ABSENT_NOTE = "resolved: not found by re-analysis"
+
+
+def history_entry(
+    previous: str, status: str, note: str | None, at: datetime, *, automatic: bool = False
+) -> dict[str, Any]:
+    """One ``metadata.status_history`` entry; ``at`` in the canonical ``...Z`` form (older entries written
+    with ``+00:00`` stay as they are and parse the same way)."""
+    entry: dict[str, Any] = {"from": previous, "to": status, "note": note, "at": format_ts(at)}
+    if automatic:
+        entry["automatic"] = True
+    return entry
 
 
 def finding_from_row(row: Any) -> Finding:
@@ -75,16 +91,9 @@ class FindingRepository:
                         # analyst decisions survive re-analysis: carry the status history forward
                         history = list((prior["meta"] or {}).get("status_history", []))
                         if prior["status"] == FindingStatus.RESOLVED.value and status == FindingStatus.OPEN.value:
-                            history.append(
-                                {
-                                    "from": prior["status"],
-                                    "to": status,
-                                    "at": now.isoformat(),
-                                    "note": "reappeared in a new analysis",
-                                }
-                            )
+                            history.append(history_entry(prior["status"], status, REAPPEARED_NOTE, now, automatic=True))
                         if history and "status_history" not in meta:
-                            meta["status_history"] = history[-50:]
+                            meta["status_history"] = history[-_HISTORY_LIMIT:]
                     else:
                         stats.created += 1
                     rows.append(
@@ -216,15 +225,16 @@ class FindingRepository:
 
     def set_status(self, finding_id: str, status: FindingStatus, note: str | None = None) -> Finding:
         finding = self.require(finding_id)
+        now = utcnow()
         meta = dict(finding.metadata)
         history = list(meta.get("status_history", []))
-        history.append({"from": finding.status.value, "to": status.value, "note": note, "at": utcnow().isoformat()})
-        meta["status_history"] = history[-50:]
+        history.append(history_entry(finding.status.value, status.value, note, now))
+        meta["status_history"] = history[-_HISTORY_LIMIT:]
         with self.engine.begin() as c:
             c.execute(
                 update(s.findings)
                 .where(s.findings.c.id == finding_id)
-                .values(status=status.value, meta=meta, updated_at=utcnow())
+                .values(status=status.value, meta=meta, updated_at=now)
             )
         return self.require(finding_id)
 
@@ -240,10 +250,17 @@ class FindingRepository:
         """Auto-resolve open findings of the given rules that a re-run no longer produced.
 
         ``candidates`` limits which findings may be resolved (e.g. only those of the scanned target),
-        so a partial re-run never resolves findings outside its scope."""
+        so a partial re-run never resolves findings outside its scope. Each resolution is recorded in the
+        finding's ``status_history`` as an automatic transition (:data:`RESOLVED_ABSENT_NOTE`)."""
         present = set(present_ids)
         allowed = set(candidates) if candidates is not None else None
         resolved = 0
+        now = utcnow()
+        statement = (
+            update(s.findings)
+            .where(s.findings.c.id == bindparam("b_id"))
+            .values(status=FindingStatus.RESOLVED.value, meta=bindparam("b_meta"), updated_at=now)
+        )
         with transaction(self.engine, conn) as c:
             rows = c.execute(
                 select(s.findings.c.id).where(
@@ -254,14 +271,26 @@ class FindingRepository:
             ).all()
             stale = [r[0] for r in rows if r[0] not in present and (allowed is None or r[0] in allowed)]
             for batch in chunks(stale, 500):
-                resolved += (
-                    c.execute(
-                        update(s.findings)
-                        .where(s.findings.c.id.in_(batch))
-                        .values(status=FindingStatus.RESOLVED.value, updated_at=utcnow())
-                    ).rowcount
-                    or 0
-                )
+                params: builtins.list[dict[str, Any]] = []
+                for fid, stored in c.execute(
+                    select(s.findings.c.id, s.findings.c.meta).where(s.findings.c.id.in_(batch))
+                ):
+                    meta = dict(stored or {})
+                    history = list(meta.get("status_history") or [])
+                    history.append(
+                        history_entry(
+                            FindingStatus.OPEN.value,
+                            FindingStatus.RESOLVED.value,
+                            RESOLVED_ABSENT_NOTE,
+                            now,
+                            automatic=True,
+                        )
+                    )
+                    meta["status_history"] = history[-_HISTORY_LIMIT:]
+                    params.append({"b_id": fid, "b_meta": meta})
+                if params:
+                    c.execute(statement, params)
+                    resolved += len(params)
         return resolved
 
     def delete_for_product(self, product: str, before: datetime | None = None) -> int:

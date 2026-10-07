@@ -12,10 +12,12 @@ from starlette.background import BackgroundTask
 
 from raf.core.query.scope import resolve_scope
 from raf.core.timeutil import parse_timestamp
-from raf.products.timeline.service import TimelineService
+from raf.products.timeline.service import TimelineService, export_format
 from raf.sdk.api import Ctx
 
 router = APIRouter()
+
+_MEDIA = {"csv": "text/csv", "json": "application/json", "jsonl": "application/x-ndjson", "raf": "application/zip"}
 
 
 def _query(
@@ -80,21 +82,20 @@ def export(
     severity: str | None = None,
     filter: str | None = None,
 ) -> FileResponse:
+    fmt = export_format(format)  # before anything is created
     scope, service, query, _terms = _query(ctx, ref, start, end, type, None, severity, None, filter)
-    handle = tempfile.NamedTemporaryFile(delete=False, suffix=f".{format}")  # noqa: SIM115 - removed after send
+    handle = tempfile.NamedTemporaryFile(delete=False, suffix=f".{fmt}")  # noqa: SIM115 - removed after send
     handle.close()
     path = Path(handle.name)
-    info = service.export(scope, query, format, path)
-    ctx.audit.record("timeline.export", affected=[scope.id], details={**info, "path": "download"})
-    media = {
-        "csv": "text/csv",
-        "json": "application/json",
-        "jsonl": "application/x-ndjson",
-        "raf": "application/zip",
-    }.get(format, "application/octet-stream")
+    try:
+        info = service.export(scope, query, fmt, path)
+        ctx.audit.record("timeline.export", affected=[scope.id], details={**info, "path": "download"})
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
     return FileResponse(
         path,
-        media_type=media,
-        filename=f"timeline-{scope.label}.{format}",
+        media_type=_MEDIA[fmt],
+        filename=f"timeline-{scope.label}.{fmt}",
         background=BackgroundTask(path.unlink, missing_ok=True),
     )

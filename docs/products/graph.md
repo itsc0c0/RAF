@@ -177,7 +177,7 @@ also works without the `export` word (`raf graph alice -o alice.json`). With `--
 | `cytoscape` | `{"elements": [...]}`; nodes `{id, label, type, criticality}`, edges `{id, source, target, label, confidence}` |
 | `graphml` | GraphML, `edgedefault="directed"`; node data `name`, `type`, `criticality`; edge data `relationship_type`, `confidence` |
 | `dot` | Graphviz `digraph raf` (`rankdir=LR`), node labels `name (type)`, edge labels the relationship type |
-| `csv` | edge list: `relationship_id, source, relationship_type, target, confidence, first_seen, last_seen, valid_to` |
+| `csv` | edge list: `relationship_id, source, relationship_type, target, confidence, first_seen, last_seen, valid_to`; times in ISO 8601 UTC (`2026-10-06T13:29:29Z`), empty when unknown; a text cell starting with `=`, `+`, `-`, `@`, tab or CR is prefixed with `'` so spreadsheets do not evaluate it |
 
 ```text
 raf graph export INC-001 --format graphml --output inc.graphml
@@ -194,11 +194,16 @@ WS-01 (28) and dave (28) are the most connected.
 ## Terminal rendering
 
 The terminal shows a tree: each object is attached once, under a neighbor one level closer to the
-root; `TYPE →` means the relationship points away from the parent, `← TYPE` towards it. Objects with
-high or critical criticality are marked `[HIGH]` / `[CRITICAL]`, objects referenced by a relationship
-but not stored are marked `(not in store)`. The tree stops after 80 branches; relationships that are
-not tree edges are not drawn. The complete view is in `--json`, the exports and the web UI. After an
-object view the CLI suggests `raf timeline`, `raf trace` and `raf blast`; after an incident view
+root (the object, or the incident); `TYPE →` means the relationship points away from the parent,
+`← TYPE` towards it. Analysis, job and workspace views have no root object, so every object is a
+potential root: the terminal shows a forest of trees grown breadth-first over the view's
+relationships, each started from the most connected object not yet shown (ties by ID), so every
+object appears exactly once, as a root or under a neighbor. Objects with high or critical
+criticality are marked `[HIGH]` / `[CRITICAL]`, objects referenced by a relationship but not stored
+are marked `(not in store)`. The output stops after 80 lines (roots and branches) with a note saying
+so and how many roots were not shown; relationships that are not tree edges are not drawn. The
+complete view is in `--json`, the exports and the web UI. After an object view the CLI suggests
+`raf timeline`, `raf trace` and `raf blast` (IDs quoted for the shell); after an incident view
 `raf replay` and `raf timeline`.
 
 ## Output
@@ -227,9 +232,10 @@ first_seen, last_seen, valid_to, observations, metadata}`.
 | GET | `/graph/stats` | statistics |
 
 `ref`, `source` and `target` accept everything the CLI accepts as a single word (IDs, names,
-aliases, incidents, `analysis-N`, `job-N`). `at` must be a full timestamp. Unlike the CLI, the API
-passes `rel` and `type` through unchanged: use canonical upper-case relationship types and
-lower-case object types. Errors: 404 unknown reference, 409 ambiguous reference, 422 invalid input.
+aliases, incidents, `analysis-N`, `job-N`). `at` must be a full timestamp. `rel` and `type` are
+normalized and checked like the CLI's `--rel` and `--node-type` (`member_of` is `MEMBER_OF`, `Group`
+is `group`): a syntactically invalid relationship type or an unknown object type is a 422. Errors:
+404 unknown reference, 409 ambiguous reference, 422 invalid input.
 
 ## Configuration
 
@@ -246,7 +252,5 @@ lower-case object types. Errors: 404 unknown reference, 409 ambiguous reference,
 * Objects are not filtered by `--at`, only relationships.
 * `--node-type` applies to object views and the overview, `--depth` and `--direction` to object
   views only.
-* The terminal tree is a summary. For analysis and job scopes it shows only the first object (the
-  scope itself is not a node); use `--json`, an export or the web UI.
-* CSV exports write `first_seen`/`last_seen`/`valid_to` as `2026-10-06 13:29:29+00:00` rather than
-  the ISO form used elsewhere (`2026-10-06T13:29:29Z`).
+* The terminal tree is a summary (80 lines, tree edges only); use `--json`, an export or the web UI
+  for the whole view.

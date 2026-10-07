@@ -5,7 +5,7 @@ from __future__ import annotations
 import typer
 from rich.text import Text
 
-from raf.products.diff.service import CATEGORIES, DiffResult, DiffService
+from raf.products.diff.service import CATEGORIES, DiffResult, DiffService, validate_category
 from raf.sdk import cli as rt
 
 app = typer.Typer(add_completion=False)
@@ -68,6 +68,7 @@ def diff_cmd(
     only: str | None = typer.Option(None, "--only", help="Show one category: " + ", ".join(CATEGORIES)),
     limit: int = typer.Option(60, "--limit", min=1),
 ) -> None:
+    only = validate_category(only) if only is not None else None
     ctx = rt.ctx()
     result = DiffService(ctx).diff(a, b)
     ctx.audit.record("diff.compare", affected=[a, b], details={"changes": result.totals["changes"]})

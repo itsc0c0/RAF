@@ -115,7 +115,7 @@ Exported 44 events to inc.csv (csv, sha256 9f33755f3ef052a3...)
 
 | `--format` | Content |
 |---|---|
-| `csv` (default) | header `timestamp, event_id, event_type, category, action, outcome, actor, actor_name, target, target_name, severity, confidence, source, parser, record, raw_reference, message`; a `message` starting with `=`, `+`, `-`, `@`, tab or CR is prefixed with `'` so spreadsheets do not evaluate it |
+| `csv` (default) | header `timestamp, event_id, event_type, category, action, outcome, actor, actor_name, target, target_name, severity, confidence, source, parser, record, raw_reference, message`; every text cell (all columns except `timestamp`, `severity` and `confidence`) that starts with `=`, `+`, `-`, `@`, tab or CR is prefixed with `'` so spreadsheets do not evaluate it |
 | `json` | one JSON array of event documents |
 | `jsonl` | one event document per line |
 | `raf` | an R$F bundle (`raf-bundle/1.0` ZIP) with the events, the objects involved in them, the relationships they reference and, for an incident scope, the incident object; check it with `raf bundle verify`, load it elsewhere with `raf bundle import` |
@@ -163,7 +163,7 @@ characters of the message; imported text is escaped before it is printed.
 | Method | Path | Result |
 |---|---|---|
 | GET | `/timeline?ref=&start=&end=&type=&category=&severity=&q=&filter=&group_by=&cursor=&limit=&descending=&buckets=` | the `raf.timeline/v1` fields (without `schema`); `limit` 1-2000 (default 200), `buckets` 1-500 (default 60) |
-| GET | `/timeline/export?ref=&format=&start=&end=&type=&severity=&filter=` | file download `timeline-<scope>.<format>` (`text/csv`, `application/json`, `application/x-ndjson`, `application/zip`); recorded in the audit log |
+| GET | `/timeline/export?ref=&format=&start=&end=&type=&severity=&filter=` | file download `timeline-<scope>.<format>` (`text/csv`, `application/json`, `application/x-ndjson`, `application/zip`); recorded in the audit log. `format` is case-insensitive; any other value is a 422 before anything is written. The file is written to a temporary file that is removed after the download, or at once when the export fails |
 
 `ref` omitted or `workspace` selects the whole workspace. `filter` takes the filter language; `q` is
 plain text searched in messages, event types, actor and target IDs and raw records (an unquoted word
@@ -180,6 +180,4 @@ Timeline has no configuration keys of its own. What an event carries is decided 
 
 * `object:` filter terms widen an object-scoped timeline instead of narrowing it (see above).
 * `after:` / `before:` filter terms do not accept `HH:MM` or relative values; `--from` / `--to` do.
-* The CSV neutralization applies to `message` only; names, sources and other text columns are
-  written as stored.
 * A `raf` export holds the selected events in memory while the bundle is written.

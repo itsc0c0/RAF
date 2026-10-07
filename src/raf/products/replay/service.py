@@ -6,7 +6,10 @@ Events are ordered by (timestamp, event id), giving a total order; every step's
 effects are derived only from the event and stored relationships, and all
 state collections are serialized sorted. Identical events therefore always
 produce identical states and identical state hashes, regardless of import
-order. Checkpoints (full states every N steps) make seeking cheap.
+order. Every ``replay.checkpoint_interval`` steps a checkpoint records the
+*hash* of the state reached (not the state itself), so a client can verify its
+own reconstruction; nothing is stored between requests, and the state at a time
+is rebuilt by applying the steps from the start of the window.
 """
 
 from __future__ import annotations

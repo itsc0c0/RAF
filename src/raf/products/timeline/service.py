@@ -23,6 +23,33 @@ from raf.core.timeutil import format_ts
 
 EXPORT_FORMATS = ("json", "jsonl", "csv", "raf")
 GROUP_FIELDS = ("category", "event_type", "actor", "target", "severity", "source", "outcome")
+CSV_COLUMNS = (
+    "timestamp",
+    "event_id",
+    "event_type",
+    "category",
+    "action",
+    "outcome",
+    "actor",
+    "actor_name",
+    "target",
+    "target_name",
+    "severity",
+    "confidence",
+    "source",
+    "parser",
+    "record",
+    "raw_reference",
+    "message",
+)
+
+
+def export_format(fmt: str) -> str:
+    """The canonical (lower-case) export format; anything else is an :class:`InvalidInputError`."""
+    value = fmt.strip().lower()
+    if value not in EXPORT_FORMATS:
+        raise InvalidInputError(f"Unknown export format '{fmt}'.", hint="Formats: " + ", ".join(EXPORT_FORMATS))
+    return value
 
 
 class TimelineResult(RafModel):
@@ -126,9 +153,7 @@ class TimelineService:
 
     # ------------------------------------------------------------------ export
     def export(self, scope: Scope, query: EventQuery, fmt: str, output: Path) -> dict[str, Any]:
-        fmt = fmt.lower()
-        if fmt not in EXPORT_FORMATS:
-            raise InvalidInputError(f"Unknown export format '{fmt}'.", hint="Formats: " + ", ".join(EXPORT_FORMATS))
+        fmt = export_format(fmt)
         output.parent.mkdir(parents=True, exist_ok=True)
         count = 0
         if fmt == "raf":
@@ -162,27 +187,7 @@ class TimelineService:
         with output.open("w", encoding="utf-8", newline="") as handle:
             if fmt == "csv":
                 writer = csv.writer(handle)
-                writer.writerow(
-                    [
-                        "timestamp",
-                        "event_id",
-                        "event_type",
-                        "category",
-                        "action",
-                        "outcome",
-                        "actor",
-                        "actor_name",
-                        "target",
-                        "target_name",
-                        "severity",
-                        "confidence",
-                        "source",
-                        "parser",
-                        "record",
-                        "raw_reference",
-                        "message",
-                    ]
-                )
+                writer.writerow(CSV_COLUMNS)
             elif fmt == "json":
                 handle.write("[\n")
             for ev in self.iter_events(query):
@@ -190,24 +195,25 @@ class TimelineService:
                     missing = [i for i in (ev.actor, ev.target) if i and i not in names]
                     if missing:
                         names.update({o.id: o.name for o in self.store.objects.get_many(missing).values()})
+                    # Every text cell can carry imported data (names, sources, actions, records ...).
                     writer.writerow(
                         [
                             format_ts(ev.timestamp),
-                            ev.id,
-                            ev.event_type,
-                            ev.category,
-                            ev.action,
-                            ev.outcome or "",
-                            ev.actor or "",
-                            names.get(ev.actor or "", ""),
-                            ev.target or "",
-                            names.get(ev.target or "", ""),
+                            _csv_safe(ev.id),
+                            _csv_safe(ev.event_type),
+                            _csv_safe(ev.category),
+                            _csv_safe(ev.action),
+                            _csv_safe(ev.outcome or ""),
+                            _csv_safe(ev.actor or ""),
+                            _csv_safe(names.get(ev.actor or "", "")),
+                            _csv_safe(ev.target or ""),
+                            _csv_safe(names.get(ev.target or "", "")),
                             ev.severity.value,
                             ev.confidence,
-                            ev.source,
-                            ev.parser,
-                            ev.record or "",
-                            ev.raw_reference or "",
+                            _csv_safe(ev.source),
+                            _csv_safe(ev.parser),
+                            _csv_safe(ev.record or ""),
+                            _csv_safe(ev.raw_reference or ""),
                             _csv_safe(ev.message or ""),
                         ]
                     )

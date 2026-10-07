@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import shlex
+
 import typer
 from rich.text import Text
 from rich.tree import Tree
 
 from raf.core.errors import InvalidInputError
-from raf.core.objects.types import confidence_level
+from raf.core.objects.types import ObjectType, confidence_level
 from raf.products.trace.service import TraceLink, TraceResult, TraceService
 from raf.sdk import cli as rt
 
@@ -94,19 +96,38 @@ def render_trace(result: TraceResult) -> None:
             c.print(Text("... more links (use --json, --depth or --direction)", style="dim"))
     for note in result.notes:
         c.print(Text(f"Note: {note}", style="yellow"))
-    if not result.backward and not result.forward:
+    if not result.backward and not result.forward and subject.type not in (ObjectType.INCIDENT, ObjectType.EVENT):
         c.print()
         c.print("No events reference this object yet.")
+
+
+def next_steps(result: TraceResult) -> list[str]:
+    """Pivots that work for the traced subject (IDs are quoted for the shell)."""
+    subject = result.subject
+    if subject.type == ObjectType.INCIDENT:
+        ref = shlex.quote(subject.name)
+        steps = [f"raf replay {ref}", f"raf timeline {ref}", f"raf graph {ref}"]
+    elif subject.type == ObjectType.EVENT:
+        steps = [f"raf show {shlex.quote(subject.id)}"]
+    else:
+        ref = shlex.quote(subject.id)
+        steps = [f"raf timeline {ref}", f"raf graph {ref}", f"raf blast {ref}"]
+    if result.anchor is not None:
+        steps.append(f"raf trace {shlex.quote(result.anchor.object)}")
+    return steps
 
 
 @app.command(
     "trace",
     help="""Trace how an object became involved (backward) and what it did (forward).
 
-Observed links come from single events; correlated links are labeled and never presented as proven causation.""",
+Observed links come from single events; correlated links are labeled and never presented as proven causation.
+An incident is traced from its most significant event (highest severity, then latest), an event ID from that event.""",
 )
 def trace_cmd(
-    ref: str = typer.Argument(..., help="Object (alice, PROC-123, FILE-441, DOMAIN-22, host:ws-04, @last)."),
+    ref: str = typer.Argument(
+        ..., help="Object, incident or event (alice, host:ws-04, 'cat [20903]', INC-001, event:..., @last)."
+    ),
     direction: str = typer.Option("both", "--direction", help="back, forward or both."),
     depth: int = typer.Option(3, "--depth", min=1, max=6),
 ) -> None:
@@ -116,11 +137,14 @@ def trace_cmd(
     resolved = ctx.resolve(ref)
     for message in resolved.notes:
         rt.note(message)
-    ctx.refs.remember("object", resolved.id)
     result = TraceService(ctx).trace(resolved.id, direction=direction, depth=depth)
+    if result.subject.type == ObjectType.INCIDENT:
+        ctx.refs.remember("incident", resolved.id)
+    elif resolved.kind == "object":
+        ctx.refs.remember("object", resolved.id)
 
     def render() -> None:
         render_trace(result)
-        rt.next_steps([f"raf timeline {resolved.id}", f"raf graph {resolved.id}", f"raf blast {resolved.id}"])
+        rt.next_steps(next_steps(result))
 
     rt.output("raf.trace/v1", result.to_json_dict(), render)

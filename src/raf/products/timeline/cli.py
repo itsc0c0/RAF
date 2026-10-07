@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 import typer
@@ -132,10 +133,10 @@ def timeline_cmd(
         render_timeline(result)
         pivots = []
         if scope.kind == "incident":
-            pivots += [f"raf replay {scope.label}", f"raf graph {scope.label}"]
+            pivots += [f"raf replay {shlex.quote(scope.label)}", f"raf graph {shlex.quote(scope.label)}"]
         elif scope.kind == "object":
-            pivots += [f"raf trace {scope.id}", f"raf graph {scope.id}"]
-        pivots.append(f"raf timeline {' '.join(words or ['workspace'])} --export timeline.csv")
+            pivots += [f"raf trace {shlex.quote(scope.id)}", f"raf graph {shlex.quote(scope.id)}"]
+        pivots.append(f"raf timeline {shlex.join(words or ['workspace'])} --export timeline.csv")
         rt.next_steps(pivots)
 
     rt.output("raf.timeline/v1", result.to_json_dict(), render)

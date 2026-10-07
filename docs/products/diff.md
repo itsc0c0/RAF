@@ -1,8 +1,8 @@
 # R$F Diff
 
 R$F Diff compares two security states - two snapshots, a snapshot and the live workspace, or a
-snapshot of a Ghost what-if model - and lists what changed among objects, relationships and
-findings. Every change gets a category, an importance (HIGH, MEDIUM, LOW) and a written reason, from
+Ghost what-if model (directly or as a snapshot) - and lists what changed among objects,
+relationships and findings. Every change gets a category, an importance (HIGH, MEDIUM, LOW) and a written reason, from
 fixed rules: a new path from the Internet or a new grant onto a privileged role matters more than a
 process that started.
 
@@ -25,16 +25,15 @@ raf diff A B [--only CATEGORY] [--limit N]
 | `current` (also `now`, `@workspace`) | the live workspace, computed when the command runs |
 | a snapshot name (or `snapshot:<name>`; case-insensitive) | a stored snapshot |
 | `@snapshot`, `@last` | the snapshot most recently created in this workspace |
-| `ghost:<model>` | accepted by `raf snapshot create --source`; `raf diff` does not resolve it yet (see below) |
+| `ghost:<model>` | a Ghost what-if model, computed when the command runs |
 
-`raf diff before ghost:hardened` (the example in `raf diff --help`) currently fails with
-*"Unknown state provider 'ghost'"*, because only snapshot creation registers the Ghost state
-provider. Persist the model first, then compare snapshots:
+A Ghost model can be compared directly or persisted as a snapshot first:
 
 ```text
-raf snapshot create a
 raf ghost clone current hardened
 raf ghost modify hardened --remove-access alice:production
+raf diff current ghost:hardened
+raf snapshot create a
 raf snapshot create b --source ghost:hardened -d "alice cut from production"
 raf diff a b
 ```
@@ -100,9 +99,12 @@ The first matching rule applies to a changed object; `details.fields` lists ever
 `{from, to}`. A vulnerability's importance comes from its `AFFECTS` relationship, not from the object.
 
 **Package versions.** When `package:<ecosystem>/<name>@<version>` disappears and the same package
-appears with another version, a `packages` change *package version changed 2.31.0 -> 2.32.3* (LOW,
-`details.from`, `details.to`, `details.previous_id`) is reported - and the two package objects are
-currently also reported as added and removed.
+appears with another version, one `packages` change *package version changed 2.31.0 -> 2.32.3* (LOW,
+`~`, item ID the new package, `details.from`, `details.to`, `details.previous_id`) replaces the
+addition and the removal of the two package objects. When several versions of a package disappear or
+appear, the newest removed version is paired with the newest added one, and so on (versions compare
+number by number: 2.10 is newer than 2.9); versions left without a partner are reported as added or
+removed.
 
 ### Relationships
 
@@ -126,8 +128,18 @@ changed*, with the metadata before and after. `details` holds `type`, `source`, 
 |---|---|
 | new finding | HIGH *new HIGH finding* / *new CRITICAL finding*; otherwise MEDIUM |
 | finding no longer present | LOW |
+| severity raised | HIGH when it is now HIGH or CRITICAL, else MEDIUM: *severity MEDIUM -> CRITICAL* |
+| severity lowered | LOW *severity HIGH -> MEDIUM (risk reduced)* |
+| affects more objects | HIGH for a HIGH or CRITICAL finding, else MEDIUM: *affects 2 more object(s)* |
+| affects fewer objects | LOW *affects 1 fewer object(s)* |
+| confidence changed | MEDIUM when its level rose (LOW < 0.5 ≤ MEDIUM < 0.8 ≤ HIGH): *confidence 0.60 -> 0.90 (MEDIUM -> HIGH)*; otherwise LOW |
 | status changed | LOW *status OPEN -> RESOLVED* |
-| other content changes (title, severity, affected objects, confidence) | not reported |
+| title, product or rule changed | LOW *title changed* |
+
+A finding whose content changed is one `~` change: its importance is the highest of the rows that
+apply, its reason lists them in the order above, separated by `; ` (*confidence 0.60 -> 0.30; status
+OPEN -> RESOLVED*), and `details.fields` holds every changed field as `{from, to}`
+(`affected_objects` as `{added, removed}`).
 
 ## Example
 
@@ -168,7 +180,8 @@ DEV-01` (activity), each *removed*.
 
 The terminal shows the object and relationship totals, the importance counts, a category table and
 the change list (`+`, `-`, `~`). `--only CATEGORY` restricts the list (not the table) to one
-category, `--limit` (default 60) caps it, and `--quiet` keeps only HIGH changes.
+category (case-insensitive; any other word is refused with exit 4 and the list of categories),
+`--limit` (default 60) caps it, and `--quiet` keeps only HIGH changes.
 
 `--json` emits `raf.diff/v1` with every change, regardless of `--only` and `--limit`:
 
@@ -193,14 +206,13 @@ Snapshot commands emit `raf.snapshot/v1` (`{id, name, source, description, creat
 
 | Method | Path | Result |
 |---|---|---|
-| GET | `/diff?a=&b=&category=&limit=` | the `raf.diff/v1` fields plus `truncated`; `category` filters `changes` (the summary, importance and totals still count everything); `limit` default 500, clamped to 1-5000 |
+| GET | `/diff?a=&b=&category=&limit=` | the `raf.diff/v1` fields plus `truncated`; `category` filters `changes` (the summary, importance and totals still count everything; an unknown category is a 422 whose `details.valid_categories` lists the categories); `limit` default 500, clamped to 1-5000 |
 | GET | `/snapshots` | `{items: [Snapshot]}` |
 | POST | `/snapshots` `{name, source: "current"|"workspace"|"ghost:<model>", description}` | 201 + the snapshot |
 | GET | `/snapshots/{name}` | one snapshot |
 | DELETE | `/snapshots/{name}` | `{name, items, blobs_removed}` (no confirmation step) |
 
-As in the CLI, `GET /diff` with `ghost:<model>` answers 422 *Unknown state provider 'ghost'* unless a
-Ghost snapshot was created earlier in the same server process.
+`a` and `b` accept the same states as the CLI, `ghost:<model>` included.
 
 ## Configuration
 
@@ -208,10 +220,7 @@ Diff and snapshots have no configuration keys.
 
 ## Limitations
 
-* `ghost:<model>` is not resolved by `raf diff` / `GET /diff` (see [States](#states)).
-* Snapshots hold objects, relationships and findings, not events; `current` is recomputed from the
-  whole workspace on every comparison.
+* Snapshots hold objects, relationships and findings, not events; `current` (and a `ghost:<model>`
+  state) is recomputed from the whole workspace on every comparison.
 * Changes to timestamps and to the confidence of objects and relationships are not changes by
-  design; changes to findings other than their status are not reported.
-* Package version changes are listed three times (changed, added, removed).
-* `--only` accepts any word; an unknown category simply shows no changes.
+  design.

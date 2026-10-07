@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shlex
+from collections import deque
 from pathlib import Path
 from typing import cast
 
@@ -37,6 +39,51 @@ def _node_label(subgraph: Subgraph, node_id: str) -> Text:
     return text
 
 
+def _layered_tree(subgraph: Subgraph, roots: list[str]) -> dict[str, tuple[str, str, bool]]:
+    """Tree parents of a layered view (neighborhood, incident): a neighbor one level closer to a root."""
+    depth = {n.id: n.depth for n in subgraph.nodes}
+    parent_edge: dict[str, tuple[str, str, bool]] = {}
+    for edge in subgraph.edges:
+        for child, parent, forward in ((edge.target, edge.source, True), (edge.source, edge.target, False)):
+            if child in parent_edge or child in roots:
+                continue
+            if depth.get(parent, -1) == depth.get(child, -2) - 1:
+                parent_edge[child] = (parent, edge.type, forward)
+    return parent_edge
+
+
+def _spanning_forest(subgraph: Subgraph) -> tuple[list[str], dict[str, tuple[str, str, bool]]]:
+    """Roots and tree parents of a view without layers (analysis, job, workspace overview): breadth-first trees
+    over the view's relationships, each started from the most connected node not yet in a tree (then by ID), so
+    every node appears exactly once, either as a root or under a neighbor."""
+    adjacency: dict[str, list[tuple[str, str, bool]]] = {}
+    for edge in sorted(subgraph.edges, key=lambda e: (e.type, e.source, e.target, e.id)):
+        if edge.source == edge.target:
+            continue
+        adjacency.setdefault(edge.source, []).append((edge.target, edge.type, True))
+        adjacency.setdefault(edge.target, []).append((edge.source, edge.type, False))
+    order = sorted((n.id for n in subgraph.nodes), key=lambda i: (-len(adjacency.get(i, ())), i))
+    members = set(order)
+    roots: list[str] = []
+    parent_edge: dict[str, tuple[str, str, bool]] = {}
+    placed: set[str] = set()
+    for start in order:
+        if start in placed:
+            continue
+        roots.append(start)
+        placed.add(start)
+        queue = deque([start])
+        while queue:
+            node = queue.popleft()
+            for neighbor, etype, forward in adjacency.get(node, ()):
+                if neighbor in placed or neighbor not in members:
+                    continue
+                placed.add(neighbor)
+                parent_edge[neighbor] = (node, etype, forward)
+                queue.append(neighbor)
+    return roots, parent_edge
+
+
 def render_subgraph(subgraph: Subgraph, title: str) -> None:
     rt.header(f"R$F GRAPH  {title}")
     rt.kv_block(
@@ -50,19 +97,16 @@ def render_subgraph(subgraph: Subgraph, title: str) -> None:
     if not subgraph.nodes:
         c.print("Nothing to show.")
         return
-    depth = {n.id: n.depth for n in subgraph.nodes}
-    roots = [r for r in subgraph.roots if r in depth] or [subgraph.nodes[0].id]
-    parent_edge: dict[str, tuple[str, str, bool]] = {}
-    for edge in subgraph.edges:
-        for child, parent, forward in ((edge.target, edge.source, True), (edge.source, edge.target, False)):
-            if child in parent_edge or child in roots:
-                continue
-            if depth.get(parent, -1) == depth.get(child, -2) - 1:
-                parent_edge[child] = (parent, edge.type, forward)
+    node_ids = {n.id for n in subgraph.nodes}
+    roots = [r for r in subgraph.roots if r in node_ids]
+    if roots:
+        parent_edge = _layered_tree(subgraph, roots)
+    else:  # the scope itself is not a node (analysis, job) or there is none (workspace): every node is a root
+        roots, parent_edge = _spanning_forest(subgraph)
     children: dict[str, list[tuple[str, str, bool]]] = {}
     for child, (parent, etype, forward) in sorted(parent_edge.items(), key=lambda kv: (kv[1][1], kv[0])):
         children.setdefault(parent, []).append((child, etype, forward))
-    printed = 0
+    printed = 0  # lines: roots and branches
 
     def add(branch: Tree, node_id: str) -> None:
         nonlocal printed
@@ -75,12 +119,17 @@ def render_subgraph(subgraph: Subgraph, title: str) -> None:
             add(sub, child)
 
     c.print()
+    shown_roots = 0
     for root in roots:
+        if printed >= _TREE_LIMIT:
+            break
+        printed += 1
+        shown_roots += 1
         tree = Tree(_node_label(subgraph, root))
         add(tree, root)
         c.print(tree)
     unattached = [n for n in subgraph.nodes if n.id not in parent_edge and n.id not in roots]
-    if unattached and not subgraph.roots:
+    if unattached:
         c.print(
             Text(
                 f"{len(unattached)} nodes without a tree parent (use --json or the web UI for the full graph)",
@@ -88,8 +137,13 @@ def render_subgraph(subgraph: Subgraph, title: str) -> None:
             )
         )
     if printed >= _TREE_LIMIT:
+        hidden = len(roots) - shown_roots
+        more = f"; {hidden} more root(s) not shown" if hidden else ""
         c.print(
-            Text(f"... output limited to {_TREE_LIMIT} branches (raf graph ... --json for everything)", style="dim")
+            Text(
+                f"... output limited to {_TREE_LIMIT} lines{more} (raf graph ... --json for everything)",
+                style="dim",
+            )
         )
 
 
@@ -98,7 +152,7 @@ def render_path(result: PathResult) -> None:
     if not result.found:
         rt.console().print("No path found" + (" following relationship directions" if result.directed else "") + ".")
         if result.directed:
-            rt.next_steps([f"raf graph path {result.source} {result.target}  (undirected)"])
+            rt.next_steps([f"raf graph path {shlex.quote(result.source)} {shlex.quote(result.target)}  (undirected)"])
         return
     steps: list[tuple[str, str, str | None]] = []
     for hop in result.hops:
@@ -218,8 +272,10 @@ def graph_cmd(
     def render() -> None:
         render_subgraph(graph, f"{scope.label}  ({scope.id})")
         if scope.kind == "object":
-            rt.next_steps([f"raf timeline {scope.id}", f"raf trace {scope.id}", f"raf blast {scope.id}"])
+            ref = shlex.quote(scope.id)
+            rt.next_steps([f"raf timeline {ref}", f"raf trace {ref}", f"raf blast {ref}"])
         elif scope.kind == "incident":
-            rt.next_steps([f"raf replay {scope.label}", f"raf timeline {scope.label}"])
+            ref = shlex.quote(scope.label)
+            rt.next_steps([f"raf replay {ref}", f"raf timeline {ref}"])
 
     rt.output("raf.graph/v1", graph.to_json_dict() | {"scope": scope.to_dict()}, render)

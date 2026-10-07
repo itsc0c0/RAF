@@ -3,8 +3,10 @@
 Every derived relationship records the event that produced it (provenance is
 attached by the pipeline). Rules only assert what the event supports:
 a failed login creates no LOGGED_INTO edge, a blocked connection no
-CONNECTED_TO edge, and removal events *end* relationships (valid_to) rather
-than deleting history.
+CONNECTED_TO edge, a failed (e.g. denied) access change neither grants nor
+ends access (no HAS_ROLE, MEMBER_OF or CAN_ACCESS change), a process that failed
+to start creates no process edges and a failed policy change no MODIFIED edge;
+removal events *end* relationships (valid_to) rather than deleting history.
 """
 
 from __future__ import annotations
@@ -112,6 +114,8 @@ def _auth_privilege(c: _Ctx) -> None:
 
 
 def _process_start(c: _Ctx) -> None:
+    if not c.ok:  # the process did not start (e.g. blocked)
+        return
     process = c.ev.target
     c.rel(c.first("parent"), RelationshipType.SPAWNED, process)
     if c.type_of(c.ev.actor) in (ObjectType.USER, ObjectType.IDENTITY):
@@ -172,6 +176,8 @@ def _tls(c: _Ctx) -> None:
 
 
 def _role(c: _Ctx) -> None:
+    if not c.ok:  # a failed assignment grants nothing, a failed removal ends nothing
+        return
     c.rel(
         c.ev.target,
         RelationshipType.HAS_ROLE,
@@ -182,6 +188,8 @@ def _role(c: _Ctx) -> None:
 
 
 def _group(c: _Ctx) -> None:
+    if not c.ok:  # a failed addition adds nothing, a failed removal ends nothing
+        return
     c.rel(
         c.ev.target,
         RelationshipType.MEMBER_OF,
@@ -237,7 +245,8 @@ def _cloud_api(c: _Ctx) -> None:
 
 
 def _policy_change(c: _Ctx) -> None:
-    c.rel(c.ev.actor, RelationshipType.MODIFIED, c.ev.target)
+    if c.ok:
+        c.rel(c.ev.actor, RelationshipType.MODIFIED, c.ev.target)
 
 
 RULES: dict[str, Callable[[_Ctx], None]] = {

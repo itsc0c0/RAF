@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 from raf.core.errors import InvalidInputError
 from raf.core.graph.algorithms import Subgraph
+from raf.core.timeutil import format_ts
 
 FORMATS = ("json", "cytoscape", "graphml", "dot", "csv")
 
@@ -82,15 +83,22 @@ def export_subgraph(graph: Subgraph, fmt: str) -> str:
         for e in graph.edges:
             writer.writerow(
                 [
-                    e.id,
-                    e.source,
-                    e.type,
-                    e.target,
+                    _csv_safe(e.id),
+                    _csv_safe(e.source),
+                    _csv_safe(e.type),
+                    _csv_safe(e.target),
                     e.confidence,
-                    e.first_seen or "",
-                    e.last_seen or "",
-                    e.valid_to or "",
+                    format_ts(e.first_seen) or "",
+                    format_ts(e.last_seen) or "",
+                    format_ts(e.valid_to) or "",
                 ]
             )
         return buffer.getvalue()
     raise InvalidInputError(f"Unknown graph export format '{fmt}'.", hint="Formats: " + ", ".join(FORMATS))
+
+
+def _csv_safe(text: str) -> str:
+    """Neutralize spreadsheet formulas in a cell that may hold imported data (prefix ``'``)."""
+    if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + text
+    return text

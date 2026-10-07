@@ -150,20 +150,20 @@ confidence is at most 0.9):
 |---|---|---|
 | `auth.login` | actor `LOGGED_INTO` target (`method`, `protocol`, `logon_type`); `src_ip CONNECTED_TO` target (≤ 0.9) when the target is a host or IP | nothing |
 | `auth.privilege` as `root`, `administrator`, `system`, `admin` or `nt authority\system` on a host | actor `ADMIN_OF` host (≤ 0.9) | nothing |
-| `process.start` | parent `SPAWNED` process; a user or identity actor `STARTED` process; process `EXECUTED` image file; host `RUNS` process | same |
+| `process.start` | parent `SPAWNED` process; a user or identity actor `STARTED` process; process `EXECUTED` image file; host `RUNS` process | nothing (the process did not start) |
 | `process.end` | ends host `RUNS` process | same |
 | `file.create`, `file.modify`, `file.delete`, `file.read` | process (else actor) `CREATED` / `MODIFIED` / `DELETED` / `READ` file; host `CONTAINS` file (≤ 0.9; ended by `file.delete`) | nothing |
 | `network.connection`, `network.flow` | actor `CONNECTED_TO` target (not when `attributes.blocked` is true); host `HAS_ADDRESS src_ip` (≤ 0.8) | only `HAS_ADDRESS` |
 | `dns.query` | actor `RESOLVED` domain; domain `RESOLVES_TO` each answer (≤ 0.95) | same |
 | `http.request` | actor `REQUESTED` URL; domain `RESOLVES_TO dst_ip` (≤ 0.8) | same |
 | `tls.handshake` | actor `CONNECTED_TO` target | nothing |
-| `iam.role.assign`, `iam.role.remove` | target `HAS_ROLE` role (`granted_by`; ended by remove) | same (a failed assignment still creates `HAS_ROLE`) |
-| `iam.group.add`, `iam.group.remove` | target `MEMBER_OF` group (`changed_by`; ended by remove) | same (a failed addition still creates `MEMBER_OF`) |
+| `iam.role.assign`, `iam.role.remove` | target `HAS_ROLE` role (`granted_by`; ended by remove) | nothing (a failed assignment grants nothing, a failed removal ends nothing) |
+| `iam.group.add`, `iam.group.remove` | target `MEMBER_OF` group (`changed_by`; ended by remove) | nothing (a failed addition adds nothing, a failed removal ends nothing) |
 | `iam.permission.grant`, `iam.permission.revoke` | target `CAN_ACCESS` resource (`granted_by`, `access`; ended by revoke) | nothing |
 | `iam.user.disable`, `iam.user.enable` | sets `metadata.disabled` and `state_changed_at` on the target | nothing |
 | `service.access` | actor `CAN_ACCESS` service (≤ 0.8, `observed`) | nothing |
 | `cloud.api` | actor `CAN_ASSUME` role (target is a role), else principal `CAN_ACCESS` resource (≤ 0.7, `observed`, `api`) | nothing |
-| `policy.change` | actor `MODIFIED` policy | same |
+| `policy.change` | actor `MODIFIED` policy | nothing |
 
 Removal events *end* relationships (`valid_to` = event time) instead of deleting them, so history
 stays queryable with `--at` and Replay.
@@ -308,13 +308,15 @@ A finding is a conclusion of a product:
 
 * Analysts set statuses with `raf finding ack | resolve | false-positive | reopen ID [--note]` or
   `PATCH /api/v1/findings/{id}` (which also accepts `SUPPRESSED`). Any status can follow any other;
-  each change appends `{from, to, note, at}` to `metadata.status_history` (the last 50 are kept) and
-  writes a `finding.status` audit entry.
+  each change appends `{from, to, note, at}` to `metadata.status_history` (the last 50 are kept;
+  `at` is ISO 8601 UTC, `2026-10-07T13:48:43.752214Z`; entries written by earlier versions end in
+  `+00:00` and are kept as they are) and writes a `finding.status` audit entry.
 * When an analysis runs again, `ACKNOWLEDGED`, `FALSE_POSITIVE` and `SUPPRESSED` are kept (analyst
   decisions survive re-analysis). A `RESOLVED` finding that the analysis produces again becomes
   `OPEN` with the history entry *"reappeared in a new analysis"*. `OPEN` findings of the same product
   and rules that the run no longer produces are set to `RESOLVED` (only within the run's scope for
-  partial runs); this automatic resolution adds no history entry.
+  partial runs) with the history entry *"resolved: not found by re-analysis"*. These automatic
+  entries carry `automatic: true`.
 * `raf findings` lists `OPEN` and `ACKNOWLEDGED` findings unless `--status` says otherwise.
 
 Findings can also be imported (`{"kind": "finding", "title", "severity", "confidence", "affected",
