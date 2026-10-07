@@ -1,0 +1,59 @@
+/* Overview. */
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sev-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Part-to-whole bar: 2px surface gaps between segments, 4px rounded ends. */
+.sev-breakdown__bar {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.sev-breakdown__segment {
+  min-width: 4px;
+  height: 100%;
+}
+
+.sev-breakdown__segment--info {
+  background: var(--sev-info-mark);
+}
+
+.sev-breakdown__segment--low {
+  background: var(--sev-low-mark);
+}
+
+.sev-breakdown__segment--medium {
+  background: var(--sev-medium-mark);
+}
+
+.sev-breakdown__segment--high {
+  background: var(--sev-high-mark);
+}
+
+.sev-breakdown__segment--critical {
+  background: var(--sev-critical-mark);
+}
+
+.sev-breakdown__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.sev-breakdown__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

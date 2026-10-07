@@ -1,0 +1,219 @@
+/* Page layout primitives shared by several views. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 1680px;
+  padding: 18px 24px 40px;
+}
+
+.page--full {
+  height: 100%;
+  max-width: none;
+  overflow: hidden;
+  padding-bottom: 12px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.split--narrow-left {
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 2fr);
+}
+
+.split--wide-left {
+  grid-template-columns: minmax(0, 1.9fr) minmax(340px, 1fr);
+}
+
+@media (max-width: 1100px) {
+  .split,
+  .split--narrow-left,
+  .split--wide-left {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------- filter forms */
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.filters__scope,
+.filters__query {
+  grid-column: span 2;
+}
+
+/* Label height (12px * 1.45) + field gap: buttons line up with the inputs, not the hints. */
+.filters__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 21px;
+}
+
+.filters--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.filters--inline .field {
+  min-width: 150px;
+}
+
+.filters--lens {
+  grid-template-columns: minmax(200px, 1.2fr) minmax(260px, 2fr) minmax(140px, 0.6fr) auto;
+}
+
+.filters--lens .filters__scope,
+.filters--lens .filters__query {
+  grid-column: auto;
+}
+
+@media (max-width: 900px) {
+  .filters--lens {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filters__scope,
+  .filters__query {
+    grid-column: auto;
+  }
+}
+
+/* ---------------------------------------------------------------- group counts */
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.groups__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 6px;
+  column-gap: 8px;
+  row-gap: 3px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--text-md);
+  text-align: left;
+}
+
+.groups__item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.groups__item:disabled {
+  cursor: default;
+}
+
+.groups__value {
+  color: var(--ink-2);
+}
+
+.groups__bar {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--viz-grid);
+  overflow: hidden;
+}
+
+.groups__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--radius-pill);
+  background: var(--viz-series);
+}
+
+/* ---------------------------------------------------------------- event table (Timeline, Lens) */
+
+.event-table {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.event-table > .vlist {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.event-row {
+  display: grid;
+  grid-template-columns: 172px 92px minmax(110px, 0.8fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--text-md);
+  text-align: left;
+}
+
+button.event-row:hover {
+  background: var(--bg-hover);
+}
+
+.event-row.is-selected {
+  background: var(--bg-active);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.event-row--head {
+  flex: 0 0 auto;
+  height: 32px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.event-row__time {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.event-row__type {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 900px) {
+  .event-row {
+    grid-template-columns: 150px 84px minmax(0, 1fr);
+  }
+
+  .event-row__summary,
+  .event-row--head > span:last-child {
+    display: none;
+  }
+}

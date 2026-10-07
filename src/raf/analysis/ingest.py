@@ -2,41 +2,18 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from raf.core.context.app import RafContext
-from raf.core.errors import NotFoundError, RafError
+from raf.core.errors import NotFoundError
 from raf.core.ingestion.pipeline import IngestionPipeline, IngestOptions, IngestReport
-from raf.core.ingestion.registry import ParserRegistry
+from raf.core.ingestion.products import build_parser_registry
 from raf.core.jobs.manager import Job, JobContext, ProgressCallback
 
 log = logging.getLogger("raf.analysis.ingest")
-
-
-def build_parser_registry(ctx: RafContext) -> ParserRegistry:
-    """Core parsers plus parsers contributed by available products and trusted plugins."""
-    registry = ParserRegistry.default()
-    if ctx.registry is None:
-        return registry
-    for info in ctx.registry.products():
-        if not info.available:
-            continue
-        for import_path in info.manifest.parsers:
-            try:
-                if info.source == "plugin":
-                    parser = ctx.registry.load_plugin_attr(info.name, import_path)
-                else:
-                    module_name, attr = import_path.split(":", 1)
-                    parser = getattr(importlib.import_module(module_name), attr)
-            except (RafError, ImportError, AttributeError) as exc:
-                log.warning("parser %s from %s unavailable: %s", import_path, info.name, exc)
-                continue
-            registry.register_parser(parser)
-    return registry
 
 
 def import_path(
@@ -94,3 +71,6 @@ def import_records(
     job = ctx.jobs.run_inline(kind, title, {"source": source_name}, work)
     report = IngestReport.model_validate(job.result) if job.result else None
     return job, report
+
+
+__all__ = ["build_parser_registry", "import_path", "import_records"]

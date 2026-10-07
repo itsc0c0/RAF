@@ -1,0 +1,214 @@
+/*
+ * R$F design tokens.
+ *
+ * Dark is the default (first-class) theme; light is selected with [data-theme='light'] on <html>.
+ * Components reference roles (surface, ink, accent, severity), never raw hex values.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Typography */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --leading: 1.45;
+
+  /* Spacing (4px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Shape */
+  --radius-sm: 3px;
+  --radius: 5px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  /* Layout */
+  --topbar-height: 48px;
+  --nav-width: 196px;
+  --drawer-width: 440px;
+  --z-dropdown: 30;
+  --z-drawer: 40;
+  --z-drawer-top: 45;
+  --z-modal: 60;
+  --z-toast: 70;
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration: 180ms;
+
+  /* Surfaces */
+  --bg-app: #0e1116;
+  --bg-panel: #151a20;
+  --bg-raised: #1b2128;
+  --bg-sunken: #11151a;
+  --bg-input: #10141a;
+  --bg-hover: #202730;
+  --bg-active: #26303c;
+  --bg-overlay: rgba(4, 6, 9, 0.6);
+  --border: #262e38;
+  --border-strong: #36404c;
+  --hairline: #20262e;
+
+  /* Ink */
+  --ink: #e4e8ed;
+  --ink-2: #b4bdc7;
+  --ink-muted: #8a94a0;
+  --ink-faint: #67717c;
+  --ink-inverse: #0e1116;
+
+  /* Interaction */
+  --accent: #4c8fd9;
+  --accent-hover: #66a2e6;
+  --accent-ink: #0b1724;
+  --accent-soft: rgba(76, 143, 217, 0.16);
+  --accent-line: rgba(76, 143, 217, 0.5);
+  --focus-ring: #8fc1ff;
+  --selection: rgba(76, 143, 217, 0.32);
+
+  /* Status (state, never series identity) */
+  --good: #4fb37f;
+  --good-soft: rgba(79, 179, 127, 0.14);
+  --warn: #e0a43a;
+  --warn-soft: rgba(224, 164, 58, 0.14);
+  --bad: #e5706d;
+  --bad-soft: rgba(229, 112, 109, 0.14);
+  --violet: #9085e9;
+  --violet-soft: rgba(144, 133, 233, 0.16);
+
+  /* Severity: INFO gray, LOW blue, MEDIUM amber, HIGH red, CRITICAL deep red inverse */
+  --sev-info-bg: #262c34;
+  --sev-info-fg: #c3cad2;
+  --sev-info-line: #3a434e;
+  --sev-low-bg: rgba(57, 135, 229, 0.16);
+  --sev-low-fg: #9cc6f5;
+  --sev-low-line: rgba(57, 135, 229, 0.5);
+  --sev-medium-bg: rgba(250, 178, 25, 0.13);
+  --sev-medium-fg: #f2c35e;
+  --sev-medium-line: rgba(250, 178, 25, 0.45);
+  --sev-high-bg: rgba(208, 59, 59, 0.2);
+  --sev-high-fg: #f5a19f;
+  --sev-high-line: rgba(208, 59, 59, 0.6);
+  --sev-critical-bg: #b42323;
+  --sev-critical-fg: #ffffff;
+  --sev-critical-line: #d93a3a;
+  /* Severity marks (bars, ticks) */
+  --sev-info-mark: #6b7682;
+  --sev-low-mark: #3987e5;
+  --sev-medium-mark: #e0a43a;
+  --sev-high-mark: #d94a47;
+  --sev-critical-mark: #ff5c5c;
+
+  /* Data visualization (single-series ink, chart chrome) */
+  --viz-series: #3987e5;
+  --viz-series-hover: #5598e7;
+  --viz-brush: rgba(57, 135, 229, 0.18);
+  --viz-grid: #232a33;
+  --viz-axis: #39424d;
+
+  /* Graph node families (validated: three hues, all-pairs) + neutral */
+  --node-asset: #3987e5;
+  --node-principal: #d95926;
+  --node-activity: #199e70;
+  --node-neutral: #6b7682;
+  --node-label: #c9d0d8;
+  --node-incident: #e4e8ed;
+  --graph-edge: #4b5562;
+  --graph-added: #4fb37f;
+  --graph-removed: #e5706d;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-app: #f3f4f6;
+  --bg-panel: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-sunken: #f7f8fa;
+  --bg-input: #ffffff;
+  --bg-hover: #edf0f3;
+  --bg-active: #e1e7ee;
+  --bg-overlay: rgba(20, 26, 33, 0.35);
+  --border: #dbe0e6;
+  --border-strong: #c3cad3;
+  --hairline: #e8ebef;
+
+  --ink: #1a1f26;
+  --ink-2: #39434e;
+  --ink-muted: #5f6a76;
+  --ink-faint: #8a939d;
+  --ink-inverse: #ffffff;
+
+  --accent: #2a6fc1;
+  --accent-hover: #215ea6;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(42, 111, 193, 0.1);
+  --accent-line: rgba(42, 111, 193, 0.45);
+  --focus-ring: #2a6fc1;
+  --selection: rgba(42, 111, 193, 0.2);
+
+  --good: #1d7a47;
+  --good-soft: rgba(29, 122, 71, 0.1);
+  --warn: #8a5a00;
+  --warn-soft: rgba(196, 135, 0, 0.12);
+  --bad: #b42a26;
+  --bad-soft: rgba(180, 42, 38, 0.09);
+  --violet: #4a3aa7;
+  --violet-soft: rgba(74, 58, 167, 0.1);
+
+  --sev-info-bg: #eceff2;
+  --sev-info-fg: #46505b;
+  --sev-info-line: #d3d9df;
+  --sev-low-bg: #e5effb;
+  --sev-low-fg: #1d5aa6;
+  --sev-low-line: #b9d2f1;
+  --sev-medium-bg: #fdf2dc;
+  --sev-medium-fg: #7d5200;
+  --sev-medium-line: #efd08c;
+  --sev-high-bg: #fde6e5;
+  --sev-high-fg: #a8231f;
+  --sev-high-line: #f1b5b2;
+  --sev-critical-bg: #8f1717;
+  --sev-critical-fg: #ffffff;
+  --sev-critical-line: #8f1717;
+  --sev-info-mark: #8a939d;
+  --sev-low-mark: #2a78d6;
+  --sev-medium-mark: #d99400;
+  --sev-high-mark: #d03b3b;
+  --sev-critical-mark: #8f1717;
+
+  --viz-series: #2a78d6;
+  --viz-series-hover: #256abf;
+  --viz-brush: rgba(42, 120, 214, 0.14);
+  --viz-grid: #e8ebef;
+  --viz-axis: #c3cad3;
+
+  --node-asset: #2a78d6;
+  --node-principal: #eb6834;
+  --node-activity: #1baf7a;
+  --node-neutral: #8a939d;
+  --node-label: #2b333c;
+  --node-incident: #1a1f26;
+  --graph-edge: #a9b2bc;
+  --graph-added: #1d8a50;
+  --graph-removed: #c0392b;
+
+  --shadow-1: 0 1px 2px rgba(16, 24, 32, 0.08);
+  --shadow-2: 0 10px 30px rgba(16, 24, 32, 0.16);
+}

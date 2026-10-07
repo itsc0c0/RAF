@@ -1,0 +1,203 @@
+/* Graph view (also used by the Replay state graph). */
+
+.graph-page {
+  gap: var(--space-3);
+}
+
+.graph-toolbar {
+  gap: var(--space-2) var(--space-3);
+}
+
+.graph-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.graph-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+}
+
+.graph-side .tabs {
+  flex: 0 0 auto;
+  padding: 0 8px;
+}
+
+.graph-side .tabpanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.graph-stage {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+}
+
+.graph-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.graph-canvas:focus-visible {
+  outline-offset: -2px;
+}
+
+.graph-stage__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--bg-sunken) 88%, transparent);
+}
+
+.graph-stage__overlay > * {
+  max-width: 560px;
+}
+
+.selection-card {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(420px, calc(100% - 24px));
+  max-height: calc(100% - 64px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-1);
+}
+
+.graph-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  max-width: calc(100% - 20px);
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  pointer-events: none;
+}
+
+.graph-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.filter-group__legend {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 0 6px;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.filter-group__actions {
+  display: inline-flex;
+  gap: 10px;
+  font-weight: 400;
+}
+
+.node-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.node-list__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--text-md);
+  text-align: left;
+}
+
+.node-list__item:hover {
+  background: var(--bg-hover);
+}
+
+.node-list__item.is-selected {
+  background: var(--bg-active);
+}
+
+.node-list__item.is-hidden {
+  opacity: 0.45;
+}
+
+.node-list__item .type-tag {
+  flex: 0 0 92px;
+}
+
+@media (max-width: 1000px) {
+  .graph-page.page--full {
+    height: auto;
+    overflow: visible;
+  }
+
+  .graph-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .graph-side {
+    max-height: 280px;
+  }
+
+  .graph-stage {
+    height: 520px;
+  }
+}

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="R$F (pronounced RAF) web workbench. Every security capability. One command away."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>R$F</title>
+    <!-- External (not inline) so it satisfies the backend CSP "script-src 'self'"; applies the saved theme before first paint. -->
+    <script src="/theme-init.js"></script>
+  </head>
+  <body>
+    <noscript>R$F needs JavaScript. The raf CLI offers the same capabilities.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

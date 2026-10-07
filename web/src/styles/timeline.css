@@ -1,0 +1,77 @@
+/* Timeline view. */
+
+.timeline-page {
+  gap: var(--space-3);
+}
+
+.timeline-histogram {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 14px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+}
+
+.timeline-results {
+  flex: 1 1 auto;
+  min-height: 300px;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) auto;
+  gap: var(--space-3);
+}
+
+.timeline-groups {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.timeline-events {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.timeline-events .event-table {
+  flex: 1 1 auto;
+}
+
+.timeline-events__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.timeline-detail {
+  width: 420px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@media (max-width: 1280px) {
+  .timeline-page.page--full {
+    height: auto;
+    overflow: visible;
+  }
+
+  .timeline-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .timeline-groups {
+    max-height: 240px;
+  }
+
+  .timeline-events {
+    height: 560px;
+  }
+
+  .timeline-detail {
+    width: auto;
+  }
+}

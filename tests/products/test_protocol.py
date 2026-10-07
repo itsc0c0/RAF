@@ -723,7 +723,8 @@ def test_raf_import_relates_app01_to_the_exfil_destination(cli: Any, raven_home:
     assert result.exit_code == 0, result.stderr
     report = result.json()
     assert report["format"] == "pcap" and report["parser"] == "pcap/1.0" and report["rejected"] == 0
-    assert report["events_created"] == 9
+    # the demo already holds this capture as INC-001 evidence: same content, same event IDs
+    assert report["events_created"] + report["events_duplicate"] == 9
     again = cli("import", str(FIXTURE), "--json").json()
     assert again["events_created"] == 0 and again["events_duplicate"] == 9
 

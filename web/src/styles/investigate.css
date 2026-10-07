@@ -1,0 +1,106 @@
+/* Investigate: Lens workbench and Trace. */
+
+.lens-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.lens-events {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lens-events .event-table {
+  height: 460px;
+}
+
+.quick-pivots {
+  gap: 2px;
+}
+
+.trace-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.6fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.trace-chain {
+  position: sticky;
+  top: 0;
+}
+
+.trace-tree,
+.trace-tree__children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trace-tree__children {
+  margin-left: 10px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.trace-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--ink-muted);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.trace-link:hover {
+  background: var(--bg-hover);
+}
+
+.trace-item--correlated > .trace-link {
+  border-left: 2px dashed var(--warn);
+}
+
+.trace-link__toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+}
+
+.trace-link__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trace-link__relation {
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+}
+
+.trace-link__explanation {
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1000px) {
+  .lens-grid,
+  .trace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .trace-chain {
+    position: static;
+  }
+}

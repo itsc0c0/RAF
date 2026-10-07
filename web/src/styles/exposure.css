@@ -1,0 +1,9 @@
+/* Exposure: ranking, blast radius, IAM paths. Layout comes from shared primitives (split, stats). */
+
+.split .panel .chain {
+  margin-top: 2px;
+}
+
+.split .table td .meter {
+  width: 72px;
+}
