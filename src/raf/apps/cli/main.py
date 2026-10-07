@@ -66,10 +66,13 @@ def root(
 
 
 def _context_factory(state: rt.CliState) -> RafContext:
+    from raf.analysis.providers import install_state_providers
     from raf.apps.cli.registry import build_registry
 
     command = "raf " + " ".join(state.argv)
-    return open_context(workspace=state.workspace, interface="cli", command=command[:1000], registry=build_registry())
+    ctx = open_context(workspace=state.workspace, interface="cli", command=command[:1000], registry=build_registry())
+    install_state_providers(ctx)  # e.g. ghost:<model> for raf diff and raf snapshot
+    return ctx
 
 
 rt.set_context_factory(_context_factory)

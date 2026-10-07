@@ -194,6 +194,9 @@ def test_cli_ghost_flow(raven_home: Path, cli: Any) -> None:
     assert compare.exit_code == 0 and "BASELINE" in compare.stdout and "CHANGE" in compare.stdout
     snap = cli("snapshot", "create", "after", "--source", "ghost:hardened")
     assert snap.exit_code == 0, snap.stderr
+    diff = cli("diff", "current", "ghost:hardened", "--json")  # the ghost state provider is installed for diff
+    assert diff.exit_code == 0, diff.stderr
+    assert diff.json()["b"] == "ghost:hardened" and diff.json()["changes"]
     listing = cli("ghost", "list", "--json").json()
     assert listing["items"][0]["name"] == "hardened"
     assert cli("ghost", "delete", "hardened").exit_code != 0  # needs confirmation
@@ -224,4 +227,6 @@ def test_api_ghost(api: Any) -> None:
         "exposed_critical_assets",
     }
     assert api.post("/api/v1/ghost/models/exp/ops", json={"op": "nope", "arg": "x"}).status_code == 422
+    diff = api.get("/api/v1/diff", params={"a": "current", "b": "ghost:exp"})
+    assert diff.status_code == 200 and diff.json()["changes"], diff.text
     assert api.delete("/api/v1/ghost/models/exp").status_code == 200

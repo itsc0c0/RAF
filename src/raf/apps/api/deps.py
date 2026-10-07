@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import Request
 
+from raf.analysis.providers import install_state_providers
 from raf.core.context.app import RafContext, open_context
 from raf.core.plugins.registry import ProductRegistry
 from raf.core.workspace.manager import RafHome, WorkspaceManager, validate_workspace_name
@@ -47,6 +48,7 @@ class ContextPool:
                     registry=self.registry,
                 )
                 ctx.jobs.reconcile()
+                install_state_providers(ctx)  # e.g. ghost:<model> for diffs and snapshots
                 self._contexts[name] = ctx
             return ctx
 
