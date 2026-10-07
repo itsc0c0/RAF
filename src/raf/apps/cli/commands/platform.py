@@ -67,7 +67,7 @@ def show_banner() -> None:
         rt.next_steps(["raf demo load", "raf analyze <file>", "raf range create demo", "raf help"], title="Try")
     else:
         c.print()
-        rt.kv_block([(k.title(), f"{v:,}") for k, v in stats.items()], width=12)
+        rt.kv_block([(k.title(), f"{v:,}") for k, v in stats.items()], width=15)
 
 
 def register(app: typer.Typer) -> None:

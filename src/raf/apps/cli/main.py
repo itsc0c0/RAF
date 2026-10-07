@@ -69,6 +69,7 @@ def _register_optional() -> None:
 
     for module_name in (
         "raf.apps.cli.commands.ingest",
+        "raf.apps.cli.commands.demo",
         "raf.apps.cli.commands.snapshots",
         "raf.apps.cli.commands.analyze",
         "raf.apps.cli.commands.serve",

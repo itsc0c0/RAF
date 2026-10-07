@@ -54,8 +54,13 @@ def reset_state() -> None:
 def console() -> Console:
     if STATE._console is None:
         no_color = STATE.no_color or bool(os.environ.get("NO_COLOR"))
+        width = None if sys.stdout.isatty() else int(os.environ.get("COLUMNS", "160"))
         STATE._console = Console(
-            no_color=no_color, soft_wrap=True, highlight=False, force_terminal=None if not no_color else False
+            no_color=no_color,
+            soft_wrap=True,
+            highlight=False,
+            force_terminal=None if not no_color else False,
+            width=width,
         )
     return STATE._console
 

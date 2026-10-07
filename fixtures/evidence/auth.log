@@ -1,0 +1,7 @@
+Oct  6 22:58:03 dev-01 sshd[20811]: Accepted password for bob from 10.10.1.22 port 51544 ssh2
+Oct  6 22:58:03 dev-01 sshd[20811]: pam_unix(sshd:session): session opened for user bob(uid=1004) by (uid=0)
+Oct  6 23:01:10 dev-01 sudo:      bob : 3 incorrect password attempts ; TTY=pts/1 ; PWD=/home/bob ; USER=root ; COMMAND=/usr/bin/ls /root
+Oct  6 23:04:41 ci-01 sshd[3310]: Accepted publickey for svc-deploy from 10.20.0.11 port 40112 ssh2
+Oct  6 23:08:02 app-01 sshd[8121]: Accepted publickey for svc-deploy from 10.20.0.20 port 38820 ssh2
+Oct  6 23:12:55 dev-01 sshd[20811]: Disconnected from user bob 10.10.1.22 port 51544
+Oct  6 23:13:01 dev-01 sshd[20811]: pam_unix(sshd:session): session closed for user bob

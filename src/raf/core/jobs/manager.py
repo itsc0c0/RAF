@@ -259,7 +259,7 @@ class JobManager:
                 job.id, status=JobStatus.FAILED.value, finished_at=utcnow(), error=exc.to_dict(), message=exc.message
             )
         except Exception as exc:
-            log.error("job %s failed with an internal error", job.id, exc_info=True)
+            log.error("job %s failed with an internal error", job.id, exc_info=True, extra={"file_only": True})
             self._update(
                 job.id,
                 status=JobStatus.FAILED.value,

@@ -13,6 +13,7 @@ from raf.apps.cli import runtime as rt
 from raf.core.jobs.manager import JobStatus
 from raf.core.objects.models import Event, Finding, SecurityObject
 from raf.core.objects.types import FindingStatus, Severity, validate_object_type
+from raf.core.timeutil import format_ts
 
 PANEL = "Data"
 
@@ -47,7 +48,7 @@ def object_payload(obj: SecurityObject, *, limit: int = 50) -> dict[str, Any]:
             for r in rels[:limit]
         ],
         "relationship_count": len(rels),
-        "activity": {"first_event": activity[0], "last_event": activity[1], "events": activity[2]}
+        "activity": {"first_event": format_ts(activity[0]), "last_event": format_ts(activity[1]), "events": activity[2]}
         if activity
         else None,
         "findings": [f.model_dump(mode="json") for f in store.findings.list(object_id=obj.id, limit=20)],

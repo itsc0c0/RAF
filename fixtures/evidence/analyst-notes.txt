@@ -1,0 +1,11 @@
+INC-001 analyst notes (synthetic)
+=================================
+22:47-22:52  Repeated VPN failures for bob from 203.0.113.45, then success without MFA.
+23:01        bob read /opt/deploy/.env on DEV-01 (holds the svc-deploy token).
+23:04        svc-deploy authenticated to CI-01 from DEV-01 (unusual source).
+23:06        deploy.sh ran with --skip-review outside the change window.
+23:09-23:16  Database export on DB-01, then a 48 MB upload from APP-01 to files.exfil-test.example.
+23:25        SOC disabled bob; svc-deploy removed from deployers.
+
+Open questions: who else can reach production through svc-deploy? Was the
+deploy token rotated? Which other hosts store pipeline credentials?
