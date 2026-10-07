@@ -9,11 +9,11 @@ from rich.markup import escape
 from rich.text import Text
 
 from raf.analysis.pivots import pivots_for
-from raf.apps.cli import runtime as rt
 from raf.core.jobs.manager import JobStatus
 from raf.core.objects.models import Event, Finding, SecurityObject
 from raf.core.objects.types import FindingStatus, Severity, validate_object_type
 from raf.core.timeutil import format_ts
+from raf.sdk import cli as rt
 
 PANEL = "Data"
 

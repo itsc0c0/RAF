@@ -14,9 +14,9 @@ from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.text import Text
 
 from raf.analysis.ingest import import_path
-from raf.apps.cli import runtime as rt
 from raf.core.errors import InvalidInputError, NotFoundError
 from raf.core.ingestion.pipeline import IngestOptions, IngestReport
+from raf.sdk import cli as rt
 
 PANEL = "Data"
 

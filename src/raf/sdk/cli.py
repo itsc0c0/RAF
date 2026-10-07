@@ -1,4 +1,4 @@
-"""Per-invocation CLI state, context access and output primitives.
+"""CLI runtime for R$F products and plugins: per-invocation state, context access, output primitives.
 
 Global flags (``--json``, ``--quiet``, ``--no-color``, ``--debug``, ``--yes``,
 ``--workspace NAME``) are accepted anywhere on the command line; ``run()``
@@ -72,15 +72,26 @@ def err_console() -> Console:
     return STATE._err
 
 
+ContextFactory = Callable[[CliState], RafContext]
+
+
+def _default_factory(state: CliState) -> RafContext:
+    command = "raf " + " ".join(state.argv)
+    return open_context(workspace=state.workspace, interface="cli", command=command[:1000])
+
+
+_FACTORY: list[ContextFactory] = [_default_factory]
+
+
+def set_context_factory(factory: ContextFactory) -> None:
+    """Installed by the raf application so contexts carry the product registry."""
+    _FACTORY[0] = factory
+
+
 def ctx() -> RafContext:
     """The application context for this invocation (opened lazily, once)."""
     if STATE._ctx is None:
-        from raf.apps.cli.registry import build_registry
-
-        command = "raf " + " ".join(STATE.argv)
-        STATE._ctx = open_context(
-            workspace=STATE.workspace, interface="cli", command=command[:1000], registry=build_registry()
-        )
+        STATE._ctx = _FACTORY[0](STATE)
         if not STATE.json and STATE.no_color is False and STATE._ctx.settings.get("core.color") is False:
             STATE.no_color = True
             STATE._console = None
@@ -234,3 +245,39 @@ def ref_text(object_id: str, name: str | None = None) -> Text:
     if name and name != object_id:
         text.append(f"  {object_id}", style="dim")
     return text
+
+
+# --------------------------------------------------------------------------- shared rendering for products
+
+
+def parse_time_option(
+    value: str | None, *, anchor: datetime | None = None, window: tuple[datetime, datetime] | None = None
+) -> datetime | None:
+    """Parse ``--at`` / ``--from`` / ``--to`` values (ISO, epoch, HH:MM[:SS], +15m, now)."""
+    if not value:
+        return None
+    from raf.core.timeutil import resolve_time_spec
+
+    return resolve_time_spec(value, anchor=anchor, window=window)
+
+
+def render_chain(steps: Sequence[tuple[str, str, str | None]], *, indent: int = 3) -> None:
+    """Render a vertical chain: [(node_label, node_detail, edge_label_to_next), ...].
+
+    ``edge_label_to_next`` is None for the final node. Matches the R$F path style::
+
+        USER-17
+           | login
+           v
+        WS-04
+    """
+    c = console()
+    pad = " " * indent
+    for label, detail, edge in steps:
+        line = Text(label, style="bold")
+        if detail:
+            line.append(f"  {detail}", style="dim")
+        c.print(line)
+        if edge is not None:
+            c.print(Text(f"{pad}│ ", style="dim") + Text(edge, style="cyan"))
+            c.print(Text(f"{pad}▼", style="dim"))

@@ -9,11 +9,11 @@ from pathlib import Path
 import typer
 from rich.text import Text
 
-from raf.apps.cli import runtime as rt
 from raf.core.config.loader import keyring_delete, keyring_get, keyring_set, set_value, unset_value
 from raf.core.config.schema import KEYS, get_key
 from raf.core.errors import InvalidInputError
 from raf.core.workspace.manager import RafHome, WorkspaceManager
+from raf.sdk import cli as rt
 
 PANEL = "Workspace"
 

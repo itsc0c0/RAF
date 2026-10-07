@@ -6,7 +6,7 @@ import typer
 from rich.text import Text
 
 from raf.analysis.demo import load_demo
-from raf.apps.cli import runtime as rt
+from raf.sdk import cli as rt
 
 demo_app = typer.Typer(help="Demonstration data (fictional Raven Industries).", no_args_is_help=True)
 

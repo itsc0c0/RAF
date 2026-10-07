@@ -14,15 +14,16 @@ from collections.abc import Sequence
 import typer
 from rich.text import Text
 
-from raf.apps.cli import runtime as rt
 from raf.apps.cli.clickcompat import Abort, ClickException, Exit
 from raf.apps.cli.commands import data as data_cmds
 from raf.apps.cli.commands import platform as platform_cmds
 from raf.apps.cli.commands import workspace as workspace_cmds
 from raf.apps.cli.registry import RafGroup
+from raf.core.context.app import RafContext, open_context
 from raf.core.errors import RafError
 from raf.core.logging import configure_logging
 from raf.core.workspace.manager import RafHome
+from raf.sdk import cli as rt
 
 app = typer.Typer(
     name="raf",
@@ -57,6 +58,15 @@ def root(
     if ctx.invoked_subcommand is None:
         platform_cmds.show_banner()
 
+
+def _context_factory(state: rt.CliState) -> RafContext:
+    from raf.apps.cli.registry import build_registry
+
+    command = "raf " + " ".join(state.argv)
+    return open_context(workspace=state.workspace, interface="cli", command=command[:1000], registry=build_registry())
+
+
+rt.set_context_factory(_context_factory)
 
 platform_cmds.register(app)
 workspace_cmds.register(app)

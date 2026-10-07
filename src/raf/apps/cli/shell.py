@@ -9,8 +9,8 @@ from pathlib import Path
 
 from rich.text import Text
 
-from raf.apps.cli import runtime as rt
 from raf.core.workspace.manager import RafHome
+from raf.sdk import cli as rt
 
 Dispatcher = Callable[[Sequence[str]], int]
 

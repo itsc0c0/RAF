@@ -74,3 +74,6 @@ def run_cli(*args: str, stdin: str = "") -> CliResult:
 @pytest.fixture
 def cli(raf_home: Path) -> Any:
     return run_cli
+
+
+from tests.conftest_data import raven, raven_home, raven_template  # noqa: E402,F401  (shared fixtures)

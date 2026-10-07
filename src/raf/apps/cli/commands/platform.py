@@ -8,11 +8,11 @@ from typing import Any
 import typer
 from rich.text import Text
 
-from raf.apps.cli import runtime as rt
 from raf.apps.cli.clickcompat import Context, is_group
 from raf.apps.cli.helptopics import HELP_TOPICS
 from raf.apps.cli.registry import build_registry
 from raf.core.errors import NotFoundError
+from raf.sdk import cli as rt
 from raf.version import RAF_VERSION, versions
 
 PANEL = "Platform"

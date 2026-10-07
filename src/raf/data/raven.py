@@ -1102,6 +1102,8 @@ def incident_record() -> dict[str, Any]:
         "title": INCIDENT_TITLE,
         "severity": "high",
         "status": "investigating",
+        "start": "2026-10-06T22:40:00Z",
+        "end": "2026-10-06T23:45:00Z",
         "description": "Off-hours VPN access with bob's credentials, followed by use of a deploy token stored "
         "on DEV-01, a pipeline run outside change control, a database export on DB-01 and a "
         "large upload from APP-01 to a first-seen external domain.",

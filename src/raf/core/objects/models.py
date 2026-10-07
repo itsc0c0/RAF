@@ -136,7 +136,8 @@ class ObjectDraft:
         self.tags |= other.tags
         self.metadata = merge_metadata(self.metadata, other.metadata)
         self.observations += other.observations
-        self.synthetic = self.synthetic and other.synthetic
+        if other.observations > 0:  # a mere reference must not change provenance flags
+            self.synthetic = self.synthetic and other.synthetic
 
 
 @dataclass(slots=True)
@@ -191,7 +192,8 @@ class RelationshipDraft:
         self.confidence = max(self.confidence, other.confidence)
         self.metadata = merge_metadata(self.metadata, other.metadata)
         self.observations += other.observations
-        self.synthetic = self.synthetic and other.synthetic
+        if other.observations > 0:  # a mere reference must not change provenance flags
+            self.synthetic = self.synthetic and other.synthetic
 
 
 @dataclass(slots=True)
