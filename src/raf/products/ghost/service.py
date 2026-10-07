@@ -15,7 +15,6 @@ from pydantic import Field
 
 from raf.core.context.app import RafContext
 from raf.core.errors import ConflictError, InvalidInputError, NotFoundError
-from raf.core.graph.source import MemoryGraphSource
 from raf.core.objects.models import RafModel
 from raf.core.risk.exposure import AssetExposure, ExposureMetrics, ExposureModel
 from raf.core.snapshots.service import SnapshotService, StateView, resolve_state
@@ -234,7 +233,7 @@ class GhostService:
     # ------------------------------------------------------------------ simulate and compare
     @staticmethod
     def exposure_model(state: ModelState) -> ExposureModel:
-        return ExposureModel(MemoryGraphSource(state.objects.values(), state.relationships.values()))
+        return ExposureModel(state.graph())
 
     def summarize(self, state: ModelState) -> tuple[StateSummary, list[AssetExposure], dict[str, list[str]]]:
         model = self.exposure_model(state)

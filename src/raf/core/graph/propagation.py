@@ -22,9 +22,18 @@ from dataclasses import dataclass, field
 
 from raf.core.graph.source import GraphSource
 from raf.core.objects.models import Relationship
-from raf.core.objects.semantics import CONTROL, REACH, TRUST, Traversal, traversals
+from raf.core.objects.semantics import (
+    CONTROL,
+    NON_PROPAGATING_TYPES,
+    PROPAGATION_RELATIONSHIPS,
+    REACH,
+    TRUST,
+    Traversal,
+    traversals,
+)
 
 UPGRADE_FACTOR = 0.6
+_TYPES = sorted(PROPAGATION_RELATIONSHIPS)
 _EXPOSED_SERVICES = Traversal(REACH, 1.0, "services of {frm} are exposed to whoever can reach it")
 
 
@@ -80,7 +89,12 @@ class Propagator:
     def _edges_of(self, node: str) -> list[Relationship]:
         cached = self._edges.get(node)
         if cached is None:
-            cached = self.source.edges([node], "both")
+            cached = [
+                rel
+                for rel in self.source.edges([node], "both", types=_TYPES)
+                if _type(rel.source_object) not in NON_PROPAGATING_TYPES
+                and _type(rel.target_object) not in NON_PROPAGATING_TYPES
+            ]
             self._edges[node] = cached
         return cached
 
@@ -89,7 +103,9 @@ class Propagator:
         if not missing:
             return
         found: dict[str, list[Relationship]] = {n: [] for n in missing}
-        for rel in self.source.edges(missing, "both"):
+        for rel in self.source.edges(missing, "both", types=_TYPES):
+            if _type(rel.source_object) in NON_PROPAGATING_TYPES or _type(rel.target_object) in NON_PROPAGATING_TYPES:
+                continue
             for endpoint in (rel.source_object, rel.target_object):
                 if endpoint in found:
                     found[endpoint].append(rel)

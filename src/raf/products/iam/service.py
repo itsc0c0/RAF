@@ -39,7 +39,7 @@ from raf.core.graph.propagation import Propagator, Reached
 from raf.core.graph.source import Direction, GraphSource, MemoryGraphSource
 from raf.core.ids import finding_id
 from raf.core.objects.models import EvidenceRef, Finding, RafModel, Relationship, SecurityObject
-from raf.core.objects.semantics import CONTROL, TRUST, explain, is_privileged
+from raf.core.objects.semantics import CONTROL, NON_PROPAGATING_TYPES, TRUST, explain, is_privileged
 from raf.core.objects.types import Criticality, ObjectType, Severity
 from raf.core.timeutil import parse_timestamp, utcnow
 
@@ -165,7 +165,7 @@ class IamService:
     # ------------------------------------------------------------------ graph views
     def _load(self) -> tuple[dict[str, SecurityObject], list[Relationship]]:
         if self._objects is None or self._relationships is None:
-            self._objects = {o.id: o for o in self.store.objects.iter_all()}
+            self._objects = {o.id: o for o in self.store.objects.iter_all(exclude_types=sorted(NON_PROPAGATING_TYPES))}
             self._relationships = list(self.store.relationships.iter_all(types=list(ACCESS_RELS)))
         return self._objects, self._relationships
 

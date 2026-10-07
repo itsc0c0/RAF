@@ -12,7 +12,7 @@ from sqlalchemy import Connection, Engine, and_, delete, func, or_, select, upda
 from raf.core.objects.models import Relationship, RelationshipDraft
 from raf.core.storage import schema as s
 from raf.core.storage.database import chunks, transaction, upsert
-from raf.core.storage.repos.objects import UpsertStats
+from raf.core.storage.repos.objects import UpsertStats, escape_like
 from raf.core.timeutil import utcnow
 
 Direction = Literal["out", "in", "both"]
@@ -158,10 +158,22 @@ class RelationshipRepository:
             rows = c.execute(select(s.relationships.c.type, func.count()).group_by(s.relationships.c.type)).all()
         return {str(t): int(n) for t, n in sorted(rows)}
 
-    def iter_all(self, *, batch: int = 5000, types: Sequence[str] | None = None) -> Iterator[Relationship]:
+    def iter_all(
+        self,
+        *,
+        batch: int = 5000,
+        types: Sequence[str] | None = None,
+        exclude_endpoint_types: Sequence[str] | None = None,
+    ) -> Iterator[Relationship]:
+        """All relationships (optionally of some types, and without those that touch objects of
+        ``exclude_endpoint_types``, matched by the ``<type>:`` ID prefix)."""
+        c_ = s.relationships.c
         stmt = select(s.relationships)
         if types:
-            stmt = stmt.where(s.relationships.c.type.in_(list(types)))
+            stmt = stmt.where(c_.type.in_(list(types)))
+        for excluded in exclude_endpoint_types or ():
+            prefix = escape_like(f"{excluded}:") + "%"
+            stmt = stmt.where(~c_.source_id.like(prefix, escape="\\"), ~c_.target_id.like(prefix, escape="\\"))
         with self.engine.connect() as c:
             for row in c.execute(stmt.order_by(s.relationships.c.id)).yield_per(batch):
                 yield relationship_from_row(row)

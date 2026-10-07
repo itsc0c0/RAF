@@ -88,8 +88,8 @@ def traversals(rel_type: str, source_type: str, target_type: str) -> tuple[Trave
                 Traversal(CONTROL, 0.9, "{frm} hosts {to}"),
                 Traversal(CONTROL, 0.4, "{frm} runs on {to}; code execution in {frm} can extend to its host"),
             )
-        if tt == ObjectType.PROCESS:
-            return Traversal(CONTROL, 0.9, "{to} runs on {frm}"), None
+        # Processes are activity records, not assets: control of the host already covers them, and
+        # nothing leads onward from a process, so propagation does not enter them.
         return None, None
     if rel_type == "DEPLOYS_TO":
         return Traversal(CONTROL, 0.9, "{frm} deploys code to {to}"), None
@@ -117,6 +117,39 @@ def traversals(rel_type: str, source_type: str, target_type: str) -> tuple[Trave
             Traversal(REACH, 1.0, "{frm} is an address of {to}"),
         )
     return None, None
+
+
+#: Relationship types that :func:`traversals` gives a rule (in some direction or for some endpoint
+#: types), plus ``AFFECTS``, which propagation reads to upgrade network reach through exploitable
+#: vulnerabilities. Nothing else can change a propagation result.
+PROPAGATION_RELATIONSHIPS: frozenset[str] = frozenset(
+    {
+        "LOGGED_INTO",
+        "ADMIN_OF",
+        "MEMBER_OF",
+        "HAS_ROLE",
+        "HAS_PERMISSION",
+        "CAN_ACCESS",
+        "CAN_ASSUME",
+        "HAS_IDENTITY",
+        "USES",
+        "RUNS",
+        "DEPLOYS_TO",
+        "CONTAINS",
+        "CONTAINS_SECRET",
+        "AUTHENTICATES_AS",
+        "TRUSTS",
+        "OWNS",
+        "CAN_REACH",
+        "CONNECTED_TO",
+        "HAS_ADDRESS",
+        "AFFECTS",
+    }
+)
+
+#: Object types propagation never enters (see the RUNS rule): leaving them out of propagation
+#: graphs changes no result and keeps activity-heavy workspaces fast.
+NON_PROPAGATING_TYPES: frozenset[str] = frozenset({ObjectType.PROCESS.value})
 
 
 def explain(template: str, frm: str, to: str, metadata: dict[str, Any] | None = None) -> str:

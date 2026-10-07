@@ -198,10 +198,18 @@ class ObjectRepository:
             rows = c.execute(select(s.objects.c.type, func.count()).group_by(s.objects.c.type)).all()
         return {str(t): int(n) for t, n in sorted(rows)}
 
-    def iter_all(self, *, types: Sequence[str] | None = None, batch: int = 2000) -> Iterator[SecurityObject]:
+    def iter_all(
+        self,
+        *,
+        types: Sequence[str] | None = None,
+        exclude_types: Sequence[str] | None = None,
+        batch: int = 2000,
+    ) -> Iterator[SecurityObject]:
         stmt = select(s.objects)
         if types:
             stmt = stmt.where(s.objects.c.type.in_(list(types)))
+        if exclude_types:
+            stmt = stmt.where(s.objects.c.type.not_in(list(exclude_types)))
         with self.engine.connect() as c:
             for row in c.execute(stmt.order_by(s.objects.c.id)).yield_per(batch):
                 yield object_from_row(row)

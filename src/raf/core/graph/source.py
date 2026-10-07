@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
 
 from raf.core.objects.models import Relationship, SecurityObject
+from raf.core.objects.semantics import NON_PROPAGATING_TYPES, PROPAGATION_RELATIONSHIPS
 from raf.core.storage.store import Store
 
 Direction = Literal["out", "in", "both"]
@@ -138,3 +139,32 @@ class MemoryGraphSource:
                 continue
             result.append(obj)
         return sorted(result, key=lambda o: o.id)
+
+
+def propagation_source(
+    objects: Iterable[SecurityObject], relationships: Iterable[Relationship], at: datetime | None = None
+) -> MemoryGraphSource:
+    """An in-memory graph restricted to what propagation can use (see
+    :data:`~raf.core.objects.semantics.PROPAGATION_RELATIONSHIPS`): same results as the full graph,
+    without activity records that only make Blast, Exposure, IAM paths, Ghost and Oracle slower."""
+
+    def keep(rel: Relationship) -> bool:
+        return (
+            rel.relationship_type in PROPAGATION_RELATIONSHIPS
+            and rel.source_object.split(":", 1)[0] not in NON_PROPAGATING_TYPES
+            and rel.target_object.split(":", 1)[0] not in NON_PROPAGATING_TYPES
+        )
+
+    return MemoryGraphSource(
+        (o for o in objects if o.type not in NON_PROPAGATING_TYPES), (r for r in relationships if keep(r)), at
+    )
+
+
+def load_propagation_source(store: Store, at: datetime | None = None) -> MemoryGraphSource:
+    """:func:`propagation_source` for the live workspace, filtered in the database."""
+    excluded = sorted(NON_PROPAGATING_TYPES)
+    return MemoryGraphSource(
+        store.objects.iter_all(exclude_types=excluded),
+        store.relationships.iter_all(types=sorted(PROPAGATION_RELATIONSHIPS), exclude_endpoint_types=excluded),
+        at,
+    )

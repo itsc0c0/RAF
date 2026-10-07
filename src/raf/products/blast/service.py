@@ -15,7 +15,7 @@ from pydantic import Field
 
 from raf.core.context.app import RafContext
 from raf.core.graph.propagation import Hop, Propagator, Reached
-from raf.core.graph.source import GraphSource, StoreGraphSource
+from raf.core.graph.source import GraphSource, load_propagation_source
 from raf.core.objects.models import RafModel, SecurityObject
 from raf.core.objects.semantics import CONTROL, REACH, TRUST, explain, is_privileged
 from raf.core.objects.types import ASSET_TYPES, Criticality, ObjectType
@@ -104,7 +104,7 @@ class BlastService:
         threshold = float(
             min_confidence if min_confidence is not None else self.ctx.settings.get("blast.min_confidence")
         )
-        graph = source or StoreGraphSource(self.ctx.store, at)
+        graph = source or load_propagation_source(self.ctx.store, at)
         reached = Propagator(graph, max_depth=depth_limit, min_confidence=threshold).run([object_id])
         return self.summarize(object_id, reached, graph, depth_limit=depth_limit, threshold=threshold, at=at)
 

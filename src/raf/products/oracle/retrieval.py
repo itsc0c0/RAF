@@ -18,7 +18,7 @@ from pydantic import Field
 from raf.core.context.app import RafContext
 from raf.core.errors import AmbiguousReferenceError, InvalidInputError, NotFoundError
 from raf.core.graph.propagation import Propagator, Reached
-from raf.core.graph.source import MemoryGraphSource
+from raf.core.graph.source import MemoryGraphSource, load_propagation_source
 from raf.core.objects.models import Event, Finding, RafModel, SecurityObject
 from raf.core.objects.semantics import CONTROL, TRUST, explain, is_privileged
 from raf.core.objects.types import ASSET_TYPES, Criticality, Severity
@@ -206,10 +206,11 @@ class Retriever:
         self.max_facts = max_facts
         self._graph: MemoryGraphSource | None = None
         self._exposure_model: ExposureModel | None = None
+        self._names: dict[str, str] = {}
 
     def graph(self) -> MemoryGraphSource:
         if self._graph is None:
-            self._graph = MemoryGraphSource(self.store.objects.iter_all(), self.store.relationships.iter_all())
+            self._graph = load_propagation_source(self.store)
         return self._graph
 
     def exposure_model(self) -> ExposureModel:
@@ -219,7 +220,10 @@ class Retriever:
 
     def name(self, oid: str) -> str:
         obj = self.graph().all_nodes.get(oid)
-        return obj.name if obj else oid.split(":", 1)[-1]
+        if obj is None and oid not in self._names:
+            stored = self.store.objects.get(oid) if ":" in oid else None  # e.g. processes, not in the graph
+            self._names[oid] = stored.name if stored else oid.split(":", 1)[-1]
+        return obj.name if obj else self._names[oid]
 
     # ------------------------------------------------------------------ entities and intent
     def entities(self, question: str) -> list[SecurityObject]:

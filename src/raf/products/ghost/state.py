@@ -10,7 +10,7 @@ from typing import Any
 from pydantic import Field
 
 from raf.core.errors import AmbiguousReferenceError, NotFoundError
-from raf.core.graph.source import MemoryGraphSource
+from raf.core.graph.source import MemoryGraphSource, propagation_source
 from raf.core.ids import object_id, relationship_id, try_split_id
 from raf.core.objects.models import RafModel, Relationship, SecurityObject
 
@@ -58,7 +58,8 @@ class ModelState:
 
     # ------------------------------------------------------------------ views
     def graph(self) -> MemoryGraphSource:
-        return MemoryGraphSource(self.objects.values(), self.relationships.values())
+        """The state as a propagation graph (activity records that propagation never enters are left out)."""
+        return propagation_source(self.objects.values(), self.relationships.values())
 
     def name(self, oid: str) -> str:
         obj = self.objects.get(oid)

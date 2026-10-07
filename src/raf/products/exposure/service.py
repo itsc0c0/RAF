@@ -9,7 +9,7 @@ from pydantic import Field
 
 from raf.core.context.app import RafContext
 from raf.core.errors import InvalidInputError, NotFoundError
-from raf.core.graph.source import MemoryGraphSource
+from raf.core.graph.source import MemoryGraphSource, load_propagation_source
 from raf.core.ids import finding_id
 from raf.core.objects.models import EvidenceRef, Finding, RafModel
 from raf.core.objects.types import Severity
@@ -53,7 +53,7 @@ class ExposureService:
     def graph(self) -> MemoryGraphSource:
         if self._graph is None:
             store = self.ctx.store
-            self._graph = MemoryGraphSource(store.objects.iter_all(), store.relationships.iter_all())
+            self._graph = load_propagation_source(store)
         return self._graph
 
     def model(self) -> ExposureModel:
