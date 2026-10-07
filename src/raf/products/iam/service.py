@@ -166,7 +166,12 @@ class IamService:
     def _load(self) -> tuple[dict[str, SecurityObject], list[Relationship]]:
         if self._objects is None or self._relationships is None:
             self._objects = {o.id: o for o in self.store.objects.iter_all(exclude_types=sorted(NON_PROPAGATING_TYPES))}
-            self._relationships = list(self.store.relationships.iter_all(types=list(ACCESS_RELS)))
+            # RUNS also links hosts to their (many) processes, which access analysis never visits
+            self._relationships = list(
+                self.store.relationships.iter_all(
+                    types=list(ACCESS_RELS), exclude_endpoint_types=sorted(NON_PROPAGATING_TYPES)
+                )
+            )
         return self._objects, self._relationships
 
     def graph(self, types: Sequence[str] = ACCESS_RELS) -> MemoryGraphSource:

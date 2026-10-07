@@ -29,6 +29,7 @@ from pydantic import Field
 
 from raf.core.ids import finding_id
 from raf.core.objects.models import EvidenceRef, Finding, RafModel, Relationship, SecurityObject
+from raf.core.objects.semantics import NON_PROPAGATING_TYPES
 from raf.core.objects.types import Criticality, Severity
 from raf.core.ports import ANY, PortSet
 from raf.core.timeutil import utcnow
@@ -175,7 +176,10 @@ class PolicyWorld:
     @classmethod
     def from_store(cls, store: Any) -> PolicyWorld:
         objects = list(store.objects.iter_all(types=WORLD_OBJECT_TYPES))
-        relationships = list(store.relationships.iter_all(types=WORLD_REL_TYPES))
+        # processes are not part of the policy world: skip their (many) RUNS records in the query
+        relationships = list(
+            store.relationships.iter_all(types=WORLD_REL_TYPES, exclude_endpoint_types=sorted(NON_PROPAGATING_TYPES))
+        )
         return cls(objects, relationships)
 
     @classmethod
