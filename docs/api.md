@@ -1,0 +1,152 @@
+# R$F HTTP API (`/api/v1`)
+
+The API exposes the same application services as the CLI (the CLI never contains
+business logic the API lacks). OpenAPI is generated at `/api/v1/openapi.json`;
+interactive docs at `/api/docs`.
+
+* **Workspace scoping** — every route operates on the current workspace unless
+  `?workspace=<name>` or the `X-RAF-Workspace` header selects another.
+* **Errors** — always `{"error": {"code", "message", "reason?", "hint?", "suggestions?", "details?"}}`
+  with an HTTP status (404 not found, 409 conflict/ambiguous, 422 invalid input, 403 forbidden host,
+  401 unauthorized, 503 dependency unavailable, 500 internal).
+* **Security** — `raf serve` binds to 127.0.0.1. Requests with a Host header other than loopback
+  names are rejected (DNS-rebinding defense). Binding to another address requires a bearer token
+  (`Authorization: Bearer <token>`), generated or taken from `RAF_API_TOKEN`.
+* **Pagination** — collections use `limit`/`offset` (`total` included) except events, which use
+  keyset cursors (`next_cursor`).
+* **References** — `{ref}` path/query parameters accept everything the CLI accepts: full IDs
+  (`host:ws-04`), names (`WS-04`), aliases (`production`), incidents (`INC-001`), analyses
+  (`analysis-3`). Path parameters use the `:path` converter, so IDs containing `/` work.
+* Timestamps are ISO-8601 UTC (`2026-10-06T22:52:11Z`).
+
+## Common shapes
+
+```jsonc
+// SecurityObject
+{"id": "host:ws-04", "type": "host", "name": "WS-04", "created_at": "...", "updated_at": "...",
+ "first_seen": "...|null", "last_seen": "...|null", "valid_from": null, "valid_to": null,
+ "source": "raven-events.jsonl", "confidence": 0.9, "confidence_level": "HIGH",
+ "tags": ["raven"], "metadata": {"criticality": "high", "...": "..."}, "observations": 3, "synthetic": false}
+
+// Relationship
+{"id": "rel:…", "relationship_type": "LOGGED_INTO", "source_object": "user:alice", "target_object": "host:ws-01",
+ "timestamp": "...", "first_seen": "...", "last_seen": "...", "valid_from": null, "valid_to": null,
+ "confidence": 0.8, "confidence_level": "HIGH", "source": "...", "metadata": {}, "observations": 4, ...}
+
+// Event
+{"id": "event:…", "timestamp": "...", "event_type": "auth.login", "category": "auth", "action": "login",
+ "outcome": "success", "actor": "user:bob", "target": "host:vpn-01",
+ "objects": [{"object_id": "ip:203.0.113.45", "role": "src_ip"}], "source": "...", "parser": "jsonl/1.0",
+ "record": "line 750", "raw_reference": "...", "raw": "...", "severity": "MEDIUM", "confidence": 0.8,
+ "attributes": {}, "relationships": ["rel:…"], "message": null, "synthetic": true, "incidents": ["incident:inc-001"]}
+
+// Finding
+{"id": "finding:…", "title": "...", "description": "...", "severity": "HIGH", "confidence": 0.6,
+ "confidence_level": "MEDIUM", "product": "iam", "rule_id": "...", "status": "OPEN",
+ "affected_objects": ["identity:old-admin"], "evidence": [{"kind": "object", "id": "...", "note": "..."}],
+ "recommendation": "...", "explanation": [{"label": "...", "sign": "+", "points": 20}], ...}
+
+// GraphNode / GraphEdge / Subgraph
+{"roots": ["user:alice"], "depth": 2, "truncated": false, "at": null,
+ "nodes": [{"id", "type", "name", "depth", "criticality", "tags", "synthetic", "first_seen", "last_seen",
+            "metadata", "missing"}],
+ "edges": [{"id", "type", "source", "target", "confidence", "first_seen", "last_seen", "valid_to",
+            "observations", "metadata"}]}   // incident views add virtual INVOLVES edges (metadata.virtual=true)
+
+// Risk factor (explainable scoring; see docs/risk-model.md)
+{"label": "internet-facing", "sign": "+", "points": 20, "evidence": ["host:vpn-01"]}
+```
+
+## Platform
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | liveness (no auth) |
+| GET | `/version` | version identifiers |
+| GET | `/status` | workspace, counts, products, open findings by severity, oracle provider |
+| GET | `/config` | effective configuration with origins (secrets shown as set/not set) |
+| GET | `/audit?limit=` | audit entries + chain verification |
+| GET | `/products` | `{"items": [ProductInfo]}` — name, display_name, status (`STABLE`…`DISABLED`), maturity, description, category, depends_on, commands, enabled, available, unavailable_reason, ui |
+| GET | `/products/{name}` | one product + dependents |
+| POST | `/products/{name}/enable` / `/disable` | toggle |
+| GET/POST | `/workspaces` | list (`items`, `current`) / create `{name, description}` |
+| POST | `/workspaces/{name}/use` | make current |
+
+## Data
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/objects?type=&q=&tag=&limit=&offset=` | `{items, total, limit, offset}` |
+| GET | `/objects/types` | counts by object type and relationship type |
+| GET | `/objects/{ref}` | `{object, notes, activity, relationship_count, findings, pivots}` |
+| GET | `/objects/{ref}/relationships?direction=&at=` | `{object_id, items, total}` |
+| GET | `/objects/{ref}/provenance` | `{object_id, items, total}` |
+| GET | `/objects/{ref}/pivots` | `{items: [{key, product, label, command, view}]}` — `view` is a web route |
+| GET | `/relationships?type=&source=&target=` | relationships |
+| GET | `/search?q=` | `{objects, incidents, findings}` |
+| GET | `/events?start=&end=&type=&category=&object=&incident=&severity=&q=&actor=&job=&cursor=&limit=&descending=` | `{items, next_cursor, total}` |
+| GET | `/events/{id}` | one event |
+| GET | `/findings?product=&severity=&status=&object=&q=&limit=&offset=` | `{items, total}` |
+| GET/PATCH | `/findings/{id}` | read / `{status, note}` (OPEN, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE, SUPPRESSED) |
+| GET | `/incidents`, `/incidents/{ref}` | incidents with window and event counts |
+| GET | `/jobs?status=`, `/jobs/{id}`; POST `/jobs/{id}/cancel` | job status/progress/result |
+| GET/POST | `/snapshots` | list / create `{name, source: "current"|"ghost:<model>", description}` |
+| GET/DELETE | `/snapshots/{name}` | read / delete |
+| POST | `/analyze` (multipart `file`) | upload and analyze; returns `{analysis, job}` |
+| GET | `/analyses`, `/analyses/{id}` | analysis records (detected type, modules executed, stats, suggestions) |
+
+## Investigation products
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/graph/view?ref=&depth=&rel=&type=&at=&max_nodes=&direction=` | Subgraph + `scope` (`ref` omitted or `workspace` = overview) |
+| GET | `/graph/neighbors?ref=&direction=&rel=&at=&limit=` | depth-1 Subgraph (UI "expand") |
+| GET | `/graph/path?source=&target=&directed=&rel=&at=&max_depth=` | `{found, length, hops: [{source, source_name, target, target_name, relationship: GraphEdge, forward}]}` |
+| GET | `/graph/export?ref=&format=graphml|dot|csv|json|cytoscape` | text |
+| GET | `/graph/stats` | counts and most connected objects |
+| GET | `/timeline?ref=&start=&end=&type=&category=&severity=&q=&filter=&group_by=&cursor=&limit=&descending=&buckets=` | `{scope, filters, total, first, last, items, names, next_cursor, group_by, groups: [{key, count}], histogram: [{start, count}]}` |
+| GET | `/timeline/export?ref=&format=csv|json|jsonl|raf&...` | file download |
+| GET | `/trace/{ref}?direction=both|back|forward&depth=` | `{subject, nodes, backward: [TraceLink], forward: [TraceLink], chain: [TraceLink], notes}`; TraceLink = `{cause, effect, relation, kind: observed|correlated, confidence, timestamp, event_id, explanation, provenance, direction, step, parent_step, corroborated_by}` |
+| GET | `/replay/{ref}?include_context=&start=&end=` | `{scope, title, start, end, objects: {id: {name, type, criticality}}, relationships: {id: {type, source, target}}, initial_objects, initial_relationships, steps: [ReplayStep], checkpoints, final_state_hash, notes}`; ReplayStep = `{index, timestamp, event_id, event_type, severity, summary, actor, target, added_objects, added_relationships, removed_relationships, sessions_opened, sessions_closed, processes_started, processes_ended, flows, files, identity_changes, alerts}`. The web player applies the deltas client-side. |
+| GET | `/replay/{ref}/state?at=` | `{at, step_index, objects, relationships, sessions, processes, recent_flows, files, identity_changes, alerts, state_hash}` |
+| GET | `/replay/{ref}/window?start=&end=` | changes in a window |
+| GET | `/diff?a=&b=&category=&limit=` | `{a, b, summary: {category: {added, removed, changed}}, importance: {HIGH, MEDIUM, LOW}, totals, changes: [{category, change, item_kind, item_id, label, importance, reason, details}]}` |
+
+## Exposure products
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/blast/{ref}?max_depth=&min_confidence=` | `{target: {id, name, type}, reachable_assets, critical_assets, privileged_paths, max_depth, direct: [Reach], indirect: [Reach], identity_propagation: [ids], network_propagation: [ids], trust_propagation: [ids], risk: {level, score, factors: [RiskFactor]}, primary_path: [Hop]}`; Reach = `{id, name, type, depth, confidence, mode: control|reach|trust, criticality}`; Hop = `{source, source_name, target, target_name, relationship_type, relationship_id, why, confidence}` |
+| GET | `/exposure?limit=&min_level=` | `{items: [{object: {id, name, type, criticality}, score, level, factors: [RiskFactor], entry_points, vulnerabilities: [{id, cvss}]}]}` |
+| GET | `/exposure/{ref}` | one explained assessment |
+| GET | `/iam/analyze` | `{summary, findings: [Finding]}` (runs the IAM analyzers) |
+| GET | `/iam/path?source=&target=` | privilege paths with per-hop explanations |
+| GET | `/policy/policies` | imported policies with rules |
+| POST | `/policy/evaluate` `{principal?, source?, target, port?, protocol?, action?}` | decision + matching rule chain |
+
+## Synthetic environments
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/ghost/models` | `{items: [{name, base_snapshot, parent, ops: n, created_at}]}` |
+| POST | `/ghost/models` `{name, base: "current"|"<snapshot>"}` | create a model |
+| POST | `/ghost/models/{name}/clone` `{name}` | clone |
+| GET | `/ghost/models/{name}` | model with operations log |
+| POST | `/ghost/models/{name}/ops` `{op, params}` | apply a what-if operation |
+| GET | `/ghost/compare?a=&b=` | `{a: Metrics, b: Metrics, delta: Metrics}`; Metrics = `{attack_paths, critical_paths, reachable_assets, entry_points, exposed_critical_assets}` |
+| GET | `/range/ranges`, POST `/range/ranges` `{name, preset?, seed?}`, POST `/range/ranges/{name}/start|stop|reset`, DELETE `/range/ranges/{name}` | synthetic organizations |
+| GET | `/lab/status` | `{backend, available, reason}` |
+| GET | `/lab/labs`, POST `/lab/labs`, POST `/lab/labs/{name}/start|stop`, DELETE `/lab/labs/{name}` | isolated labs |
+
+## Specialized analysis and AI
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/evidence/cases`; POST `{name, title?}` | cases |
+| GET | `/evidence/cases/{case}` | case + items |
+| GET | `/evidence/items/{id}` | item metadata + custody chain |
+| POST | `/evidence/cases/{case}/verify` | `{verified, items: [{id, ok, expected, actual}]}` |
+| GET | `/lens/query?ref=&filter=&group_by=&buckets=&limit=` | `{scope, total, items, groups, histogram, involved: [{type, count}], top_objects: [...]}` |
+| POST | `/oracle/ask` `{question}` | `{answer, provider, mode, citations: [{id, label}], invalid_references: [ids], facts: [{key, text, refs}], suggestions: [commands]}` |
+| GET | `/oracle/status` | provider configuration (never the API key) |
+| GET | `/protocol/...`, `/vault/...`, `/dependency/...`, `/surface/...` | see the product documentation |
