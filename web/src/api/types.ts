@@ -679,6 +679,71 @@ export interface PolicyEvaluateRequest {
   port?: string;
 }
 
+/** Format of a policy document sent to `POST /policy/check` (raf-policy/1 and AWS-style JSON are `json`). */
+export type PolicyFormat = 'json' | 'yaml' | 'csv';
+
+export interface PolicyCheckRequest {
+  document: string;
+  format: PolicyFormat;
+  /** Principal for AWS-style statements that name none. */
+  principal?: string;
+}
+
+/** A normalized policy document: one file or revision. */
+export interface PolicySet {
+  /** The document's own name; otherwise derived from `source`. */
+  name: string;
+  /** Detected format: `raf-policy/1`, `aws-iam` or `csv-firewall`. */
+  format: string;
+  revision: string | null;
+  /** `request` for documents sent to the API. */
+  source: string | null;
+  policies: Policy[];
+  warnings: string[];
+}
+
+/** `POST /policy/check`: the normalized document and its analysis. Nothing is stored. */
+export interface PolicyCheckResult {
+  set: PolicySet;
+  /** `warnings` already include the document's own warnings (`set.warnings`). */
+  analysis: PolicyAnalysis;
+}
+
+export interface PolicyRuleChange {
+  policy: string;
+  rule: string;
+  /** `added`, `removed`, `modified` or `moved`. */
+  change: string;
+  /** `access-expanded`, `access-reduced` or `changed`. */
+  impact: string;
+  /** Changed rule fields (`effect`, `sources`, `destinations`, `ports`, `actions`, `enabled`, `position`). */
+  fields: Record<string, { before: unknown; after: unknown }>;
+  /** The rule's summary in each revision (null where the rule does not exist). */
+  before: string | null;
+  after: string | null;
+}
+
+export interface PolicyDefaultChange {
+  policy: string;
+  before: string;
+  after: string;
+}
+
+/** `GET /policy/diff?before=&after=`: two stored revisions (`current` or snapshot names; files are CLI-only). */
+export interface PolicyDiff {
+  before: string;
+  after: string;
+  policies_added: string[];
+  policies_removed: string[];
+  defaults_changed: PolicyDefaultChange[];
+  changes: PolicyRuleChange[];
+  /** Analysis findings of `after` that `before` does not have, and the reverse (computed, not stored). */
+  findings_introduced: Finding[];
+  findings_resolved: Finding[];
+  /** How many rule changes grant more access (`impact: access-expanded`). */
+  access_expanded: number;
+}
+
 // ------------------------------------------------------------------ protocol
 
 export interface ProtocolUpload {
@@ -687,6 +752,17 @@ export interface ProtocolUpload {
   name: string;
   size: number;
   sha256: string;
+}
+
+/** `GET /protocol/uploads` item: the upload's record and when it was stored (never a server path). */
+export interface StoredUpload extends ProtocolUpload {
+  uploaded_at: IsoTime;
+}
+
+/** `GET /protocol/uploads?limit=`: newest first; `total` counts every complete upload of the workspace. */
+export interface ProtocolUploadList {
+  items: StoredUpload[];
+  total: number;
 }
 
 export interface CaptureFile {

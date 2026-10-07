@@ -76,7 +76,86 @@ const PACKET = {
   malformed: ['DNS: compression pointer loop'],
 };
 
+/** Shape of GET /protocol/uploads observed from `raf serve` (newest first), with a hostile file name. */
+const UPLOADS = {
+  items: [
+    {
+      id: 'cf9acacb457f68871634021728a78d76',
+      name: '<img src=x onerror=alert(1)>.pcapng',
+      size: 10396,
+      sha256: 'cf9acacb457f68871634021728a78d76f8cc0afb1536a5c605d885f8e1b72b9c',
+      uploaded_at: '2026-10-07T16:04:13.855470Z',
+    },
+    { ...UPLOAD_INFO, uploaded_at: '2026-10-07T16:04:13.830542Z' },
+  ],
+  total: 2,
+};
+
+/** A summary as GET /protocol/inspect returns it (tables left empty). */
+const SUMMARY = {
+  upload: UPLOAD_INFO,
+  file: FILE,
+  filters: { protocol: null, host: null, port: null, flow: null, from: null, to: null },
+  packets: {
+    total: 50,
+    matched: 50,
+    bytes: 23153,
+    first: '2026-10-06T23:14:00Z',
+    last: '2026-10-06T23:14:03.5Z',
+    duration_s: 3.5,
+    malformed: 0,
+  },
+  protocols: [{ protocol: 'eth', packets: 50, bytes: 23153 }],
+  flows: [],
+  flows_total: 0,
+  dns: [],
+  dns_total: 0,
+  tls: [],
+  tls_total: 0,
+  http: [],
+  http_total: 0,
+  warnings: [],
+  truncated: false,
+  limit_reached: false,
+};
+
 describe('Protocol', () => {
+  it('lists earlier uploads and opens one through the upload ID flow', async () => {
+    const user = userEvent.setup();
+    const { calls } = mockFetch([
+      { path: '/protocol/uploads', body: UPLOADS },
+      { path: '/protocol/inspect', body: SUMMARY },
+    ]);
+    const { router } = renderWithApp(<></>, {
+      route: '/protocol',
+      extraRoutes: [{ path: 'protocol', element: <ProtocolPage /> }],
+    });
+
+    const table = await screen.findByRole('table', { name: 'Earlier uploads' });
+    const rows = within(table).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(2);
+    // Name, size, upload time (UTC) and SHA-256 prefix; the file name is untrusted and stays text.
+    expect(rows[0]).toHaveTextContent('<img src=x onerror=alert(1)>.pcapng');
+    expect(rows[0]).toHaveTextContent('10.4 kB');
+    expect(rows[0]).toHaveTextContent('2026-10-07 16:04:13Z');
+    expect(rows[0]).toHaveTextContent('cf9acacb457f6887…');
+    expect(rows[1]).toHaveTextContent('raven-inc001.pcap');
+    expect(document.querySelector('img')).toBeNull();
+    expect(calls.find((call) => call.path === '/protocol/uploads')!.url.searchParams.get('limit')).toBe(
+      '100',
+    );
+    expect(calls.some((call) => call.path === '/protocol/inspect')).toBe(false);
+
+    await user.click(rows[1]!);
+    await waitFor(() => expect(new URLSearchParams(router.state.location.search).get('upload')).toBe(UPLOAD));
+    // Opened like an ID typed into the form: the summary of that upload is read.
+    expect(await screen.findByText(UPLOAD)).toBeInTheDocument();
+    const inspect = calls.find((call) => call.path === '/protocol/inspect')!;
+    expect(inspect.url.searchParams.get('upload')).toBe(UPLOAD);
+    const selected = within(screen.getByRole('table', { name: 'Earlier uploads' })).getAllByRole('row')[2]!;
+    expect(selected).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('shows a packet with every decoded layer, explained fields and malformed markers', async () => {
     const user = userEvent.setup();
     const { calls } = mockFetch([

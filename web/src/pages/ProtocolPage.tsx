@@ -12,6 +12,7 @@ import {
   OpenUploadForm,
   PacketView,
   UPLOAD_ID_RE,
+  UploadList,
   type CaptureFilterState,
 } from '../features/protocol/ProtocolViews';
 import '../styles/protocol.css';
@@ -52,6 +53,12 @@ export default function ProtocolPage() {
     setParams(search);
   };
 
+  // The list and the ID form open an earlier upload the same way.
+  const open = (id: string) => {
+    setFilters(NO_FILTERS);
+    go({ upload: id, view: 'summary' });
+  };
+
   return (
     <div className="page">
       <PageHeader
@@ -68,12 +75,10 @@ export default function ProtocolPage() {
           />
         </Panel>
         <Panel title="Open an earlier upload">
-          <OpenUploadForm
-            onOpen={(id) => {
-              setFilters(NO_FILTERS);
-              go({ upload: id, view: 'summary' });
-            }}
-          />
+          <div className="stack">
+            <UploadList selected={upload} onOpen={open} />
+            <OpenUploadForm onOpen={open} />
+          </div>
         </Panel>
       </div>
       {rawUpload && !upload ? (

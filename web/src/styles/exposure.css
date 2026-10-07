@@ -39,3 +39,23 @@
   flex-direction: column;
   gap: 2px;
 }
+
+/* Policies: check a document, compare revisions. */
+
+.policy-document {
+  min-height: 200px;
+  font-size: var(--text-sm);
+}
+
+.policy-result-head {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+}
+
+.policy-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

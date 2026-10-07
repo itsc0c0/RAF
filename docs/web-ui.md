@@ -91,7 +91,7 @@ All views are deep-linkable; the query parameters are exactly what the backend p
 | `/timeline` | `object=<ref>` or `scope=<ref>` (also `incident=`) | Timeline with filters, histogram, virtual list |
 | `/analyses` | `analysis=<id>` | Analysis records, upload form, executed steps of one analysis |
 | `/diff` | `a=<snapshot>\|current`, `b=<snapshot>\|current`, `category=`, `limit=100\|500\|1000\|2000` | Snapshots & Diff |
-| `/exposure` | `blast=<ref>`, `object=<ref>`, `iam=<ref>`; `view=policies`, `policy=<id>` | Ranked exposure, asset detail, blast radius, IAM paths; **Policies** tab |
+| `/exposure` | `blast=<ref>`, `object=<ref>`, `iam=<ref>`; `view=policies`, `policy=<id>`; `view=policy-check`; `view=policy-diff`, `before=<snapshot>\|current`, `after=<snapshot>\|current` | Ranked exposure, asset detail, blast radius, IAM paths; **Policies** tab (stored policies, check a document, compare revisions) |
 | `/surface` | `view=assets\|scope\|findings\|import` (default overview), `finding=<id>` | Surface: authorized external attack surface |
 | `/ghost` | `model=<name>`, `view=simulate\|compare` (default operations) | Ghost what-if models |
 | `/ranges` | | Synthetic ranges (lifecycle actions) |
@@ -157,7 +157,8 @@ incidents (`INC-001`). Redirects keep the query string: `/labs` → `/lab` (the 
   `errorSummary` include them.
 * Uploads: multipart for `POST /analyze` and `POST /protocol/inspect` (field `file`); the raw file as
   the request body for `POST /surface/import` (`application/json`, `application/x-ndjson`,
-  `application/yaml` or `text/csv` by format). The server never receives a path from the UI.
+  `application/yaml` or `text/csv` by format); a policy document as JSON text for `POST /policy/check`
+  (`{document, format, principal?}`, read in the browser). The server never receives a path from the UI.
 * **Graceful degradation**: products are implemented and enabled independently. An `ApiError` is
   *unavailable* when the route does not exist (`raf.http_404`, `raf.http_405`), a dependency is
   missing (503, `raf.dependency_unavailable`) or the product is disabled (`raf.product_disabled`).
@@ -276,6 +277,9 @@ reminder that correlation is not causation.
 
 ### Policies (Exposure → Policies, `features/policy`)
 
+Three sub-tabs: **Stored policies** (`?view=policies`, `?policy=<id>`), **Check a document**
+(`?view=policy-check`) and **Compare revisions** (`?view=policy-diff&before=&after=`).
+
 * `GET /policy/policies`: policies with domain, evaluation strategy, default decision, revision and
   source; the selected policy's rules (effect, principals/resources/actions for access policies,
   sources/destinations/ports for network policies).
@@ -286,6 +290,25 @@ reminder that correlation is not causation.
   decision and its reason, then per part the policy's decision, its explanation, the deciding rules
   and the pre-empted ones (would have matched, but an earlier rule decided); indirect paths are
   called out.
+* Check a document (`POST /policy/check {document, format, principal?}`): paste the document or pick a
+  file (.json, .yaml/.yml, .csv; at most 5 MB, checked before sending). The browser reads the file into
+  the editor and only its text is sent. The format (json, yaml, csv) is set from the file extension and
+  can be changed; the optional principal applies to AWS-style statements without one. A notice says that
+  nothing is stored: the route writes no policy, finding, job or audit entry. The result reuses the
+  stored-policy components: the normalized policies (with findings per policy), the selected policy's
+  rules, then the analysis (findings by rule, warnings, findings table). Its findings exist only in the
+  answer, so they open in a drawer marked NOT STORED, without triage. The route has no file-name field:
+  CSV exports without a policy column and AWS-style documents are named `request` (the CLI uses the
+  file name).
+* Compare revisions (`GET /policy/diff?before=&after=`): before and after are `current` or any snapshot
+  from `GET /snapshots` (latest snapshot → `current` preselected; Swap). Policy files are compared from
+  the CLI only (`raf policy diff FILE current`). The result says whether access expanded (rule changes
+  with impact `access-expanded`, counted by the API in `access_expanded`, and default actions that
+  became allow), then lists added and removed policies, changed defaults, every rule change (impact,
+  kind, rule summary before and after, changed fields such as `ports: tcp/22, tcp/8443 → any`) and the
+  analysis findings the later revision introduces or resolves (computed for the comparison, not
+  stored). Identical revisions show "No policy differences"; without snapshots the view explains how to
+  create one.
 
 ### Surface (`features/surface`, `/surface`)
 
@@ -337,8 +360,12 @@ reminder that correlation is not causation.
 ### Protocol (`features/protocol`, `/protocol`)
 
 * Upload: multipart `POST /protocol/inspect` (`file`, `limit=50`) stores the capture under a
-  generated upload ID and returns its summary; the page then shows `?upload=<id>`. Earlier uploads
-  are opened by ID (the API has no listing). R$F never captures live traffic.
+  generated upload ID and returns its summary; the page then shows `?upload=<id>`. R$F never captures
+  live traffic.
+* Earlier uploads (`GET /protocol/uploads?limit=100`, newest first): name, size, upload time and
+  SHA-256 prefix. A row opens the upload exactly like an ID typed into the form below the list; the open
+  upload is highlighted and the list refreshes after an upload. With more than 100 uploads, older ones
+  are opened by ID.
 * Summary (`GET /protocol/inspect?upload=` with `protocol`, `host`, `port`, `flow` filters): file,
   packet counts, protocols, flows, DNS, TLS and HTTP metadata.
 * Flows (`GET /protocol/flows?upload=&sort=&limit=`): client → server (inferred), application
@@ -417,8 +444,9 @@ Imported data is untrusted (names, metadata, raw log lines, Oracle answers):
   backslashes, no control characters) and raw object IDs are re-encoded. URLs found in data
   (e.g. `url:` objects) are displayed as text, never as links.
 * Raw source records are shown verbatim in a `<pre>` with an "untrusted input" label; so is
-  imported text quoted in Oracle facts ("Untrusted imported text"). Surface inventories, lab
-  descriptions, analysis details and packet fields are rendered as React text like everything else.
+  imported text quoted in Oracle facts ("Untrusted imported text"). Surface inventories, checked
+  policy documents, lab descriptions, analysis details, packet fields and upload names are rendered as
+  React text like everything else.
 * CSP compatibility: no inline scripts (theme bootstrap is a same-origin file), no `eval`, no
   external fonts, CDNs or images. Downloads are same-origin `/api/v1/...` links, or same-origin
   fetches saved through a `blob:` object URL when a token is set (see below).
@@ -494,18 +522,14 @@ Tests (`src/**/*.test.ts(x)`, fetch is mocked with `src/test/utils.tsx#mockFetch
 | `features/ghost/GhostViews.test.tsx` | applying an operation (`POST …/ops {op, arg}`) updates the operations log; comparison deltas, assets and users |
 | `features/oracle/OraclePage.test.tsx` | invalid references are flagged as unverified (not chips), untrusted fact text is labelled and stays text, citations open by type |
 | `features/surface/SurfaceViews.test.tsx` | the tree renders certificate states (valid/expiring/expired), scope and claimed owners as text; scope removal needs the typed confirmation; the import sends the file as the body with `apply_scope` only when checked; format inference |
-| `features/protocol/ProtocolViews.test.tsx` | a packet with every decoded layer, field explanations and malformed markers; value formatting |
+| `features/policy/PolicyViews.test.tsx` | check: a picked file is sent as text with the format from its extension and the principal, pasted text with a format chosen by hand, API errors are shown; normalized policies, rules, warnings and findings render as literal text (no `img`/`script`/`b` elements); computed findings open in a NOT STORED drawer without triage or `GET /findings`; compare: `current` and the snapshots are offered (latest snapshot preselected), Compare updates the URL, access expansion (incl. a default that became allow), every rule change with impact and changed fields, introduced findings; the "No policy differences" state; format inference |
+| `features/protocol/ProtocolViews.test.tsx` | a packet with every decoded layer, field explanations and malformed markers; value formatting; earlier uploads (name, size, time, SHA-256 prefix; hostile names stay text) open through the upload ID flow |
 | `features/vault/FindingsTabs.test.tsx` | Vault values only as redacted text + fingerprint; dependency tree (cycles, repeats) and finding join for confidence |
 | `components/Badge.test.tsx` | severity and confidence badges render independently (incl. in the findings table) |
 | others | fuzzy ranking, internal route validation (incl. the new routes and redirects), graph model (merge/collapse/filter/path), histogram brush math, trace tree, timeline filters, formatting, factor lists, Oracle panel, global search |
 
 ## Not implemented yet / known limitations
 
-* **Policy**: `POST /policy/check` (analyze a policy document without storing it) and
-  `GET /policy/diff` (compare stored policy revisions) are not in the UI; use `raf policy check` and
-  `raf policy diff`.
-* **Protocol**: earlier uploads cannot be listed (the API has no listing endpoint); they are opened
-  by the upload ID shown after the upload (it stays in the URL).
 * **Lab**: commands inside a lab run only through the CLI (by design); start/stop need Docker or
   Podman with a running daemon.
 * **Replay**: client states are not verified against the server's `checkpoints[].state_hash`

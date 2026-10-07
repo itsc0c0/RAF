@@ -10,10 +10,30 @@ import {
   ExposureRanking,
   IamPathsView,
 } from '../features/exposure/ExposureViews';
-import { EvaluatePanel, PolicyAnalysisPanel, PolicyList } from '../features/policy/PolicyViews';
+import {
+  EvaluatePanel,
+  PolicyAnalysisPanel,
+  PolicyCheckView,
+  PolicyDiffView,
+  PolicyList,
+} from '../features/policy/PolicyViews';
 import '../styles/exposure.css';
 
 type Mode = 'ranking' | 'asset' | 'blast' | 'iam' | 'policies';
+type PolicyView = 'stored' | 'check' | 'diff';
+
+/** `?view=` of each Policies sub-view (stored policies also open with `?policy=<id>`). */
+const POLICY_VIEWS: Record<PolicyView, string> = {
+  stored: 'policies',
+  check: 'policy-check',
+  diff: 'policy-diff',
+};
+
+function readPolicyView(view: string | null, policy: string | null): PolicyView | null {
+  if (view === POLICY_VIEWS.check) return 'check';
+  if (view === POLICY_VIEWS.diff) return 'diff';
+  return policy || view === POLICY_VIEWS.stored ? 'stored' : null;
+}
 
 function RefPrompt({
   label,
@@ -58,7 +78,7 @@ export default function ExposurePage() {
   const object = params.get('object');
   const iam = params.get('iam');
   const policy = params.get('policy');
-  const policiesView = params.get('view') === 'policies';
+  const policyView = readPolicyView(params.get('view'), policy);
   // A pivot (?blast=, ?iam=, ?object=, ?policy=) decides the view; otherwise the user's tab choice does.
   const fromParams: Mode | null = blast
     ? 'blast'
@@ -66,17 +86,19 @@ export default function ExposurePage() {
       ? 'iam'
       : object
         ? 'asset'
-        : policy || policiesView
+        : policyView
           ? 'policies'
           : null;
   const [chosen, setChosen] = useState<Mode>('ranking');
   const mode = fromParams ?? chosen;
+  const policyTab = policyView ?? 'stored';
 
   const select = (next: Mode) => {
     if (next === mode) return;
     setChosen(next);
-    // Policies are deep-linkable (`?view=policies`, `?policy=<id>`); the other tabs clear pivots.
-    if (next === 'policies') setParams({ view: 'policies' });
+    // Policies are deep-linkable (`?view=policies|policy-check|policy-diff`, `?policy=<id>`); the other
+    // tabs clear pivots.
+    if (next === 'policies') setParams({ view: POLICY_VIEWS.stored });
     else if (fromParams) setParams({});
   };
 
@@ -137,9 +159,34 @@ export default function ExposurePage() {
         ) : null}
         {mode === 'policies' ? (
           <div className="stack">
-            <PolicyList selected={policy} onSelect={(id) => setParams({ policy: id })} />
-            <PolicyAnalysisPanel />
-            <EvaluatePanel />
+            <Tabs<PolicyView>
+              label="Policy views"
+              idPrefix="policy"
+              value={policyTab}
+              onChange={(next) => setParams({ view: POLICY_VIEWS[next] })}
+              items={[
+                { key: 'stored', label: 'Stored policies' },
+                { key: 'check', label: 'Check a document' },
+                { key: 'diff', label: 'Compare revisions' },
+              ]}
+            />
+            <TabPanel idPrefix="policy" activeKey={policyTab}>
+              {policyTab === 'stored' ? (
+                <div className="stack">
+                  <PolicyList selected={policy} onSelect={(id) => setParams({ policy: id })} />
+                  <PolicyAnalysisPanel />
+                  <EvaluatePanel />
+                </div>
+              ) : null}
+              {policyTab === 'check' ? <PolicyCheckView /> : null}
+              {policyTab === 'diff' ? (
+                <PolicyDiffView
+                  before={params.get('before')}
+                  after={params.get('after')}
+                  onCompare={(before, after) => setParams({ view: POLICY_VIEWS.diff, before, after })}
+                />
+              ) : null}
+            </TabPanel>
           </div>
         ) : null}
       </TabPanel>

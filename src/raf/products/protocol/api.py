@@ -63,6 +63,16 @@ def inspect_upload(
     return {"upload": upload.to_json_dict(), **result.to_json_dict()}
 
 
+@router.get("/uploads")
+def list_uploads(ctx: Ctx, limit: Limit = 100) -> dict[str, Any]:
+    """Captures uploaded to this workspace, newest first: ``{items: [{id, name, size, sha256, uploaded_at}], total}``.
+
+    Entries whose record is incomplete or damaged are skipped; server paths are never part of the answer.
+    """
+    uploads, total = ProtocolService(ctx).uploads.list(limit=limit)
+    return {"items": [upload.to_json_dict() for upload in uploads], "total": total}
+
+
 @router.get("/inspect")
 def inspect_again(
     ctx: Ctx,

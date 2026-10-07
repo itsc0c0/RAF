@@ -7,6 +7,7 @@ import {
   useCaptureSummary,
   useConfig,
   useInspectCapture,
+  useProtocolUploads,
 } from '../../api/hooks';
 import type {
   CaptureDns,
@@ -17,6 +18,7 @@ import type {
   PacketDetail,
   PacketField,
   PacketLayer,
+  StoredUpload,
 } from '../../api/types';
 import { useWorkspaceName } from '../../app/workspace';
 import { Badge } from '../../components/Badge';
@@ -107,6 +109,69 @@ export function CaptureUploadForm({ onUploaded }: { onUploaded: (summary: Captur
         </Button>
       </div>
     </form>
+  );
+}
+
+/** `GET /protocol/uploads`: earlier uploads of this workspace, newest first; a row opens the upload. */
+export function UploadList({
+  selected,
+  onOpen,
+}: {
+  selected: string | null;
+  onOpen: (upload: string) => void;
+}) {
+  const uploads = useProtocolUploads();
+  return (
+    <QueryView query={uploads} feature="The upload list" compact>
+      {(data) =>
+        data.items.length === 0 ? (
+          <p className="small muted">No capture has been uploaded to this workspace yet.</p>
+        ) : (
+          <div className="stack stack--tight">
+            <div className="upload-list">
+              <Table<StoredUpload>
+                caption="Earlier uploads"
+                dense
+                rows={data.items}
+                rowKey={(upload) => upload.id}
+                selectedKey={selected}
+                onRowClick={(upload) => onOpen(upload.id)}
+                rowLabel={(upload) => `Open ${upload.name}`}
+                columns={[
+                  { key: 'name', header: 'Name', render: (u) => <span className="break">{u.name}</span> },
+                  {
+                    key: 'size',
+                    header: 'Size',
+                    align: 'right',
+                    render: (u) => <span className="tabular small">{formatBytes(u.size)}</span>,
+                  },
+                  {
+                    key: 'uploaded',
+                    header: 'Uploaded',
+                    render: (u) => <Time value={u.uploaded_at} className="small" />,
+                  },
+                  {
+                    key: 'sha256',
+                    header: 'SHA-256',
+                    render: (u) => (
+                      <Mono className="small" title={u.sha256}>
+                        {shortHash(u.sha256, 16)}
+                      </Mono>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+            {data.total > data.items.length ? (
+              <p className="small muted">
+                The {formatNumber(data.items.length)} most recent of {formatNumber(data.total)} uploads; open
+                older ones by ID.
+              </p>
+            ) : null}
+          </div>
+        )
+      }
+    </QueryView>
   );
 }
 
@@ -773,8 +838,8 @@ export function NoCapture() {
   return (
     <EmptyState icon="protocol" title="No capture selected">
       <p>
-        Upload a capture above, or open an earlier upload by its ID. Captures are addressed by upload ID only:
-        the API never reads a server path.
+        Upload a capture above, or open an earlier upload from the list or by its ID. Captures are addressed
+        by upload ID only: the API never reads a server path.
       </p>
     </EmptyState>
   );

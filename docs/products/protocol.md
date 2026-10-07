@@ -124,6 +124,7 @@ Re-importing the same file creates no duplicates.
 | Method | Path | Description |
 |---|---|---|
 | POST | `/protocol/inspect` (multipart field `file`; query: `protocol`, `host`, `port`, `flow`, `start`, `end`, `limit`) | store the upload and return `{upload: {id, name, size, sha256}, ...inspect summary}` |
+| GET | `/protocol/uploads?limit=` | earlier uploads, newest first: `{items: [{id, name, size, sha256, uploaded_at}], total}` (`limit` 1–1000, default 100) |
 | GET | `/protocol/inspect?upload=&...` | summarize an earlier upload again (other filters) |
 | GET | `/protocol/packet?upload=&n=` | layers and explained fields of packet `n` |
 | GET | `/protocol/flows?upload=&sort=&limit=` | flow table |
@@ -131,8 +132,11 @@ Re-importing the same file creates no duplicates.
 Uploads are limited by `api.max_upload_mb`, checked to be pcap/pcapng, and stored in the workspace's
 `uploads/protocol/` directory under a generated name (the first 32 hex characters of their SHA-256,
 which is also the upload ID) next to a small JSON record (sanitized original name, size, hash, time).
-Routes only accept upload IDs, never paths, and responses never reveal server paths. Uploads are kept
-until the workspace is deleted.
+`GET /protocol/uploads` lists uploads from these records, newest first; an entry is listed only when its
+capture and a record that matches it (same ID, size and hash) are both complete, so an upload still being
+written or a damaged record is skipped instead of failing the listing (a capture whose record is damaged
+can still be opened by its ID). Routes only accept upload IDs, never paths, and responses never reveal
+server paths. Uploads are kept until the workspace is deleted.
 
 ## How fields are explained
 

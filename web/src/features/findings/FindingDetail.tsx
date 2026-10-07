@@ -126,13 +126,23 @@ function TriageForm({ finding }: { finding: Finding }) {
   );
 }
 
-export function FindingBody({ finding }: { finding: Finding }) {
+/**
+ * A finding's explanation, evidence and triage. `recorded={false}` is a finding that exists only in an
+ * API answer (a policy check, a revision comparison): no status, times or triage.
+ */
+export function FindingBody({ finding, recorded = true }: { finding: Finding; recorded?: boolean }) {
   return (
     <div className="stack">
       <div className="row row--wrap">
         <SeverityBadge severity={finding.severity} showLabel />
         <ConfidenceBadge confidence={finding.confidence} level={finding.confidence_level} showLabel />
-        <FindingStatusBadge status={finding.status} />
+        {recorded ? (
+          <FindingStatusBadge status={finding.status} />
+        ) : (
+          <Badge tone="neutral" outline title="Computed for this view; not stored in the workspace">
+            NOT STORED
+          </Badge>
+        )}
       </div>
       <p className="break">{finding.description}</p>
       {finding.recommendation ? (
@@ -173,8 +183,12 @@ export function FindingBody({ finding }: { finding: Finding }) {
         entries={[
           ['Product', <Mono>{finding.product}</Mono>],
           ['Rule', <Mono>{finding.rule_id}</Mono>],
-          ['Created', <Time value={finding.created_at} />],
-          ['Updated', <Time value={finding.updated_at} />],
+          ...(recorded
+            ? ([
+                ['Created', <Time value={finding.created_at} />],
+                ['Updated', <Time value={finding.updated_at} />],
+              ] as const)
+            : []),
           ['Tags', <TagList tags={finding.tags} />],
           ['ID', <Mono>{finding.id}</Mono>],
         ]}
@@ -185,8 +199,29 @@ export function FindingBody({ finding }: { finding: Finding }) {
           <MetadataList metadata={finding.metadata} />
         </section>
       ) : null}
-      <TriageForm key={`${finding.id}:${finding.status}:${finding.updated_at}`} finding={finding} />
+      {recorded ? (
+        <TriageForm key={`${finding.id}:${finding.status}:${finding.updated_at}`} finding={finding} />
+      ) : (
+        <p className="small muted">
+          Computed for this view only: the finding is not stored in the workspace, so there is nothing to
+          triage.
+        </p>
+      )}
     </div>
+  );
+}
+
+/** A finding taken from an API answer (policy check, revision comparison): nothing to fetch or triage. */
+export function ComputedFindingDrawer({ finding, onClose }: { finding: Finding; onClose: () => void }) {
+  return (
+    <Drawer
+      title={<span className="break">{finding.title}</span>}
+      subtitle="Finding (computed, not stored)"
+      onClose={onClose}
+      closeLabel="Close finding"
+    >
+      <FindingBody finding={finding} recorded={false} />
+    </Drawer>
   );
 }
 

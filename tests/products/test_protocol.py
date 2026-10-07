@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import random
 import re
 import struct
 import warnings
 from collections import Counter
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -881,6 +882,89 @@ def test_api_upload_inspect_packet_and_flows(client: Any, raf_home: Path) -> Non
     assert client.get("/api/v1/protocol/packet", params={"upload": upload, "n": 999}).status_code == 404
     bad_filter = client.post("/api/v1/protocol/inspect", files=files, params={"protocol": "smtp"})
     assert bad_filter.status_code == 422
+
+
+def _uploads_dir(raf_home: Path) -> Path:
+    return raf_home / "workspaces" / "default" / "uploads" / "protocol"
+
+
+def _fake_upload(directory: Path, seed: str, uploaded_at: str, **record: Any) -> str:
+    """A capture/record pair as UploadStore.save() writes it (``record`` overrides fields of the record)."""
+    capture = f"capture {seed}".encode()
+    sha256 = hashlib.sha256(capture).hexdigest()
+    upload_id = sha256[:32]
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{upload_id}.cap").write_bytes(capture)
+    fields = {"id": upload_id, "name": f"{seed}.pcap", "size": len(capture), "sha256": sha256}
+    (directory / f"{upload_id}.json").write_text(json.dumps(fields | {"uploaded_at": uploaded_at} | record))
+    return upload_id
+
+
+def test_api_lists_uploads_newest_first_without_server_paths(client: Any, raf_home: Path) -> None:
+    empty = client.get("/api/v1/protocol/uploads")
+    assert empty.status_code == 200 and empty.json() == {"items": [], "total": 0}
+    assert not _uploads_dir(raf_home).exists()  # listing writes nothing
+
+    benign = synthetic.SCENARIOS["benign"](1)
+    for name, data in (("first.pcap", FIXTURE.read_bytes()), ("../second.pcapng", benign)):
+        upload = client.post("/api/v1/protocol/inspect", files={"file": (name, data, "application/octet-stream")})
+        assert upload.status_code == 200, upload.text
+    listing = client.get("/api/v1/protocol/uploads")
+    assert listing.status_code == 200, listing.text
+    data = listing.json()
+    assert data["total"] == 2 and [item["name"] for item in data["items"]] == ["second.pcapng", "first.pcap"]
+    newest, oldest = data["items"]
+    assert set(newest) == {"id", "name", "size", "sha256", "uploaded_at"}
+    assert newest["sha256"] == hashlib.sha256(benign).hexdigest() and newest["id"] == newest["sha256"][:32]
+    assert newest["size"] == len(benign) and oldest["size"] == FIXTURE.stat().st_size
+    assert datetime.fromisoformat(newest["uploaded_at"]) >= datetime.fromisoformat(oldest["uploaded_at"])
+    assert str(raf_home) not in listing.text and ".cap" not in listing.text and "path" not in listing.text
+
+    limited = client.get("/api/v1/protocol/uploads", params={"limit": 1}).json()
+    assert limited["total"] == 2 and [item["id"] for item in limited["items"]] == [newest["id"]]
+    # a listed upload is opened by its ID
+    again = client.get("/api/v1/protocol/inspect", params={"upload": oldest["id"]}).json()
+    assert again["upload"] == {key: oldest[key] for key in ("id", "name", "size", "sha256")}
+
+
+def test_api_upload_listing_skips_partial_and_damaged_entries(client: Any, raf_home: Path) -> None:
+    files = {"file": ("good.pcap", FIXTURE.read_bytes(), "application/vnd.tcpdump.pcap")}
+    good = client.post("/api/v1/protocol/inspect", files=files).json()["upload"]["id"]
+    directory = _uploads_dir(raf_home)
+    (directory / ".upload-x1y2z3.part").write_bytes(FIXTURE.read_bytes()[:100])  # still being written
+    (directory / f"{_fake_upload(directory, 'no-record', '2026-10-07T10:00:00Z')}.json").unlink()
+    (directory / f"{_fake_upload(directory, 'no-capture', '2026-10-07T10:00:00Z')}.cap").unlink()
+    (directory / f"{_fake_upload(directory, 'truncated', '2026-10-07T10:00:00Z')}.json").write_text('{"id": "ab')
+    (directory / f"{_fake_upload(directory, 'not-an-object', '2026-10-07T10:00:00Z')}.json").write_text("[1, 2]")
+    (directory / f"{_fake_upload(directory, 'nested', '2026-10-07T10:00:00Z')}.json").write_text("[" * 60_000)
+    huge = directory / f"{_fake_upload(directory, 'huge', '2026-10-07T10:00:00Z')}.json"
+    huge.write_text(huge.read_text() + " " * 70_000)  # valid JSON, but no record save() writes is that large
+    _fake_upload(directory, "other-id", "2026-10-07T10:00:00Z", id="0" * 32)
+    _fake_upload(directory, "wrong-size", "2026-10-07T10:00:00Z", size=1)
+    _fake_upload(directory, "bad-hash", "2026-10-07T10:00:00Z", sha256="not a hash")
+    _fake_upload(directory, "bad-name", "2026-10-07T10:00:00Z", name=["a", "b"])
+    _fake_upload(directory, "bad-time", "yesterday")
+    missing = _fake_upload(directory, "no-time", "2026-10-07T10:00:00Z")
+    record = json.loads((directory / f"{missing}.json").read_text())
+    del record["uploaded_at"]
+    (directory / f"{missing}.json").write_text(json.dumps(record))
+    older = _fake_upload(directory, "older", "2020-01-01T00:00:00")  # no time zone: read as UTC
+
+    listing = client.get("/api/v1/protocol/uploads")
+    assert listing.status_code == 200, listing.text
+    data = listing.json()
+    assert [item["id"] for item in data["items"]] == [good, older] and data["total"] == 2
+    assert data["items"][1]["uploaded_at"] == "2020-01-01T00:00:00Z"
+
+
+def test_api_upload_listing_is_bounded(client: Any, raf_home: Path) -> None:
+    directory = _uploads_dir(raf_home)
+    ids = [_fake_upload(directory, f"u{n}", f"2026-10-07T10:{n // 60:02d}:{n % 60:02d}Z") for n in range(101)]
+    default = client.get("/api/v1/protocol/uploads").json()
+    assert default["total"] == 101 and [item["id"] for item in default["items"]] == ids[::-1][:100]
+    assert len(client.get("/api/v1/protocol/uploads", params={"limit": 1000}).json()["items"]) == 101
+    for limit in (0, 1001, -1):
+        assert client.get("/api/v1/protocol/uploads", params={"limit": limit}).status_code == 422
 
 
 def test_api_rejects_non_captures_and_oversized_uploads(client: Any, raf_home: Path) -> None:

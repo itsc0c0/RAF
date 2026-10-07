@@ -5,19 +5,25 @@ import { ObjectChip } from '../../components/ObjectChip';
 import { Table } from '../../components/Table';
 import { FindingStatusBadge } from './FindingDetail';
 
-/** Findings with separate severity and confidence badges; rows open the finding drawer. */
+/**
+ * Findings with separate severity and confidence badges; rows open the finding drawer. Findings that
+ * are only computed (`recorded={false}`: a policy check, a revision comparison) have no triage status
+ * or update time, so those columns are left out.
+ */
 export function FindingsTable({
   rows,
   selectedId,
   onOpen,
   empty,
   showProduct = true,
+  recorded = true,
 }: {
   rows: readonly Finding[];
   selectedId: string | null;
   onOpen: (finding: Finding) => void;
   empty?: string;
   showProduct?: boolean;
+  recorded?: boolean;
 }) {
   return (
     <Table<Finding>
@@ -60,7 +66,15 @@ export function FindingsTable({
               },
             ]
           : []),
-        { key: 'status', header: 'Status', render: (f) => <FindingStatusBadge status={f.status} /> },
+        ...(recorded
+          ? [
+              {
+                key: 'status',
+                header: 'Status',
+                render: (f: Finding) => <FindingStatusBadge status={f.status} />,
+              },
+            ]
+          : []),
         {
           key: 'affected',
           header: 'Affected',
@@ -75,7 +89,15 @@ export function FindingsTable({
             </span>
           ),
         },
-        { key: 'updated', header: 'Updated', render: (f) => <Time value={f.updated_at} className="small" /> },
+        ...(recorded
+          ? [
+              {
+                key: 'updated',
+                header: 'Updated',
+                render: (f: Finding) => <Time value={f.updated_at} className="small" />,
+              },
+            ]
+          : []),
       ]}
     />
   );

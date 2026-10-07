@@ -131,8 +131,8 @@ interactive docs at `/api/docs`.
 | GET | `/policy/policies/{id}` | one normalized policy |
 | POST | `/policy/evaluate` `{subject?|principal?, source?, target, action?, port?, protocol?, ports?, sources?}` | `{decision: allow|deny|not-evaluated, reason, parts: [{part: network|identity, policy, decision, allowed_ports, decisions: [{policy, rule, effect, ports, actions, summary}], preempted, explanation}], indirect: [{pivot, legs, summary}], notes}` |
 | POST | `/policy/analyze?persist=` | `{policies, findings, by_rule, warnings}` |
-| POST | `/policy/check` `{document, format: json|yaml|csv, principal?}` | normalize + analyze without storing |
-| GET | `/policy/diff?before=&after=current` | revision diff between workspace states (current, snapshots) |
+| POST | `/policy/check` `{document, format: json|yaml|csv, principal?}` | normalize + analyze without storing: `{set: {name, format, revision, source, policies, warnings}, analysis: {policies, findings, by_rule, warnings, workspace_aware}}` |
+| GET | `/policy/diff?before=&after=current` | revision diff between workspace states (current, snapshots): `{before, after, policies_added, policies_removed, defaults_changed: [{policy, before, after}], changes: [{policy, rule, change: added|removed|modified|moved, impact: access-expanded|access-reduced|changed, fields, before, after}], findings_introduced, findings_resolved, access_expanded}` (`access_expanded` counts the access-expanding rule changes) |
 
 ## Synthetic environments
 
@@ -188,6 +188,7 @@ protocol. Ghost experiments shown here run in an unsaved in-memory model.
 | POST | `/oracle/ask` `{question}` (unknown fields rejected) | `{question, answer, provider, mode: builtin|model|builtin-fallback, model, intent, entities, citations: [{id, label, type}], invalid_references: [ids], facts: [{key, kind, text, refs, source, untrusted}], suggestions: [commands], warnings, generated_at, notice}`; 503 when Oracle is disabled |
 | GET | `/oracle/status` | `{provider, enabled, ready, mode, detail, max_facts, tools, stores_answers}` + model settings; never the API key |
 | POST | `/protocol/inspect` (multipart `file`, `?protocol=&host=&port=&flow=&limit=`) | capture summary + `upload` id (uploads are size-checked, verified as captures and addressed only by id) |
+| GET | `/protocol/uploads?limit=` | earlier uploads of the workspace, newest first: `{items: [{id, name, size, sha256, uploaded_at}], total}`; `limit` 1–1000 (default 100), `total` counts every complete upload; entries with a missing, unreadable or inconsistent record are skipped; never a server path |
 | GET | `/protocol/inspect?upload=&...` | re-inspect a stored upload with filters |
 | GET | `/protocol/packet?upload=&n=` | one packet: layered fields with explanations (`file.sha256` is the upload's) |
 | GET | `/protocol/flows?upload=&sort=id|bytes|packets|duration&limit=` | flow table with client/server inference and Community ID |

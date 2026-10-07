@@ -58,9 +58,13 @@ import type {
   PathResult,
   Policy,
   PolicyAnalysis,
+  PolicyCheckRequest,
+  PolicyCheckResult,
+  PolicyDiff,
   PolicyEvaluateRequest,
   PolicyEvaluation,
   ProductInfo,
+  ProtocolUploadList,
   RafEvent,
   RangeInfo,
   ReplayTimeline,
@@ -553,6 +557,22 @@ export function usePolicyEvaluate() {
   });
 }
 
+/** `POST /policy/check`: normalizes and analyzes a document; nothing is stored, so nothing is invalidated. */
+export function usePolicyCheck() {
+  const workspace = useWorkspaceName();
+  return useMutation({
+    mutationFn: (body: PolicyCheckRequest) =>
+      api.post<PolicyCheckResult>('/policy/check', { workspace, body }),
+  });
+}
+
+/** `GET /policy/diff`: compares the policies of two stored states (`current` or snapshot names). */
+export const usePolicyDiff = (before: string | null, after: string | null) =>
+  useApiQuery<PolicyDiff>(before && after ? '/policy/diff' : null, {
+    before: before ?? undefined,
+    after: after ?? undefined,
+  });
+
 // ------------------------------------------------------------------ protocol
 
 export interface CaptureFilterParams {
@@ -575,12 +595,19 @@ function captureQuery(filters: CaptureFilterParams): QueryParams {
 
 /** `POST /protocol/inspect` (multipart `file`): stores the capture and returns its summary + upload ID. */
 export function useInspectCapture() {
-  return useApiMutation(({ file }: { file: File }, workspace) => {
-    const form = new FormData();
-    form.append('file', file, file.name);
-    return api.post<CaptureSummary>('/protocol/inspect', { workspace, form, query: { limit: 50 } });
-  }, []);
+  return useApiMutation(
+    ({ file }: { file: File }, workspace) => {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      return api.post<CaptureSummary>('/protocol/inspect', { workspace, form, query: { limit: 50 } });
+    },
+    ['/protocol/uploads'],
+  );
 }
+
+/** `GET /protocol/uploads`: earlier uploads of the workspace, newest first (IDs and names, never paths). */
+export const useProtocolUploads = (limit = 100) =>
+  useApiQuery<ProtocolUploadList>('/protocol/uploads', { limit });
 
 export const useCaptureSummary = (upload: string | null, filters: CaptureFilterParams) =>
   useApiQuery<CaptureSummary>(

@@ -169,6 +169,12 @@ class UploadInfo(RafModel):
     sha256: str
 
 
+class StoredUpload(UploadInfo):
+    """An earlier upload as listed by ``GET /protocol/uploads``: its record plus when it was stored."""
+
+    uploaded_at: datetime
+
+
 # --------------------------------------------------------------------------- builders
 
 
