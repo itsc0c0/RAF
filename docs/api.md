@@ -170,9 +170,9 @@ protocol. Ghost experiments shown here run in an unsaved in-memory model.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/tui/pages` | `{system, stats, focus: {incident, subject, subject_id, target, target_id}, pages: [{id, title, param: {name, label, default}\|null}]}` |
+| GET | `/tui/pages` | `{system, stats, focus: {incident, incident_id, subject, subject_id, target, target_id}, pages: [{id, title, param: {name, label, default}\|null}]}` |
 | GET | `/tui/screen/{page}?ref=` (`?question=` for `oracle`) | a screen document `{page, title, subtitle, param, blocks, notes}`; 404 for an unknown page or reference, 503 when the page's product is disabled, 422 when a parameter exceeds 500 characters |
-| GET | `/tui/inspect?ref=` | an object, event (`event:…`) or finding (`finding:…`) as a screen document |
+| GET | `/tui/inspect?ref=` | an object, relationship (`rel:…`), event (`event:…`) or finding (`finding:…`) as a screen document |
 
 ## Specialized analysis and AI
 

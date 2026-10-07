@@ -47,7 +47,7 @@ SCHEMA: dict[str, dict[str, Any]] = {
     "gap": {"text": str},
     "chain": {
         "nodes": [{"label": str, "type": str, "ref": OPT, "note": OPT}],
-        "edges": [{"label": str, "kind": {"observed", "modeled", "correlated"}, "note": OPT}],
+        "edges": [{"label": str, "kind": {"observed", "modeled", "correlated"}, "note": OPT, "ref": OPT}],
     },
     "tree": {"root": _tree_node, "arrows": bool},
     "table": {"columns": [str], "align": [{"l", "r", "c"}], "rows": [{"cells": [str], "style": STYLE_OPT, "ref": OPT}]},
@@ -134,6 +134,7 @@ def test_index_and_every_page_render(raven: RafContext) -> None:
     assert [p["id"] for p in index["pages"]] == list(screens.PAGES)
     assert index["focus"] == {
         "incident": "INC-001",
+        "incident_id": "incident:inc-001",
         "subject": "bob",
         "subject_id": "user:bob",
         "target": "production",
@@ -149,8 +150,11 @@ def test_index_and_every_page_render(raven: RafContext) -> None:
     assert seen == set(SCHEMA), set(SCHEMA) - seen  # every block type is exercised
     event_id = _blocks(screens.screen(raven, "timeline"), "event")[0]["ref"]
     finding_id = _blocks(screens.screen(raven, "findings"), "table")[0]["rows"][0]["ref"]
-    for ref in ("host:dev-01", "bob", event_id, finding_id):
+    rel_id = next(e["ref"] for e in _blocks(screens.screen(raven, "trace"), "chain")[0]["edges"] if e["ref"])
+    for ref in ("host:dev-01", "bob", event_id, finding_id, rel_id):
         assert_protocol(json.loads(json.dumps(screens.inspect(raven, ref).to_dict())))
+    relationship = screens.inspect(raven, rel_id).to_dict()
+    assert relationship["subtitle"] == rel_id and "WHAT IT MEANS FOR PROPAGATION" in _all_text(relationship)
 
 
 def test_story_pages_tell_the_incident(raven: RafContext) -> None:

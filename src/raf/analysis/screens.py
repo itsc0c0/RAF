@@ -24,7 +24,7 @@ from typing import Any
 from raf.core.context.app import RafContext
 from raf.core.errors import InvalidInputError, NotFoundError
 from raf.core.objects.models import Event, SecurityObject
-from raf.core.objects.semantics import CONTROL, NON_PROPAGATING_TYPES, TRUST, is_privileged
+from raf.core.objects.semantics import CONTROL, NON_PROPAGATING_TYPES, TRUST, explain, is_privileged, traversals
 from raf.core.objects.types import ASSET_TYPES, PRINCIPAL_TYPES, Severity, confidence_level
 from raf.core.query.scope import Scope, resolve_scope
 from raf.core.storage.repos.events import EventQuery
@@ -108,9 +108,10 @@ def chain_node(label: str, ref: str | None, note: str | None = None) -> dict[str
     return {"label": label, "type": _kind(ref) or "", "ref": ref, "note": note}
 
 
-def chain_edge(label: str, kind: str, note: str | None = None) -> dict[str, Any]:
-    """``kind``: observed (backed by an event), modeled (from the security model) or correlated."""
-    return {"label": label, "kind": kind, "note": note}
+def chain_edge(label: str, kind: str, note: str | None = None, ref: str | None = None) -> dict[str, Any]:
+    """``kind``: observed (backed by an event), modeled (from the security model) or correlated;
+    ``ref``: the relationship (``rel:…``) the edge stands for, when there is one."""
+    return {"label": label, "kind": kind, "note": note, "ref": ref}
 
 
 def tree_node(
@@ -176,6 +177,7 @@ class Focus:
     def to_dict(self) -> dict[str, Any]:
         return {
             "incident": self.incident.name if self.incident else None,
+            "incident_id": self.incident.id if self.incident else None,
             "subject": self.subject.name if self.subject else None,
             "subject_id": self.subject.id if self.subject else None,
             "target": self.target.name if self.target else None,
@@ -577,6 +579,7 @@ def _incident_trace(ctx: RafContext, incident: SecurityObject) -> Screen:
                 rel_words(hop.relationship_type),
                 "observed" if observed else "modeled",
                 _observed_note(by_id.get(hop.observed_event or ""), hop.observed) if observed else None,
+                hop.relationship_id,
             )
         )
         if observed and hop.observed_event:
@@ -877,7 +880,7 @@ def blast(ctx: RafContext, ref: str | None) -> Screen:
             ]
         ),
         section("WHY"),
-        *[kv([(f"{f.sign}{f.points}", f.label, "danger" if f.sign == "+" else "ok")]) for f in risk.factors[:8]],
+        kv([(f"{f.sign}{f.points}", f.label, "danger" if f.sign == "+" else "ok") for f in risk.factors[:8]]),
     ]
     if chosen is not None:
         target_name = _names(ctx, [chosen[0]])[chosen[0]]
@@ -990,7 +993,7 @@ def _exposure_detail(item: Any) -> list[Block]:
             ]
         ),
         section("FACTORS"),
-        *[kv([(f"{f.sign}{f.points}", f.label, "danger" if f.sign == "+" else "ok")]) for f in item.factors],
+        kv([(f"{f.sign}{f.points}", f.label, "danger" if f.sign == "+" else "ok") for f in item.factors]),
     ]
     if item.controllers:
         blocks += [
@@ -1328,6 +1331,7 @@ def graph(ctx: RafContext, ref: str | None) -> Screen:
                         _observed_note(ctx.store.events.get(h.observed_event), h.observed)
                         if h.observed_event
                         else None,
+                        h.relationship_id,
                     )
                     for (_, _, label), h in zip(steps[1:], hops, strict=False)
                 ],
@@ -1502,6 +1506,8 @@ def inspect(ctx: RafContext, ref: str) -> Screen:
             names = _names(ctx, [o.object_id for o in event.objects])
             blocks += [section("OBJECTS"), kv([(o.role, names[o.object_id], None, o.object_id) for o in event.objects])]
         return Screen("inspect", f"EVENT {event.event_type}", blocks, subtitle=event.id, param=event.id)
+    if ref.startswith("rel:"):
+        return _inspect_relationship(ctx, ref)
     if ref.startswith("finding:"):
         finding = ctx.store.findings.require(ref)
         blocks = [
@@ -1585,6 +1591,57 @@ def inspect(ctx: RafContext, ref: str) -> Screen:
             ),
         ]
     return Screen("inspect", f"{obj.type.upper()} {obj.name}", blocks, subtitle=obj.id, param=obj.id)
+
+
+def _inspect_relationship(ctx: RafContext, ref: str) -> Screen:
+    rel = ctx.store.relationships.get(ref)
+    if rel is None:
+        raise NotFoundError(f"Relationship '{ref}' does not exist.")
+    src, dst = rel.source_object, rel.target_object
+    names = _names(ctx, [src, dst])
+    rows: list[Any] = [
+        ("Type", rel.relationship_type),
+        ("From", names[src], None, src),
+        ("To", names[dst], None, dst),
+        ("Confidence", f"{rel.confidence:.2f} ({confidence_level(rel.confidence).value})"),
+        ("First seen", format_ts(rel.first_seen) if rel.first_seen else "-"),
+        ("Last seen", format_ts(rel.last_seen) if rel.last_seen else "-"),
+        ("State", f"ended {format_ts(rel.valid_to)}" if rel.valid_to else "active", "warn" if rel.valid_to else None),
+        ("Observations", rel.observations),
+        ("Source", rel.source),
+    ]
+    blocks: list[Block] = [kv(rows), section("WHAT IT MEANS FOR PROPAGATION")]
+    forward, reverse = traversals(rel.relationship_type, _kind(src) or "", _kind(dst) or "")
+    meaning = []
+    if forward is not None:
+        meaning.append(f"{forward.mode}: " + explain(forward.why, names[src], names[dst], rel.metadata))
+    if reverse is not None:  # traversed from the target back to the source
+        meaning.append(f"{reverse.mode}: " + explain(reverse.why, names[dst], names[src], rel.metadata))
+    blocks.append(
+        text(*meaning)
+        if meaning
+        else text("Not traversed by propagation (a descriptive or activity record).", style="dim")
+    )
+    if rel.metadata:
+        blocks += [section("METADATA"), kv([(k, str(v)[:200]) for k, v in sorted(rel.metadata.items())][:40])]
+    records = ctx.store.provenance.for_subject(rel.id, limit=10)
+    if records:
+        blocks += [
+            section("PROVENANCE"),
+            kv(
+                [
+                    (
+                        format_ts(p.observed_at) if p.observed_at else "-",
+                        " · ".join(part for part in (p.source, p.parser, p.record) if part),
+                        None,
+                        p.event_id,
+                    )
+                    for p in records
+                ]
+            ),
+        ]
+    title = f"{rel.relationship_type} {names[src]} → {names[dst]}"
+    return Screen("inspect", title, blocks, subtitle=rel.id, param=rel.id)
 
 
 # --------------------------------------------------------------------------- registry
