@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from raf.data import raven  # noqa: E402
 from raf.products.protocol.synthetic import raven_inc001_capture as raven_capture  # noqa: E402
+from raf.products.surface.sample import raven_surface_json  # noqa: E402
 
 
 def jsonl(records: Iterable[dict[str, Any]]) -> str:
@@ -41,12 +42,8 @@ def outputs() -> dict[str, Callable[[], str | bytes]]:
         ),
         "policies/raven-fw-export.csv": raven.firewall_csv,
         "pcap/raven-inc001.pcap": lambda: raven_capture(seed=1),
+        "surface/raven-surface.json": raven_surface_json,
     }
-    try:
-        from raf.data import raven_extra
-    except ImportError:
-        return files
-    files.update(raven_extra.fixture_outputs())
     return files
 
 

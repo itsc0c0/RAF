@@ -69,7 +69,24 @@ def _step_exposure(ctx: RafContext, state: dict[str, Any]) -> dict[str, Any]:
     return {"assets": len(report.items), "findings": report.findings, "by_level": report.by_level}
 
 
+def _step_surface(ctx: RafContext, state: dict[str, Any]) -> dict[str, Any]:
+    from raf.products.surface.sample import raven_surface_json
+    from raf.products.surface.service import SurfaceService
+
+    service = SurfaceService(ctx)
+    imported = service.import_bytes(
+        raven_surface_json().encode("utf-8"), source_name="raven-surface.json", apply_scope=True, via="demo"
+    )
+    analysis = service.analyze(via="demo")
+    return {
+        "inventory records": imported.accepted,
+        "authorized scope entries": analysis.scope_entries,
+        "surface findings": len(analysis.findings),
+    }
+
+
 register_demo_step(DemoStep("INC-001 evidence case", "evidence", _step_evidence))
 register_demo_step(DemoStep("Raven firewall and access policies", "policy", _step_policies))
+register_demo_step(DemoStep("Raven external attack surface (imported inventory)", "surface", _step_surface))
 register_demo_step(DemoStep("IAM analysis", "iam", _step_iam))
 register_demo_step(DemoStep("Exposure analysis", "exposure", _step_exposure))

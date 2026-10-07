@@ -207,3 +207,19 @@ def test_api_analyze(api: Any) -> None:
     assert api.post("/api/v1/analyze", data={"path": "/etc/passwd"}).status_code == 422
     empty = api.post("/api/v1/analyze", files={"file": ("empty.json", b"", "application/json")})
     assert empty.status_code == 422 and "empty" in empty.json()["error"]["message"]
+
+
+def test_surface_inventory_pipeline(raven: RafContext, actx: RafContext) -> None:
+    inventory = FIXTURES / "surface" / "raven-surface.json"
+    # In the demo workspace the scope is configured: the inventory is evaluated within it.
+    result = analyze_path(raven, inventory, AnalyzeOptions(correlate=False))
+    assert result.detected_type == "surface" and result.status == "completed"
+    surface = next(step for step in result.steps if step.name == "Surface analysis")
+    assert surface.product == "surface" and surface.stats["findings"] == 13
+    # Without a scope nothing is judged, and analyzing never authorizes anything by itself.
+    fresh = analyze_path(actx, inventory, AnalyzeOptions(correlate=False))
+    step = next(step for step in fresh.steps if step.name == "Surface analysis")
+    assert step.stats == {"scope_entries": 0} and "no authorized scope" in step.detail
+    from raf.products.surface.service import SurfaceService
+
+    assert SurfaceService(actx).scope_entries() == []

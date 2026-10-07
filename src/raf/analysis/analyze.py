@@ -7,6 +7,8 @@ Pipelines (every executed step is reported, with its product, status, duration a
 * **events** (JSON Lines, JSON, CSV, syslog, access logs, text logs) and **directory** - Ingest
   (auto-detected parser) → Timeline → Graph → Incidents → IAM analysis → Exposure correlation → Findings.
 * **policy** documents - Ingest → Policy analysis → Findings.
+* **surface** inventories (``raf-surface/1``) - Ingest → Surface analysis (authorized scope only;
+  the import never changes the scope) → Exposure correlation → Findings.
 * **repository** (a directory with dependency manifests or ``.git``) - Dependency scan (+ advisory
   matching) → Vault secret scan → Graph → Findings. A single **manifest** file - Dependency scan.
 * **sbom** (CycloneDX / SPDX JSON) - Dependency SBOM import (+ advisory matching) → Graph → Findings.
@@ -51,6 +53,7 @@ PARSER_LABELS = {
     "access-log": "Web access log",
     "text": "Text log",
     "raf-policy": "Policy document",
+    "raf-surface": "Surface inventory",
     "pcap": "PCAP",
 }
 KIND_LABELS = {
@@ -61,6 +64,7 @@ KIND_LABELS = {
     "manifest": "Dependency manifest",
     "directory": "Directory",
     "policy": "Policy document",
+    "surface": "Surface inventory",
     "events": "Events",
 }
 _REPO_SCAN_LIMIT = 5000
@@ -152,6 +156,9 @@ def _repository_markers(ctx: RafContext, root: Path) -> list[str]:
     return markers
 
 
+_PARSER_KINDS = {"pcap": "pcap", "raf-policy": "policy", "raf-surface": "surface"}
+
+
 def _is_bundle(path: Path) -> bool:
     try:
         with zipfile.ZipFile(path) as archive:
@@ -179,7 +186,7 @@ def detect_input(
     registry = build_parser_registry(ctx)
     if forced_format:
         parser = registry.get(forced_format)
-        kind = "pcap" if parser.name == "pcap" else "policy" if parser.name == "raf-policy" else "events"
+        kind = _PARSER_KINDS.get(parser.name, "events")
         return Detection(kind, PARSER_LABELS.get(parser.name, parser.name), parser.name, [f"--format {parser.name}"])
     head = read_head(path, 65536)
     if head[:4] in PCAP_MAGIC:
@@ -201,7 +208,7 @@ def detect_input(
             hint="Force a parser with --format (" + ", ".join(sorted(p.name for p in registry.parsers())) + ").",
         )
     parser, score = detected
-    kind = "pcap" if parser.name == "pcap" else "policy" if parser.name == "raf-policy" else "events"
+    kind = _PARSER_KINDS.get(parser.name, "events")
     return Detection(
         kind, PARSER_LABELS.get(parser.name, parser.name), parser.name, [f"{parser.name} parser (score {score:.2f})"]
     )
@@ -500,6 +507,24 @@ def _pipeline_ingested(run: _Run, path: Path, det: Detection) -> None:
 
         run.run("Policy analysis", "policy", policy)
         return
+    if det.kind == "surface":
+
+        def surface() -> tuple[str, dict[str, Any]]:
+            module = importlib.import_module("raf.products.surface.service")
+            analysis = module.SurfaceService(run.ctx).analyze(via="analyze")
+            if not analysis.scope_entries:
+                return (
+                    "no authorized scope configured: nothing evaluated (raf surface scope add, or "
+                    "raf surface import FILE --apply-scope after review)",
+                    {"scope_entries": 0},
+                )
+            return (
+                f"{analysis.assets} asset(s), {analysis.in_scope} in scope, {analysis.out_of_scope} out of scope; "
+                f"{len(analysis.findings)} surface finding(s)",
+                {"assets": analysis.assets, "in_scope": analysis.in_scope, "findings": len(analysis.findings)},
+            )
+
+        run.run("Surface analysis", "surface", surface)
     _correlate(run)
 
 
@@ -631,7 +656,7 @@ def analyze_path(ctx: RafContext, path: Path, options: AnalyzeOptions | None = N
     run = _Run(ctx, analysis_id, options)
     run.record(AnalysisStep(name="Detect", detail=f"{det.label}: " + "; ".join(det.reasons)))
     findings_before = ctx.store.findings.count_by_severity()
-    if det.kind in ("pcap", "events", "policy", "directory"):
+    if det.kind in ("pcap", "events", "policy", "surface", "directory"):
         _pipeline_ingested(run, path, det)
     elif det.kind in ("repository", "manifest", "sbom"):
         _pipeline_repository(run, path, det)

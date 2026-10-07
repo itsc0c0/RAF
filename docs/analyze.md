@@ -58,6 +58,7 @@ Content first, then names; deterministic.
 | CycloneDX / SPDX JSON | `sbom` | `"bomFormat": "CycloneDX"` or `"spdxVersion"` |
 | JSON Lines, JSON, CSV, syslog, web access logs, text logs | `events` | the ingestion parser with the best sniff score |
 | `raf-policy/1`, IAM JSON, firewall CSV exports | `policy` | the Policy parser's sniff score |
+| `raf-surface/1` inventories (JSON, JSONL, YAML, CSV with surface `kind`s) | `surface` | the Surface parser's sniff score |
 | directory with dependency manifests or `.git` | `repository` | bounded walk (5,000 entries, depth 4) |
 | any other directory | `directory` | every data file is imported with its own parser |
 
@@ -71,6 +72,7 @@ list of parsers.
 | `pcap` | **Protocol** (decode: flows, DNS, HTTP, TLS) → Timeline → Graph → IAM analysis* → Exposure correlation* → Findings |
 | `events`, `directory` | Ingest → Timeline → Graph → Incidents (when linked) → IAM analysis* → Exposure correlation* → Findings |
 | `policy` | Ingest → Timeline → Graph → Policy analysis → Findings |
+| `surface` | Ingest → Timeline → Graph → Surface analysis (only within the authorized scope; an analyze never changes the scope) → IAM analysis* → Exposure correlation* → Findings |
 | `repository` | Dependency scan (+ advisory matching) → Vault secret scan → Graph → Findings |
 | `manifest` | Dependency scan → Graph → Findings |
 | `sbom` | Dependency SBOM import (+ advisory matching) → Graph → Findings |
