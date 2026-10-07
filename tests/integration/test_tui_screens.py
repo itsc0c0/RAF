@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -261,3 +262,47 @@ def test_cli_tui_without_binary(raf_home: Path, cli: Any, monkeypatch: pytest.Mo
     assert missing.exit_code == 6 and "cargo build --release" in missing.stderr
     assert cli("tui", "--page", "nowhere").exit_code == 4
     assert cli("tui").exit_code == 4  # not a terminal: suggests --dump
+
+
+FAKE_PANEL = """#!{python}
+import json, os, sys, urllib.request
+api, token = os.environ["RAF_OS_API"], os.environ["RAF_OS_TOKEN"]
+request = urllib.request.Request(api + "/tui/screen/blast?ref=alice", headers={"Authorization": "Bearer " + token})
+with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=60) as response:
+    title = json.load(response)["title"]
+report = {
+    "argv": sys.argv[1:],
+    "title": title,
+    "workspace": os.environ.get("RAF_OS_WORKSPACE"),
+    "api_token_passed": "RAF_API_TOKEN" in os.environ,
+    "loopback": api.startswith("http://127.0.0.1:"),
+}
+with open(os.environ["FAKE_PANEL_REPORT"], "w") as out:
+    json.dump(report, out)
+sys.exit(int(os.environ.get("FAKE_PANEL_EXIT", "0")))
+"""
+
+
+def test_launcher_runs_the_panel_against_its_api(
+    raven_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`raf tui` hands the panel a loopback API, its one-time token and the workspace, nothing else."""
+    from raf.apps.cli.commands import tui
+    from tests.conftest import run_cli
+
+    panel = tmp_path / "raf-os"
+    panel.write_text(FAKE_PANEL.replace("{python}", sys.executable))
+    panel.chmod(0o755)
+    report = tmp_path / "report.json"
+    monkeypatch.setenv("RAF_HOME", str(raven_home))
+    monkeypatch.setenv("FAKE_PANEL_REPORT", str(report))
+    monkeypatch.setenv("RAF_API_TOKEN", "not-for-the-panel")
+    monkeypatch.setattr(tui, "find_binary", lambda: panel)
+    result = run_cli("tui", "--dump", "blast", "--param", "alice", "--width", "120")
+    assert result.exit_code == 0, result.stderr
+    data = json.loads(report.read_text())
+    assert data["argv"] == ["--dump", "blast", "--width", "120", "--param", "alice"]
+    assert data["title"] == "R$F BLAST — alice" and data["workspace"] == "default"
+    assert data["loopback"] and not data["api_token_passed"]
+    monkeypatch.setenv("FAKE_PANEL_EXIT", "3")
+    assert run_cli("tui", "--dump", "home").exit_code == 3  # the panel's failure is raf's failure
