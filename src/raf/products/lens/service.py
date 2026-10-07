@@ -17,7 +17,9 @@ from pydantic import Field
 
 from raf.core.context.app import RafContext
 from raf.core.objects.models import Event, Finding, RafModel
+from raf.core.query.language import contains_all, parse_filter
 from raf.core.query.scope import Scope, resolve_scope
+from raf.core.storage.repos.events import EventQuery
 from raf.products.timeline.service import GROUP_FIELDS, TimelineService
 
 MAX_TOP = 25
@@ -71,6 +73,20 @@ class LensService:
     def scope_for(self, words: list[str]) -> Scope:
         return resolve_scope(self.ctx, words)
 
+    def scope_query(self, scope: Scope) -> tuple[EventQuery, list[str]]:
+        """The events a scope selects, with a description of anything beyond the scope's own query.
+
+        An evidence item selects the events parsed from it: those of its import job (when recorded)
+        whose source is the item's name.
+        """
+        if scope.kind == "object" and scope.id.startswith("evidence:"):
+            obj = self.store.objects.get(scope.id)
+            if obj is not None:
+                evidence_job = obj.metadata.get("job")
+                query = EventQuery(job_ids=[str(evidence_job)] if evidence_job else None, source=obj.name)
+                return query, [f"evidence item {obj.name}"]
+        return scope.event_query(), []
+
     def query(
         self,
         scope: Scope,
@@ -84,19 +100,17 @@ class LensService:
         limit: int = 100,
         cursor: str | None = None,
     ) -> LensResult:
-        query, terms = self.timeline.query(scope, start=start, end=end, filter_text=filter_text)
-        if scope.kind == "object" and scope.id.startswith("evidence:"):
-            obj = self.store.objects.get(scope.id)
-            if obj is not None:
-                # events parsed from this item: same import job (when recorded) and same source name
-                evidence_job = obj.metadata.get("job")
-                query.object_ids = None
-                query.job_ids = [str(evidence_job)] if evidence_job else None
-                query.source = obj.name
-                terms.append(f"evidence item {obj.name}")
+        # Options and filter terms only ever narrow the scope (the filter language merges with AND).
+        query, notes = self.scope_query(scope)
+        query.start, query.end = start or query.start, end or query.end
         if source:
-            query.source = source
-            terms.append(f"source contains {source}")
+            query.source = contains_all("source", [query.source, source])
+            notes.append(f"source contains {source}")
+        terms: list[str] = []
+        if filter_text:
+            parsed = parse_filter(filter_text, resolver=self.ctx.resolver, base=query)
+            query, terms = parsed.query, parsed.terms
+        terms += notes
         if group_by not in (None, *GROUP_FIELDS):
             group_by = "event_type"
         base = self.timeline.timeline(

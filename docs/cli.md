@@ -11,8 +11,8 @@ raf COMMAND --help            (or -h)
 raf help COMMAND [SUBCOMMAND] | raf help TOPIC
 ```
 
-Help topics (`raf help TOPIC`): `objects`, `relationships`, `query` (the filter language), `refs`
-(context references), `exit-codes`, `plugins`.
+Help topics (`raf help TOPIC`): `objects`, `relationships`, `query` (the filter language; `filters`
+is the same topic), `refs` (context references), `exit-codes`, `plugins`.
 
 ## Global flags
 
@@ -21,8 +21,8 @@ Help topics (`raf help TOPIC`): `objects`, `relationships`, `query` (the filter 
 | `--json` | print one JSON document on stdout (see [Output](#output-conventions)); disables colors, progress bars and the interactive shell |
 | `--quiet`, `-q` | only essential output: no headers, notes, success messages or next-step suggestions (tables and data are still printed; `raf diff` lists only HIGH changes, `raf timeline` hides the histogram) |
 | `--no-color` | no colors (also `NO_COLOR` in the environment, or `raf config set core.color false`) |
-| `--debug` | full tracebacks for errors and debug-level logs on the console |
-| `--yes`, `-y` | confirm destructive operations (delete, uninstall, trust, reset ...) without a prompt |
+| `--debug` | full tracebacks for errors and debug-level logs on the console (whatever `core.log_level` says) |
+| `--yes`, `-y` | confirm destructive operations (delete, uninstall, trust, reset ...) without a prompt (`raf config set core.confirm_destructive false` does this for every command) |
 | `--workspace NAME`, `-w NAME`, `--workspace=NAME` | run this command in another workspace |
 | `--version` | print `R$F 0.1.0` and exit; only directly after `raf` (`raf version` shows every version identifier) |
 
@@ -36,8 +36,8 @@ after `--` are passed through unchanged (`raf lab exec NAME -- ls -la`).
 |---|---|
 | `RAF_HOME` | R$F home directory (default `~/.raf`): `config.toml`, `registry.json`, `plugins/`, `logs/`, `workspaces/` |
 | `RAF_WORKSPACE` | the current workspace, overriding `raf workspace use` |
-| `RAF_<SECTION>_<KEY>` | a configuration value, e.g. `RAF_GRAPH_MAX_NODES=900` (`raf config keys` lists every variable) |
-| `RAF_CORE_LOG_LEVEL` | console log level (read directly at start-up) |
+| `RAF_<SECTION>_<KEY>` | a configuration value, e.g. `RAF_GRAPH_MAX_NODES=900` (`raf config keys` lists every variable); it overrides the configuration files |
+| `RAF_CORE_LOG_LEVEL` | console log level: the `core.log_level` setting (`DEBUG`, `INFO`, `WARNING`, `ERROR`), applied from start-up |
 | `RAF_ORACLE_API_KEY`, `RAF_API_TOKEN` | secrets (never read from configuration files) |
 | `RAF_OS_BIN` | path of the `raf-os` binary used by `raf tui` |
 | `NO_COLOR` | disable colors |
@@ -63,6 +63,9 @@ Without a terminal (scripts, pipes) or with `--json`, `raf` alone runs `raf stat
   reference was resolved: `@last -> analysis-1`), warnings, prompts and progress bars go to stderr.
   Text that comes from imported data is printed with control characters, escape sequences and
   bidirectional overrides escaped (`\x1b`).
+* **Closed pipes.** When the reader of the output goes away (`raf timeline workspace | head`), `raf`
+  stops writing and exits quietly with status 0, like `rg`; a command that had already failed keeps
+  its own exit status.
 * **Next steps.** Many commands end with `Next:`, `Explore:` or `Try:` and a list of commands
   (`raf replay INC-001`, `raf trace user:alice`). They are suggestions only; R$F never runs them.
 * **JSON.** With `--json` a command prints exactly one document: `{"schema": "raf.<name>/v1", ...}`.
@@ -91,20 +94,22 @@ Without a terminal (scripts, pipes) or with `--json`, `raf` alone runs `raf stat
   ```
 
   `reason`, `hint`, `suggestions` (commands to try) and `details` are present when they apply.
-  One exception to "exactly one document": when an import job fails, `raf --json import` prints a
-  `raf.import/v1` document with the failed job, then the `raf.error/v1` document.
+  A failed import job is reported the same way: `raf --json import` prints only the `raf.error/v1`
+  document (code `raf.ingestion`, exit 1), with the failed job - including the job's own error - in
+  `details.job` and `raf job show JOB` in `suggestions`.
   Command-line mistakes have the code `raf.usage`. An unexpected exception prints *"R$F hit an
   internal error. This is a bug in R$F, not in your data."* (JSON code `raf.internal` with `type`
-  and `detail`), is logged with its traceback to `RAF_HOME/logs/raf.log`, and exits with 1;
-  `--debug` prints the traceback.
+  and `detail`), is logged with its traceback to `RAF_HOME/logs/raf.log` (unless `core.log_file` is
+  `false`), and exits with 1; `--debug` prints the traceback.
 * **Confirmations.** Destructive commands print what they will do and ask for `yes`. Without a
-  terminal they fail with `raf.confirmation_required` (exit 4) unless `--yes` is given.
+  terminal they fail with `raf.confirmation_required` (exit 4) unless `--yes` is given or
+  `core.confirm_destructive` is `false`.
 
 ## Exit codes
 
 | Code | Meaning | Error codes |
 |---|---|---|
-| 0 | success | |
+| 0 | success (also when the reader of the output went away, as with `raf ... \| head`) | |
 | 1 | general failure | `raf.error`, `raf.storage`, `raf.ingestion`, `raf.internal`, Lab backend errors; `raf analyze` when the analysis failed |
 | 2 | usage error (unknown command or option, missing argument, value out of range) | `raf.usage` |
 | 3 | not found | `raf.not_found` |
@@ -127,13 +132,16 @@ Wherever a command takes an object, it accepts:
   ([object model](object-model.md#identifiers));
 * a name or an alias (`metadata.aliases`), without regard to case: `alice`, `WS-02`, `production`;
 * where it makes sense, other IDs: `event:...` and `finding:...` (`raf show`), `analysis-N` and
-  `job-N` (scopes), an evidence case name (resolves to its incident);
+  `job-N` (scopes), an evidence case name (resolves to its incident), an evidence item ID
+  (`ev-0005` is `evidence:ev-0005`);
 * a [context reference](#context-references) such as `@last`.
 
 When a name matches objects of several types, the first type in this order wins and a note names the
 alternatives: incident, user, host, identity, service, group, role, network, cloud_resource,
 container, domain, ip, project, package, vulnerability, policy, organization, permission, process,
 file, directory, url, certificate, secret, session, connection, port, dependency, alert, evidence.
+An evidence item ID competes with names the same way: if an object is also *named* `ev-0005`, that
+object wins and the note names `evidence:ev-0005`.
 Several matches of the winning type are an error (`raf.ambiguous_reference`, exit 4) listing the
 candidates. An unknown name fails with `raf.not_found` (exit 3) and similar IDs as a hint.
 
@@ -141,9 +149,13 @@ candidates. An unknown name fails with `raf.not_found` (exit 3) and similar IDs 
 
 Graph, Timeline, Replay and Lens take a **scope**: nothing or `workspace` / `all` / `@workspace`
 (the whole workspace; Replay requires the word), one reference (object, incident, `analysis-N`,
-`job-N`, context reference), or `TYPE NAME` (`host WS-02`, `user alice`), where `TYPE` is a
-canonical object type or one of the aliases `hostname`, `account`, `cve`, `proc`. Lens also accepts
-an evidence item (`evidence:ev-0005`).
+`job-N`, context reference), or `TYPE NAME` (`host WS-02`, `user alice`), where `TYPE` is any
+object type as `raf objects --type` takes it: a canonical type (`raf help objects`), an alias
+(`hostname`, `account`, `ipaddress`, `ip_address`, `fqdn`, `cloudresource`, `vuln`, `cve`, `proc`,
+`dir`, `cert`, `net`) or a plugin type `x-<name>`; case does not matter. Lens also accepts an
+evidence item (`ev-0005` or `evidence:ev-0005`): the events parsed from it. Events, findings and
+snapshots are not scopes: `raf timeline event:...` fails with `raf.invalid_input` (exit 4) and
+suggests `raf show event:...` (`raf snapshot show NAME` for a snapshot).
 
 ### Context references
 
@@ -159,15 +171,20 @@ commands refer to it with `@` tokens:
 | `@snapshot` | most recent snapshot | `raf snapshot create` |
 | `@job` | most recent job | `raf import`, `raf job show`, `forge`, `surface import` |
 | `@case` | most recent evidence case | `raf evidence case create`, `raf evidence import` |
-| `@lab` | most recent lab | `raf lab` commands |
+| `@lab` | most recent lab | `raf lab create`, `start`, `exec`, `shell` |
+| `@range` | most recent range | `raf range create`, `status NAME`, `start`, `tick`, `stop`, `reset` |
+| `@ghost` | most recent Ghost model | `raf ghost create`, `clone`, `modify`, `show` |
 | `@workspace` | the current workspace | (always available) |
 
-What a command accepts decides what `@last` means: scopes (`graph`, `timeline`, `replay`, `lens`)
-accept objects, incidents, cases, analyses and jobs; object arguments (`show`, `trace`, `blast`,
-`iam show`, `graph path`, ...) accept objects, incidents and cases; state arguments (`raf diff`)
-accept snapshots. `@workspace` is the whole workspace for scopes and the current state for
-`raf diff`. `@selection` exists only in the web UI. `@ghost` and `@range` are recognized tokens, but
-no command remembers models or ranges yet, so they always report that they refer to nothing.
+What a command accepts decides what `@last` means, and an `@<kind>` token of a kind the command does
+not accept is an error (`raf show @lab`: *"@lab refers to a lab, which this command does not
+accept."*, exit 4) rather than a name looked up in the wrong place. Scopes (`graph`, `timeline`,
+`replay`, `lens`) accept objects, incidents, cases, analyses and jobs; object arguments (`show`,
+`trace`, `blast`, `iam show`, `graph path`, ...) accept objects, incidents and cases (a case stands
+for its incident); state arguments (`raf diff`) accept snapshots; lab commands accept labs and range
+commands (`raf range status @range`) ranges. No command takes `@ghost` yet: Ghost commands take model
+names. `@workspace` is the whole workspace for scopes and the current state for `raf diff`.
+`@selection` exists only in the web UI.
 
 ## Time values
 
@@ -192,10 +209,11 @@ place a time of day on the current UTC date and reject offsets. Values must lie 
 ## Filter language
 
 `raf timeline --filter`, `raf lens --filter` and the API parameter `filter` (`/timeline`,
-`/timeline/export`, `/lens/query`) select events with a small query language (`raf help query`):
+`/timeline/export`, `/lens/query`) select events with a small query language (`raf help query`, or
+`raf help filters`):
 
 ```text
-type:auth.* outcome:failure actor:bob severity>=medium after:2026-10-06T22:00:00Z "vpn"
+type:auth.* outcome:failure actor:bob severity>=medium time>=2026-10-06T22:00:00Z "vpn"
 ```
 
 | Term | Selects events ... |
@@ -205,33 +223,45 @@ type:auth.* outcome:failure actor:bob severity>=medium after:2026-10-06T22:00:00
 | `actor:alice` | whose actor is this object (name, ID, alias or `@` reference) |
 | `target:WS-01` | whose target is this object |
 | `object:host:dev-01` | that involve this object in any role |
-| `severity>=medium` | at or above this severity (`severity:` and `severity=` also mean "at or above"; `<=` is rejected) |
+| `severity>=medium`, `severity>medium` | at or above / above this severity (`severity:` and `severity=` also mean "at or above") |
 | `outcome:failure` | with this outcome (`success`, `failure`, `unknown`, or as imported) |
 | `source:auth.log` | whose source name contains this text |
-| `after:T`, `before:T` | at or after / at or before a full timestamp |
+| `time>=T`, `time>T`, `time<=T`, `time<T` | at or after, after, at or before, before a full timestamp |
+| `after:T`, `before:T` | the same as `time>=T` and `time<=T` |
 | `incident:INC-001` | linked to this incident |
-| `job:job-4` | imported by this job |
-| `synthetic:true` | marked synthetic (`1`, `true`, `yes`; anything else selects real data) |
-| other words, `"quoted phrases"` | containing the text (case-insensitive) in the message, event type, actor ID, target ID or raw record |
+| `job:job-4` | imported by this job (a job ID or `@job`) |
+| `synthetic:true` | marked synthetic (`true`, `1`, `yes`) or not (`false`, `0`, `no`) |
+| one word or one `"quoted phrase"` | containing the text (case-insensitive) in the message, event type, actor ID, target ID or raw record |
 
 Rules:
 
-* Terms are separated by spaces and combine with AND; quoting follows shell rules (`'...'`, `"..."`).
-* Each term is `key:value`, `key=value`, `key>=value` or `key<=value`; only `severity` interprets
-  the operator.
-* Repeated `type:`, `category:` and `object:` terms are alternatives (OR); for the other keys the last
-  value wins.
-* All free words are joined into **one** phrase: `exfil upload` matches the text "exfil upload", not
-  the two words separately.
-* An unknown key written with `:` is an error (`Unknown filter key 'foo'`, exit 4), except tokens
-  that start with `http:` / `https:`, which are free text; an unknown key written with `=` is treated
-  as free text. Keys are lower case.
+* Terms are separated by spaces; quoting follows shell rules (`'...'`, `"..."`, `\`).
+* `key:value` and `key=value` are the same. An unquoted token that looks like `word:...`,
+  `word=...` or `word>=...` with a word that is not a key is an error that lists the keys
+  (`Unknown filter key 'foo'`, exit 4), except URLs (`https://...`). Keys are lower case.
+* A token that starts with a quote is always free text, so quote text that contains `:` or `=`:
+  `'"error: disk full"'`, `'"user=alice"'`.
+* Only `severity` (`>=`, `>`) and `time` (`>=`, `>`, `<=`, `<`) compare; a comparison on any other
+  key is an error, as are `severity<=` and `severity<` (events are selected by a minimum severity)
+  and `time:` (use a comparison).
+* A filter holds **one** free-text term: `exfil upload` is an error that suggests the phrase
+  `"exfil upload"`. A free text and the API's `q` parameter must be the same text or contain one
+  another.
+* Terms combine with AND. Repeated `type:`, `category:`, `object:` and `job:` terms are alternatives
+  (OR). Repeated `severity` and time terms keep the strictest bound. Repeating `actor:`, `target:`,
+  `outcome:` or `synthetic:` with different values selects nothing (an event has one actor, one
+  outcome ...); for `incident:` and `source:` see below.
+* **Filters only narrow.** Terms apply to what the command already selected - its scope and its
+  options (`--from`/`--to`, `--type`, `--category`, `--severity`, Lens `--source`, the API's `q`) -
+  and never widen it: `raf timeline job-1 --filter job:job-2` selects nothing, `type:auth.login`
+  with `--type auth` selects logins, and for times the stricter bound wins (`--from 22:00` with
+  `after:` an earlier moment keeps 22:00). A combination the event store cannot select is rejected
+  with an explanation (exit 4) instead of being approximated: `object:` on a scope that is another
+  object (`raf timeline user alice --filter object:DEV-01`; use `target:DEV-01` or `actor:`), two
+  different incidents, and two `source:` (or free) texts of which neither contains the other.
 * References in `actor:`, `target:`, `object:` and `incident:` are resolved like any reference; an
-  unknown name is an error (exit 3).
+  unknown name is an error (exit 3), and so is an event, finding or snapshot ID (exit 4).
 * Values are bound as query parameters; nothing is ever interpolated into SQL.
-
-How terms combine with a command's own scope and options is described in
-[Timeline](products/timeline.md#selecting-events).
 
 ## Command reference
 
@@ -272,7 +302,7 @@ Plugin management is described in [plugin-development.md](plugin-development.md)
 | `raf incidents` | incidents with severity, status, event count and window (`raf.incidents/v1`) | `raf incidents` |
 | `raf jobs [--status S] [--limit 20]` | recent jobs (QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED) with progress and duration (`raf.jobs/v1`) | `raf jobs --status failed` |
 | `raf job show JOB` / `raf job cancel JOB` | a job's status, result and error; request cancellation of a queued or running job (`raf.job/v1`) | `raf job show job-1` |
-| `raf import PATH [-f FORMAT] [--incident NAME] [--host HOST] [--source-name NAME] [--timezone TZ] [--synthetic]` | import a file or a directory as a job, with provenance; malformed records are rejected individually (`raf.import/v1`) | `raf import fixtures/evidence/auth.log --host DEV-01` |
+| `raf import PATH [-f FORMAT] [--incident NAME] [--host HOST] [--source-name NAME] [--timezone TZ] [--synthetic]` | import a file or a directory as a job, with provenance; malformed records are rejected individually; `Format` shows the parser of a file, or for a directory the formats of its files (`directory (syslog, jsonl, csv)`); a failed job is a `raf.error/v1` (exit 1) (`raf.import/v1`) | `raf import fixtures/evidence/auth.log --host DEV-01` |
 | `raf import report JOB` | the rejected records of an earlier import (up to 500, raw text truncated) (`raf.import.report/v1`) | `raf import report job-5` |
 | `raf analyze TARGET [-f FORMAT] [--incident NAME] [--source-name NAME] [--synthetic] [--no-correlate]` | detect the input type and run the matching pipeline; records `analysis-N`; `raf analyze analysis-N` shows a recorded one (`raf.analysis/v1`); see [analyze.md](analyze.md) | `raf analyze fixtures/pcap/raven-inc001.pcap` |
 | `raf analyses [--limit 20]` | earlier analyses, newest first (`raf.analyses/v1`) | `raf analyses` |
@@ -309,8 +339,24 @@ mode, owner IDs and a SHA-256 for regular files up to 64 MiB; modification times
 | `raf bundle verify PATH` | check a bundle's structure, limits and every member's SHA-256; exit 5 on problems (`raf.bundle.verify/v1`) | `raf bundle verify inc.raf` |
 | `raf bundle import PATH` | merge a bundle's objects, relationships, events, findings and evidence into the workspace (`raf.bundle.import/v1`) | `raf bundle import inc.raf` |
 
-Configuration precedence: defaults < global `config.toml` < workspace `config.toml` < `RAF_*`
-environment variables. The keys are listed by `raf config keys`.
+#### Configuration
+
+Precedence: defaults < global `config.toml` < workspace `config.toml` (of `-w NAME` or the current
+workspace) < `RAF_*` environment variables < command-line flags. The keys are listed by
+`raf config keys`. Keys that change how `raf` itself behaves:
+
+| Key (default) | Effect |
+|---|---|
+| `core.log_level` (`WARNING`) | minimum level of the console log on stderr (`DEBUG`, `INFO`, `WARNING`, `ERROR`); read when `raf` starts, so it applies to the whole command; `--debug` shows everything |
+| `core.log_file` (`true`) | write structured JSON logs (INFO and above) to `RAF_HOME/logs/raf.log`; `false` writes no log file, and internal errors then are not logged anywhere (run with `--debug`) |
+| `core.color` (`true`) | colors in terminal output (`--no-color` and `NO_COLOR` also turn them off) |
+| `core.confirm_destructive` (`true`) | ask before destructive operations; `false` confirms them as `--yes` does, also without a terminal |
+| `range.default_seed` (`42`) | seed of `raf range create` (and `POST /range/ranges`) without `--seed`; see [Range](products/range.md) |
+| `evidence.max_item_mb` (`4096`) | largest evidence item; see [Evidence](products/evidence.md) |
+
+A configuration file `raf` cannot read, or an invalid value (also in a `RAF_*` variable), fails every
+command that opens a workspace with `raf.config` (exit 4); the logging settings then fall back to
+their defaults.
 
 ### Investigate
 
@@ -362,7 +408,7 @@ environment variables. The keys are listed by `raf config keys`.
 | `raf ghost simulate NAME\|current [--limit 10]` | exposure and attack paths inside a model (`raf.ghost.simulate/v1`) | `raf ghost simulate hardened` |
 | `raf ghost compare A B` | compare models, `current` or snapshots (`raf.ghost.compare/v1`) | `raf ghost compare current hardened` |
 | `raf ghost delete NAME` | delete a model and its unused base snapshot (`raf.ghost.delete/v1`) | `raf --yes ghost delete hardened` |
-| `raf range create NAME [--preset P] [--seed 42] [--config FILE] [--employees N] [--workstations N] [--servers N] [--departments A,B] [--services A,B] [--mfa-rate R] [--segmentation\|--no-segmentation] [--event-rate N] [--vulnerabilities N] [--start T]` | create a synthetic organization in the workspace (`raf.range.run/v1`); [Range](products/range.md) | `raf range create acme --seed 7 --employees 12` |
+| `raf range create NAME [--preset P] [--seed N] [--config FILE] [--employees N] [--workstations N] [--servers N] [--departments A,B] [--services A,B] [--mfa-rate R] [--segmentation\|--no-segmentation] [--event-rate N] [--vulnerabilities N] [--start T]` | create a synthetic organization in the workspace; without `--seed` the `range.default_seed` setting (42) (`raf.range.run/v1`); commands that take `NAME` also take `@range`; [Range](products/range.md) | `raf range create acme --seed 7 --employees 12` |
 | `raf range start\|tick NAME [--hours 24]` | generate routine activity for the next simulated period (`raf.range.run/v1`) | `raf range start acme --hours 4` |
 | `raf range stop NAME` / `reset NAME` / `destroy NAME` | stop generating; remove what the range wrote and recreate its inventory; remove it and forget the range (reset and destroy ask for confirmation) | `raf --yes range destroy acme` |
 | `raf range status [NAME]` / `list` / `presets` | ranges with live counts; presets (`raf.range.status/v1`, `raf.range.list/v1`, `raf.range.presets/v1`) | `raf range presets` |
@@ -395,7 +441,7 @@ they fail with exit 6.
 | `raf dependency sbom import FILE [--name N] [--no-check]` / `sbom export PROJECT -o FILE` | CycloneDX / SPDX import, CycloneDX 1.5 export (`raf.dependency.sbom.import/v1`, `raf.dependency.sbom.export/v1`) | `raf dependency sbom export shop -o shop.cdx.json` |
 | `raf dependency sample PATH [--upgraded]` | write the fictional raven-shop project (`raf.dependency.sample/v1`) | `raf dependency sample ./raven-shop` |
 | `raf evidence case create NAME [--title T] [-d TEXT] [--incident REF]` / `case list` / `case show NAME` | evidence cases (`raf.evidence.case/v1`, `raf.evidence.cases/v1`); [Evidence](products/evidence.md) | `raf evidence case create INC-042` |
-| `raf evidence import PATH --case NAME [--parse\|--no-parse] [--note TEXT] [--derived-from ITEM] [--synthetic]` | hash, store read-only, record custody, parse (`raf.evidence.import/v1`) | `raf evidence import fixtures/evidence/auth.log --case INC-042` |
+| `raf evidence import PATH --case NAME [--parse\|--no-parse] [--note TEXT] [--derived-from ITEM] [--synthetic]` | hash, store read-only, record custody, parse; files above `evidence.max_item_mb` are refused (`raf.evidence.import/v1`) | `raf evidence import fixtures/evidence/auth.log --case INC-042` |
 | `raf evidence list [--case NAME] [--object REF]` / `show ITEM` | items; one item with its chain of custody (`raf.evidence.list/v1`, `raf.evidence.item/v1`) | `raf evidence list --object DEV-01` |
 | `raf evidence verify [ITEM...] [--case NAME]` | re-hash stored copies and check custody chains; exit 5 on failure (`raf.evidence.verify/v1`) | `raf evidence verify --case INC-042` |
 | `raf evidence note ITEM TEXT` / `export ITEM -o PATH` | add a custody-recorded note; copy out a verified item (`raf.evidence.item/v1`, `raf.evidence.export/v1`) | `raf evidence export ev-0001 -o auth-copy.log` |

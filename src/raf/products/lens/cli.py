@@ -88,11 +88,13 @@ def render_lens(result: LensResult, limit: int) -> None:
   raf lens INC-001 --group-by actor
   raf lens --source raven-inc001.pcap       data from one imported capture
   raf lens ev-0005                          events parsed from one evidence item
-  raf lens alice --filter 'type=auth.* outcome=failure'""",
+  raf lens alice --filter 'type=auth.* outcome=failure'
+
+--filter, --source, --from and --to narrow the scope; they never widen it.""",
 )
 def lens_cmd(
     words: list[str] = typer.Argument(None, help="Scope: object, incident, analysis, evidence item or nothing."),
-    filter_text: str | None = typer.Option(None, "--filter", "-f", help="Filter expression (see raf help filters)."),
+    filter_text: str | None = typer.Option(None, "--filter", "-f", help="Filter expression (see raf help query)."),
     source: str | None = typer.Option(None, "--source", help="Only events whose source contains this text."),
     start: str | None = typer.Option(None, "--from"),
     end: str | None = typer.Option(None, "--to"),

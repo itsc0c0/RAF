@@ -36,40 +36,74 @@ confidence, source, metadata - with provenance for every observation.
 Types:
   {types}
 
-Custom UPPER_SNAKE_CASE types are allowed for plugins. Traversal semantics used
-by Blast / IAM / Trace are documented in docs/object-model.md.
+Custom UPPER_SNAKE_CASE types are allowed for plugins.
+
+Blast, IAM, Exposure, Ghost and Oracle propagate access and reach over these
+relationships with the traversal semantics of docs/object-model.md. Graph shows
+relationships as stored. Trace does not traverse relationships: it follows
+events - observed links taken from one event (the actor of a login, a parent
+process, the process that wrote a file) and correlations labeled as such
+(consistent in time and structure, never proven causation).
 """
 
 _QUERY = """\
-R$F QUERY FILTERS (raf lens, raf timeline --filter, API ?q=)
+R$F FILTER LANGUAGE (raf lens --filter, raf timeline --filter, API parameter filter=)
 
-  type:auth.login          event type (prefix with type:auth.* or type:auth)
+  type:auth.login          event type; type:auth.* or type:auth: auth and every auth.<action>
   category:network         event category
-  actor:alice              actor name or ID
-  target:WS-01             target name or ID
-  object:host:ws-01        involved in any role
-  severity>=medium         minimum severity
-  outcome:failure          outcome
-  source:auth.log          data source (substring)
-  after:2026-10-07T09:00Z  time window start (also before:)
-  "free text"              searched in messages and raw records
+  actor:alice              actor (name, ID, alias or @reference)
+  target:WS-01             target
+  object:host:ws-01        involves this object in any role
+  outcome:failure          outcome (success, failure, unknown, or as imported)
+  source:auth.log          source name contains this text
+  severity>=medium         at or above (severity:/severity= too; severity>high is critical)
+  time>=2026-10-07T09:00Z  time bounds: time>=, time>, time<=, time< (full timestamps)
+  after:T  before:T        same as time>=T and time<=T
+  incident:INC-001         linked to this incident
+  job:job-4                imported by this job
+  synthetic:true           synthetic data (true/false)
+  failed  "failed login"   free text: one word or one quoted phrase, searched
+                           (case-insensitive) in messages, event types, actor and
+                           target IDs and raw records
 
-Terms combine with AND. Values are parameters - never interpolated into SQL.
+Terms combine with AND and narrow the command's scope (object, incident,
+analysis, job) and options (--from/--to, --type, --source ...); they never widen
+them. The stricter time bound wins. A combination the event store cannot select
+is rejected with an explanation (for example object: on a scope that is already
+another object: use actor: or target: there).
+Repeated type:, category:, object: and job: terms are alternatives (OR).
+key:value and key=value are the same; an unknown key is an error. A quoted token
+is always free text: quote text that contains ':' or '='.
+Only severity and time compare (severity takes >= and >).
+Values are bound as parameters - never interpolated into SQL.
 """
 
 _REFS = """\
 CONTEXT REFERENCES
 
-  @last       most recent result the command can accept
-              (raf analyze capture.pcap; raf graph @last)
-  @incident   most recently used incident
-  @analysis   most recent analysis
-  @object     most recently inspected object
-  @snapshot   most recent snapshot
-  @job        most recent job
-  @workspace  current workspace name
+Commands remember what they produced or showed (per workspace, the last 30);
+later commands refer to it with @ tokens:
 
-References are remembered per workspace. @selection exists only in the web UI.
+  @last       the most recent entity of a kind the command accepts
+              (raf analyze capture.pcap; raf graph @last)
+  @object     most recent object: raf show, scopes (graph, timeline, lens ...),
+              trace, blast, iam show, exposure show, evidence import ...
+  @incident   most recent incident: incident scopes, raf import, raf demo load
+  @analysis   most recent analysis: raf analyze, analysis scopes
+  @snapshot   most recent snapshot: raf snapshot create (raf diff accepts it)
+  @job        most recent job: raf import, raf job show, forge, surface import
+  @case       most recent evidence case: raf evidence case create, evidence
+              import (where an object is expected: the case's incident)
+  @lab        most recent lab: raf lab create, start, exec, shell (lab commands
+              accept it)
+  @range      most recent range: raf range create, status, start, tick, stop,
+              reset (range commands accept it)
+  @ghost      most recent Ghost model: raf ghost create, clone, modify, show
+              (remembered only: Ghost commands take model names)
+  @workspace  the current workspace name
+
+A command accepts only the kinds that make sense for it: raf show @lab is an
+error. @selection exists only in the web UI.
 """
 
 _EXIT_CODES = """\
@@ -102,8 +136,11 @@ A plugin is a directory with raf-plugin.yaml and Python code:
   raf plugin trust example-product   # records SHA-256 of its files, enables it
   raf plugin verify example-product  # detects later modification
 
-Plugins run in-process: trust is the security boundary. Permissions are
-enforced by the SDK facade (raf.sdk.PluginContext). See docs/plugin-development.md.
+A plugin is ordinary Python code that runs inside R$F with your privileges:
+review it before you trust it. Trust is the security boundary - it records the
+SHA-256 of the reviewed files, and modified files are detected. Declared
+permissions are informational (shown by raf plugin list and when trusting);
+they are not enforced. See docs/plugin-development.md.
 """
 
 HELP_TOPICS: dict[str, str] = {
@@ -116,6 +153,7 @@ HELP_TOPICS: dict[str, str] = {
         )
     ),
     "query": _QUERY,
+    "filters": _QUERY,  # alias of "query"
     "refs": _REFS,
     "exit-codes": _EXIT_CODES,
     "plugins": _PLUGINS,

@@ -27,7 +27,9 @@ app = typer.Typer(
   raf range create acme --employees 50      a generic organization (presets: acme, small-office, enterprise)
   raf range start raven [--hours 24]        generate routine activity in simulated time
   raf range tick raven --hours 8            advance a running range
-  raf range status raven | stop | reset | destroy""",
+  raf range status raven | stop | reset | destroy
+
+Commands that take NAME also accept @range (the range created or used last).""",
 )
 
 _STATUS_STYLE = {"running": "bold green", "created": "cyan", "stopped": "yellow"}
@@ -99,7 +101,9 @@ def _overrides(
 def create_cmd(
     name: str = typer.Argument(..., help="Range name; a preset name (raven, acme ...) selects that preset."),
     preset: str | None = typer.Option(None, "--preset", help="raven, acme, small-office or enterprise."),
-    seed: int = typer.Option(42, "--seed", help="Deterministic seed."),
+    seed: int | None = typer.Option(
+        None, "--seed", help="Deterministic seed (default: the range.default_seed setting, 42)."
+    ),
     config: Path | None = typer.Option(None, "--config", help="YAML/JSON file with organization settings."),
     employees: int | None = typer.Option(None, "--employees"),
     workstations: int | None = typer.Option(None, "--workstations"),
@@ -122,6 +126,7 @@ def create_cmd(
     run = RangeService(ctx).create(
         name, preset=preset, seed=seed, config=settings or None, start=rt.parse_time_option(start)
     )
+    ctx.refs.remember("range", run.state.name)
 
     def render() -> None:
         render_run(run, f"Range '{run.state.name}' created ({run.state.preset}, seed {run.state.seed}).")
@@ -134,6 +139,7 @@ def create_cmd(
 def start_cmd(name: str = typer.Argument(...), hours: float = typer.Option(24.0, "--hours")) -> None:
     ctx = rt.ctx()
     run = RangeService(ctx).start(name, hours=hours)
+    ctx.refs.remember("range", run.state.name)
 
     def render() -> None:
         render_run(run, f"Range '{run.state.name}' is running.")
@@ -148,6 +154,7 @@ def start_cmd(name: str = typer.Argument(...), hours: float = typer.Option(24.0,
 def tick_cmd(name: str = typer.Argument(...), hours: float = typer.Option(24.0, "--hours")) -> None:
     ctx = rt.ctx()
     run = RangeService(ctx).tick(name, hours=hours)
+    ctx.refs.remember("range", run.state.name)
     rt.output("raf.range.run/v1", run.to_json_dict(), lambda: render_run(run, f"Range '{run.state.name}' advanced."))
 
 
@@ -155,6 +162,7 @@ def tick_cmd(name: str = typer.Argument(...), hours: float = typer.Option(24.0, 
 def stop_cmd(name: str = typer.Argument(...)) -> None:
     ctx = rt.ctx()
     state = RangeService(ctx).stop(name)
+    ctx.refs.remember("range", state.name)
 
     def render() -> None:
         rt.success(f"Range '{state.name}' stopped at simulated time {rt.ts_text(state.clock)}.")
@@ -172,6 +180,7 @@ def reset_cmd(name: str = typer.Argument(...)) -> None:
         [f"Data from {len(state.jobs)} range job(s) will be removed and the inventory recreated."],
     )
     run = service.reset(state.name)
+    ctx.refs.remember("range", run.state.name)
     rt.output("raf.range.run/v1", run.to_json_dict(), lambda: render_run(run, f"Range '{run.state.name}' reset."))
 
 
@@ -219,6 +228,7 @@ def status_cmd(name: str | None = typer.Argument(None)) -> None:
         rt.output("raf.range.list/v1", {"items": [r.to_json_dict() for r in ranges]}, render_all)
         return
     data = service.status(name)
+    ctx.refs.remember("range", str(data["state"]["name"]))
 
     def render() -> None:
         state = RangeState.model_validate(data["state"])

@@ -17,7 +17,7 @@ router = APIRouter()
 class CreateRange(BaseModel):
     name: str = Field(..., max_length=41)
     preset: str | None = Field(None, max_length=40)
-    seed: int = Field(42, ge=0, le=2**31)
+    seed: int | None = Field(None, ge=0, le=2**31, description="Default: the range.default_seed setting.")
     config: dict[str, Any] = Field(default_factory=dict)
     start: str | None = Field(None, max_length=40)
 

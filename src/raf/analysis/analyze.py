@@ -21,6 +21,8 @@ and can be skipped (``correlate=False``). Steps whose product is disabled are re
 from __future__ import annotations
 
 import importlib
+import re
+import shlex
 import time
 import zipfile
 from collections import Counter
@@ -617,20 +619,23 @@ def _pipeline_bundle(run: _Run, path: Path, det: Detection) -> None:
 
 
 def _suggestions(run: _Run, det: Detection, path: Path) -> list[str]:
+    # Paths and names come from the input: quoted, so a suggestion stays one safe command line.
     out = [f"raf lens {run.id}", f"raf graph {run.id}", f"raf timeline {run.id}"]
     if det.kind == "pcap":
-        out.append(f"raf protocol inspect {path}")
+        out.append(f"raf protocol inspect {shlex.quote(str(path))}")
     for incident in run.incidents[:1]:
         name = incident.split(":", 1)[1].upper()
-        out += [f"raf replay {name}", f'raf oracle ask "Explain the most important security path in {name}"']
+        question = f"Explain the most important security path in {name}"
+        asked = f'"{question}"' if re.fullmatch(r"[\w.-]+", name) else shlex.quote(question)
+        out += [f"raf replay {shlex.quote(name)}", f"raf oracle ask {asked}"]
     if det.kind in ("repository", "manifest", "sbom"):
         out += ["raf dependency vulnerable"]
     if det.kind == "repository":
         out.append("raf vault findings")
     if run.stats.get("exposed_assets"):
-        out.append(f"raf exposure show {run.stats['exposed_assets'][0]}")
+        out.append(f"raf exposure show {shlex.quote(str(run.stats['exposed_assets'][0]))}")
     if run.stats.get("findings"):
-        out.append("raf finding list --severity HIGH")
+        out.append("raf findings --severity high")
     return out
 
 

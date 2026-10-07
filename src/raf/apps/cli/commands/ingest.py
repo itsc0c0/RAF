@@ -14,7 +14,7 @@ from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.text import Text
 
 from raf.analysis.ingest import import_path
-from raf.core.errors import InvalidInputError, NotFoundError
+from raf.core.errors import IngestionError, InvalidInputError, NotFoundError
 from raf.core.ingestion.pipeline import IngestOptions, IngestReport
 from raf.sdk import cli as rt
 
@@ -45,10 +45,18 @@ def progress_bar(description: str) -> Iterator[Callable[[float, str | None], Non
         yield update
 
 
+def format_label(report: IngestReport) -> str:
+    """``jsonl (jsonl/1.0, raf-native)`` for a file; ``directory (syslog, jsonl)`` with the formats of its files."""
+    if report.parser:
+        return f"{report.format} ({report.parser}{', ' + report.normalizer if report.normalizer else ''})"
+    formats = list(dict.fromkeys(str(f["format"]) for f in report.files if f.get("format")))
+    return f"{report.format or '-'}" + (f" ({', '.join(formats)})" if formats else "")
+
+
 def render_report(report: IngestReport, job_id: str | None, title: str = "R$F IMPORT") -> None:
     rt.header(f"{title}  {report.source}")
     rows: list[tuple[str, Any]] = [
-        ("Format", f"{report.format} ({report.parser}{', ' + report.normalizer if report.normalizer else ''})"),
+        ("Format", format_label(report)),
         ("Processed", f"{report.processed:,}"),
         ("Accepted", f"{report.accepted:,}"),
         ("Rejected", Text(f"{report.rejected:,}", style="yellow" if report.rejected else "")),
@@ -134,15 +142,14 @@ def register(app: typer.Typer) -> None:
         with progress_bar(f"Importing {target.name}") as on_progress:
             job, report = import_path(ctx, target, options, on_progress=on_progress)
         if report is None:
-            rt.output("raf.import/v1", {"job": job.model_dump(mode="json")}, lambda: None)
+            # One document, as for every failure: the error, with the failed job (and its own error) in details.
             error = job.error or {}
-            from raf.core.errors import IngestionError
-
             raise IngestionError(
                 str(error.get("message", "Import failed.")),
                 reason=error.get("reason"),
                 hint=error.get("hint"),
                 suggestions=[f"raf job show {job.id}"],
+                details={"job": job.model_dump(mode="json")},
             )
         data = report.to_json_dict() | {"job_id": job.id}
 

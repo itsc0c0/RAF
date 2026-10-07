@@ -1,7 +1,7 @@
 """Structured logging for R$F itself.
 
-* Console: concise human output on stderr (WARNING+ unless ``--debug``).
-* File: JSON lines in ``RAF_HOME/logs/raf.log`` (rotating), INFO+.
+* Console: concise human output on stderr at ``core.log_level`` (WARNING by default; DEBUG with ``--debug``).
+* File: JSON lines in ``RAF_HOME/logs/raf.log`` (rotating), INFO+; off with ``core.log_file = false``.
 * Every record passes a redaction filter so secrets never reach logs.
 """
 
@@ -75,14 +75,22 @@ class ConsoleFormatter(logging.Formatter):
 
 
 _configured = False
+_log_file: Path | None = None
+
+
+def log_file() -> Path | None:
+    """The JSON log file being written, or None (no ``log_dir`` was given, or it could not be opened)."""
+    return _log_file
 
 
 def configure_logging(level: str = "WARNING", *, log_dir: Path | None = None, debug: bool = False) -> None:
-    """Configure the ``raf`` logger hierarchy (idempotent)."""
-    global _configured
+    """Configure the ``raf`` logger hierarchy (idempotent); without ``log_dir`` nothing is written to a file."""
+    global _configured, _log_file
+    _log_file = None
     root = logging.getLogger("raf")
     for handler in list(root.handlers):
         root.removeHandler(handler)
+        handler.close()
     root.setLevel(logging.DEBUG)
     root.propagate = False
     console = logging.StreamHandler()
@@ -101,6 +109,7 @@ def configure_logging(level: str = "WARNING", *, log_dir: Path | None = None, de
             file_handler.setFormatter(JsonFormatter())
             file_handler.addFilter(RedactingFilter())
             root.addHandler(file_handler)
+            _log_file = log_dir / "raf.log"
         except OSError:
             root.warning("could not open log file in %s", log_dir)
     _configured = True

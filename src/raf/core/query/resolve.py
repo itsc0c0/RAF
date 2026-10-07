@@ -2,10 +2,11 @@
 
 Accepted forms: full IDs (``host:ws-04``), type-qualified names (via the
 ``types`` argument), bare names or aliases (``alice``, ``WS-04``,
-``production``), human IDs (``analysis-3``, ``job-12``), and context tokens
-(``@last``). When a bare name matches several objects of different types, a
-documented type priority decides and the caller receives a note naming the
-alternatives; same-type ambiguity is an error listing the candidates.
+``production``), human IDs (``analysis-3``, ``job-12``), evidence item IDs
+(``ev-0005`` for ``evidence:ev-0005``), and context tokens (``@last``). When a
+bare name matches several objects of different types, a documented type
+priority decides and the caller receives a note naming the alternatives;
+same-type ambiguity is an error listing the candidates.
 """
 
 from __future__ import annotations
@@ -57,6 +58,7 @@ TYPE_PRIORITY: tuple[str, ...] = (
     "evidence",
 )
 _HUMAN_ID_RE = re.compile(r"^(analysis|job)-\d+$")
+_EVIDENCE_ITEM_RE = re.compile(r"^ev-\d+$", re.IGNORECASE)
 
 
 @dataclass(slots=True)
@@ -129,6 +131,12 @@ class Resolver:
             # fall through: maybe a name containing ':' (e.g. "svc:deploy")
 
         candidates = self.store.objects.find_by_name(text, types)
+        if _EVIDENCE_ITEM_RE.match(text) and (types is None or ObjectType.EVIDENCE in types):
+            # An evidence item ID names its graph object; an object that is also *named* like it competes
+            # through the type priority below (evidence comes last) and the note names the alternative.
+            item = self.store.objects.get(f"{ObjectType.EVIDENCE}:{text.lower()}")
+            if item is not None and all(c.id != item.id for c in candidates):
+                candidates.append(item)
         if not candidates and types:
             for otype in types:
                 try:

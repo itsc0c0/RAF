@@ -4,7 +4,9 @@ Semantics (kept deliberately predictable):
 
 * Commands that produce or operate on an entity *remember* it under a kind
   (object, incident, analysis, snapshot, job, case, ghost, range, lab).
-* ``@<kind>`` resolves to the most recently remembered entity of that kind.
+* ``@<kind>`` resolves to the most recently remembered entity of that kind,
+  when the consuming command accepts that kind (``raf show @lab`` is an error,
+  never a lab name looked up as an object).
 * ``@last`` resolves to the most recently remembered entity whose kind the
   consuming command accepts (``raf graph @last`` accepts objects, incidents and
   analyses; ``raf diff`` accepts snapshots).
@@ -23,6 +25,7 @@ from raf.core.storage.repos.misc import KVRepository
 from raf.core.timeutil import format_ts, utcnow
 
 KINDS = ("object", "incident", "analysis", "snapshot", "job", "case", "ghost", "range", "lab")
+_LABELS = {"case": "evidence case", "ghost": "Ghost model"}
 _NAMESPACE = "cli.context"
 _HISTORY_LIMIT = 30
 
@@ -69,6 +72,13 @@ class ContextRefs:
         if name not in KINDS:
             raise InvalidInputError(
                 f"Unknown context reference '{token}'.", hint="Use @last, @workspace or @" + ", @".join(KINDS) + "."
+            )
+        if name not in accept:
+            label = _LABELS.get(name, name)
+            article = "an" if label[0] in "aeiou" else "a"
+            raise InvalidInputError(
+                f"{token} refers to {article} {label}, which this command does not accept.",
+                hint="Use @last or @" + ", @".join(k for k in KINDS if k in accept) + ".",
             )
         for entry in history:
             if entry.get("kind") == name:

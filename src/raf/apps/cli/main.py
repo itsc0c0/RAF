@@ -5,11 +5,13 @@ Every security capability. One command away.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
 import traceback
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any, TextIO, cast
 
 import typer
 from rich.text import Text
@@ -21,7 +23,7 @@ from raf.apps.cli.commands import workspace as workspace_cmds
 from raf.apps.cli.registry import RafGroup
 from raf.core.context.app import RafContext, open_context
 from raf.core.errors import RafError
-from raf.core.logging import configure_logging
+from raf.core.logging import configure_logging, log_file
 from raf.core.workspace.manager import RafHome
 from raf.sdk import cli as rt
 
@@ -163,7 +165,7 @@ def render_error(error: RafError) -> None:
 
 
 def render_internal(exc: BaseException) -> None:
-    log_path = RafHome.from_env().logs_dir / "raf.log"
+    log_path = log_file()
     logging.getLogger("raf.cli").error("internal error", exc_info=exc, extra={"file_only": True})
     if rt.STATE.json:
         rt.emit_json(
@@ -184,7 +186,61 @@ def render_internal(exc: BaseException) -> None:
     if rt.STATE.debug:
         c.print(Text(traceback.format_exc(), style="dim"))
     else:
-        c.print(Text(f"Run again with --debug for the full traceback (also logged to {log_path}).", style="dim"))
+        logged = f" (also logged to {log_path})" if log_path is not None else ""
+        c.print(Text(f"Run again with --debug for the full traceback{logged}.", style="dim"))
+
+
+class OutputClosed(OSError):
+    """The reader of stdout went away (``raf ... | head``): stop quietly, it is not an error.
+
+    Deliberately not a BrokenPipeError and without an errno: Click (``EPIPE``) and Rich (``BrokenPipeError``)
+    would turn it into exit status 1. Being an OSError, logging still swallows it like any write error.
+    """
+
+
+class _PipeGuard:
+    """``sys.stdout`` / ``sys.stderr`` during one ``raf`` run.
+
+    When a write or flush fails because the reading end of a pipe was closed, the stream's file descriptor
+    is redirected to the null device, so nothing can fail again (the flush at interpreter exit included).
+    On stdout the command then stops: :class:`OutputClosed` is raised and :func:`run` exits with status 0.
+    On stderr only the diagnostics are lost and the command goes on. Everything else is delegated.
+    SIGPIPE handling is left alone: the API server runs in the same code base.
+    """
+
+    def __init__(self, stream: TextIO, *, stop: bool) -> None:
+        self._stream = stream
+        self._stop = stop
+
+    def write(self, text: str) -> int:
+        try:
+            return self._stream.write(text)
+        except BrokenPipeError as exc:
+            self._closed(exc)
+            return len(text)
+
+    def writelines(self, lines: Iterable[str]) -> None:
+        for line in lines:
+            self.write(line)
+
+    def flush(self) -> None:
+        try:
+            self._stream.flush()
+        except BrokenPipeError as exc:
+            self._closed(exc)
+
+    def _closed(self, exc: BrokenPipeError) -> None:
+        with contextlib.suppress(OSError, ValueError):  # no file descriptor (io.UnsupportedOperation is both)
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            try:
+                os.dup2(devnull, self._stream.fileno())
+            finally:
+                os.close(devnull)
+        if self._stop:
+            raise OutputClosed("output closed") from exc
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._stream, name)
 
 
 def dispatch(args: Sequence[str]) -> int:
@@ -193,30 +249,64 @@ def dispatch(args: Sequence[str]) -> int:
         # Without standalone mode Click *returns* the code of a ``typer.Exit(n)`` raised by a command.
         result = command.main(args=list(args), prog_name="raf", standalone_mode=False)
         return result if isinstance(result, int) and not isinstance(result, bool) else 0
+    except OutputClosed:
+        return 0
     except Exit as exc:
         return int(exc.exit_code)
     except Abort:
-        rt.err_console().print("Aborted.")
+        with contextlib.suppress(OutputClosed):
+            rt.err_console().print("Aborted.")
         return 130
     except ClickException as exc:
-        if rt.STATE.json:
-            rt.emit_json("raf.error/v1", {"error": {"code": "raf.usage", "message": exc.format_message()}})
-        else:
-            from typer import rich_utils
+        with contextlib.suppress(OutputClosed):  # the reader went away: the exit status still tells
+            if rt.STATE.json:
+                rt.emit_json("raf.error/v1", {"error": {"code": "raf.usage", "message": exc.format_message()}})
+            else:
+                from typer import rich_utils
 
-            rich_utils.rich_format_error(exc)
+                rich_utils.rich_format_error(exc)
         return int(exc.exit_code)
     except RafError as exc:
-        render_error(exc)
+        with contextlib.suppress(OutputClosed):
+            render_error(exc)
         return exc.exit_code
     except KeyboardInterrupt:
-        rt.err_console().print("Interrupted.")
+        with contextlib.suppress(OutputClosed):
+            rt.err_console().print("Interrupted.")
         return 130
     except Exception as exc:  # noqa: BLE001 - top-level boundary renders, never dumps raw traces
-        render_internal(exc)
+        with contextlib.suppress(OutputClosed):
+            render_internal(exc)
         return 1
     finally:
         rt.close_ctx()
+
+
+def _log_settings() -> tuple[str, bool]:
+    """``core.log_level`` and ``core.log_file``: defaults < global < workspace config < ``RAF_CORE_*``.
+
+    Read before logging exists, quietly: an unreadable or invalid configuration means the defaults here, and
+    the command reports the problem (and any warning about the files) when it opens its workspace.
+    """
+    logging.disable(logging.CRITICAL)
+    try:
+        settings = rt.settings()
+        return str(settings.get("core.log_level")), bool(settings.get("core.log_file"))
+    except RafError:
+        return "WARNING", True
+    finally:
+        logging.disable(logging.NOTSET)
+
+
+def _command(rest: list[str]) -> int:
+    if not rest:
+        if sys.stdin.isatty() and sys.stdout.isatty() and not rt.STATE.json:
+            from raf.apps.cli.shell import run_shell
+
+            run_shell(dispatch)
+            return 0
+        rest = ["status"]
+    return dispatch(rest)
 
 
 def run(argv: Sequence[str] | None = None) -> None:
@@ -224,17 +314,22 @@ def run(argv: Sequence[str] | None = None) -> None:
     rt.reset_state()
     rest = extract_global_flags(raw)
     rt.STATE.argv = raw
-    level = os.environ.get("RAF_CORE_LOG_LEVEL", "WARNING")
+    level, write_log_file = _log_settings()
     home = RafHome.from_env()
-    configure_logging(level, log_dir=home.logs_dir, debug=rt.STATE.debug)
-    if not rest:
-        if sys.stdin.isatty() and sys.stdout.isatty() and not rt.STATE.json:
-            from raf.apps.cli.shell import run_shell
-
-            run_shell(dispatch)
-            sys.exit(0)
-        rest = ["status"]
-    code = dispatch(rest)
+    configure_logging(level, log_dir=home.logs_dir if write_log_file else None, debug=rt.STATE.debug)
+    stdout, stderr = sys.stdout, sys.stderr
+    if stdout is not None:  # None when Python started without the stream (`raf ... >&-`)
+        sys.stdout = cast(TextIO, _PipeGuard(stdout, stop=True))
+    if stderr is not None:
+        sys.stderr = cast(TextIO, _PipeGuard(stderr, stop=False))
+    try:
+        code = _command(rest)
+        if sys.stdout is not None:
+            sys.stdout.flush()  # a reader that went away shows up here, not at interpreter exit
+    except OutputClosed:
+        code = 0  # like ripgrep: `raf ... | head` is not a failure
+    finally:
+        sys.stdout, sys.stderr = stdout, stderr
     sys.exit(code)
 
 

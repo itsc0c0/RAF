@@ -27,6 +27,13 @@ Options for generic organizations: `--employees`, `--workstations`, `--servers`,
 `--services dns,web,...`, `--mfa-rate 0.8`, `--segmentation/--no-segmentation`, `--event-rate`,
 `--vulnerabilities`, `--start` (simulated start, default `2026-10-05T00:00Z`).
 
+Without `--seed` (or `seed` in `POST /range/ranges`), `raf range create` uses the
+`range.default_seed` setting (42 unless configured: `raf config set range.default_seed 7`); the seed
+must be between 0 and 2^31. The seed is stored with the range, so `reset` regenerates the same data.
+
+`create`, `status NAME`, `start`, `tick`, `stop` and `reset` remember the range as `@range`, and
+every command that takes `NAME` also takes `@range` (or `@last`): `raf range tick @range --hours 8`.
+
 ## Presets
 
 | Preset | Organization |

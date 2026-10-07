@@ -22,11 +22,13 @@ from rich.segment import Segment
 from rich.table import Table
 from rich.text import Text
 
+from raf.core.config.loader import Settings, load_settings
 from raf.core.context.app import RafContext, open_context
 from raf.core.errors import ConfirmationRequired
 from raf.core.objects.types import Severity, confidence_level
 from raf.core.security.text import terminal_safe
 from raf.core.timeutil import format_ts
+from raf.core.workspace.manager import RafHome, Workspace, WorkspaceManager, validate_workspace_name
 
 
 @dataclass
@@ -120,6 +122,19 @@ def close_ctx() -> None:
     if STATE._ctx is not None:
         STATE._ctx.close()
         STATE._ctx = None
+
+
+def settings() -> Settings:
+    """This invocation's configuration: the open context's, else read without opening the workspace database.
+
+    Layers as everywhere: defaults < global config < workspace config (``--workspace`` or the current one) <
+    ``RAF_<SECTION>_<KEY>`` environment variables.
+    """
+    if STATE._ctx is not None:
+        return STATE._ctx.settings
+    home = RafHome.from_env()
+    name = validate_workspace_name(STATE.workspace or WorkspaceManager(home).current_name())
+    return load_settings(home.config_path, Workspace(name, home.workspaces_dir / name).config_path)
 
 
 # --------------------------------------------------------------------------- JSON output
@@ -243,8 +258,8 @@ def success(message: str) -> None:
 
 
 def confirm(prompt: str, details: Sequence[str] = ()) -> None:
-    """Require confirmation for destructive operations (``--yes`` skips)."""
-    if STATE.yes:
+    """Require confirmation for destructive operations (``--yes`` or ``core.confirm_destructive = false`` skip it)."""
+    if STATE.yes or not settings().get("core.confirm_destructive"):
         return
     c = err_console()
     c.print(Text(prompt, style="bold yellow"))

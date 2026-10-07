@@ -55,8 +55,14 @@ links any incident explicitly.
 * **Incident linking is bounded by time.** Parsed events are linked to the case's incident only when
   they fall inside the incident window (`start`..`end`); context lines from the same file stay
   unlinked.
-* Symbolic links are not followed; file size is limited by `ingest.max_file_mb`; at most 10,000 files
-  per import. Files without a parser (free-text notes, binaries) are stored and hashed but not parsed.
+* Symbolic links are not followed; at most 10,000 files per import. Files without a parser
+  (free-text notes, binaries) are stored and hashed but not parsed.
+* **Item size limit.** A file larger than `evidence.max_item_mb` (default 4096 MB;
+  `raf config set evidence.max_item_mb 8192`) is never stored. Importing such a file fails with
+  `raf.resource_limit` (exit 5): *"big.bin is 5,000,000,000 bytes, larger than the evidence item
+  limit of 4,096 MB (evidence.max_item_mb)."*; in a directory import it is skipped with that reason
+  (listed under `skipped`, a warning on the terminal) and the other files are imported. Parsing is
+  bounded like any import (`ingest.max_file_mb`): a stored item above that limit stays `unparsed`.
 * Export refuses items that fail verification and never overwrites an existing file.
 
 ## API
@@ -66,7 +72,7 @@ links any incident explicitly.
 | GET | `/evidence/cases` | `{items: [case + item_count]}` |
 | POST | `/evidence/cases` `{name, title?, description?, incident?}` | the case |
 | GET | `/evidence/cases/{case}` | case + `items` |
-| POST | `/evidence/cases/{case}/items` (multipart `file`, `note?`, `parse?`) | import one uploaded artifact (size-limited by `api.max_upload_mb`) |
+| POST | `/evidence/cases/{case}/items` (multipart `file`, `note?`, `parse?`) | import one uploaded artifact (size-limited by `api.max_upload_mb` and `evidence.max_item_mb`) |
 | POST | `/evidence/cases/{case}/verify` `{items?}` | `{verified, items: [{id, name, ok, expected, actual, reason, custody_ok}]}` |
 | GET | `/evidence/items?case=` · `/evidence/items/{id}` | items with custody chains |
 | POST | `/evidence/items/{id}/notes` `{text}` | add a note |

@@ -22,7 +22,7 @@ from typing import Any
 
 from pydantic import Field
 
-from raf.core.errors import IntegrityError, InvalidInputError
+from raf.core.errors import IntegrityError, InvalidInputError, ResourceLimitExceeded
 from raf.core.objects.models import RafModel
 from raf.core.timeutil import utcnow
 
@@ -102,6 +102,15 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
+def item_too_large(name: str, size: int, max_bytes: int) -> ResourceLimitExceeded:
+    """The error for an artifact above ``evidence.max_item_mb``."""
+    limit = max_bytes // (1024 * 1024)
+    return ResourceLimitExceeded(
+        f"{name} is {size:,} bytes, larger than the evidence item limit of {limit:,} MB (evidence.max_item_mb).",
+        hint="If the artifact is expected, raise the limit: raf config set evidence.max_item_mb <MB>",
+    )
+
+
 class StoredFile(RafModel):
     sha256: str
     size: int
@@ -120,14 +129,15 @@ class EvidenceStore:
         return candidate
 
     def put(self, source: Path, *, max_bytes: int) -> StoredFile:
-        """Copy ``source`` into the store (hashing while copying); the original is only read."""
+        """Copy ``source`` into the store (hashing while copying); the original is only read.
+
+        A file larger than ``max_bytes`` (``evidence.max_item_mb``) raises :class:`ResourceLimitExceeded`.
+        """
         info = source.stat()
         if not stat.S_ISREG(info.st_mode):
             raise InvalidInputError(f"{source} is not a regular file.")
         if info.st_size > max_bytes:
-            raise InvalidInputError(
-                f"{source.name} is {info.st_size:,} bytes; the limit is {max_bytes:,} (ingest.max_file_mb)."
-            )
+            raise item_too_large(source.name, info.st_size, max_bytes)
         self.root.mkdir(parents=True, exist_ok=True)
         suffix = source.suffix.lower() if _EXT_RE.match(source.suffix.lower()) else ""
         digest = hashlib.sha256()
@@ -139,7 +149,7 @@ class EvidenceStore:
                 for block in iter(lambda: src.read(CHUNK), b""):
                     size += len(block)
                     if size > max_bytes:
-                        raise InvalidInputError(f"{source.name} grew beyond the size limit while being copied.")
+                        raise item_too_large(source.name, size, max_bytes)  # it grew while being copied
                     digest.update(block)
                     out.write(block)
             sha = digest.hexdigest()

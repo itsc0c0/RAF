@@ -7,6 +7,7 @@ useful with all AI features disabled.
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable
 from contextvars import ContextVar
 
@@ -297,11 +298,13 @@ def suggestions(r: Retrieval, namer: Namer) -> list[str]:
 
     def q(ref: str) -> str:
         name = namer(ref)
-        return name if name.replace("-", "").replace("_", "").replace(".", "").isalnum() else ref
+        # IDs can hold shell syntax (process:dev-01|20903) or spaces: quoted, a suggestion stays one command.
+        return name if name.replace("-", "").replace("_", "").replace(".", "").isalnum() else shlex.quote(ref)
 
     out: list[str] = []
     if r.incident:
-        out += [f"raf timeline {r.incident['name']}", f"raf lens {r.incident['name']} --group-by actor"]
+        incident = shlex.quote(str(r.incident["name"]))
+        out += [f"raf timeline {incident}", f"raf lens {incident} --group-by actor"]
     for path in r.paths[:1]:
         out += [f"raf blast {q(path.subject)}", f"raf graph path {q(path.subject)} {q(path.target)}"]
         credential = next(
@@ -324,5 +327,5 @@ def suggestions(r: Retrieval, namer: Namer) -> list[str]:
     if r.findings:
         out.append(f"raf finding show {r.findings[0].id}")
     if r.intent == "overview":
-        out += ["raf finding list --severity HIGH", "raf exposure"]
+        out += ["raf findings --severity high", "raf exposure"]
     return list(dict.fromkeys(out))[:8]

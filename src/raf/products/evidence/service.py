@@ -19,7 +19,14 @@ from typing import Any
 from pydantic import Field, computed_field
 
 from raf.core.context.app import RafContext
-from raf.core.errors import ConflictError, IngestionError, InvalidInputError, NotFoundError, RafError
+from raf.core.errors import (
+    ConflictError,
+    IngestionError,
+    InvalidInputError,
+    NotFoundError,
+    RafError,
+    ResourceLimitExceeded,
+)
 from raf.core.ingestion.pipeline import IngestionPipeline, IngestOptions, IngestReport
 from raf.core.ingestion.products import build_parser_registry
 from raf.core.jobs.manager import JobContext
@@ -27,7 +34,14 @@ from raf.core.objects.models import RafModel
 from raf.core.security.files import read_head
 from raf.core.storage.repos.events import EventQuery
 from raf.core.timeutil import utcnow
-from raf.products.evidence.store import CustodyEntry, EvidenceStore, actor_name, append_custody, verify_custody
+from raf.products.evidence.store import (
+    CustodyEntry,
+    EvidenceStore,
+    actor_name,
+    append_custody,
+    item_too_large,
+    verify_custody,
+)
 
 CASE_NS = "evidence.case"
 ITEM_NS = "evidence.item"
@@ -231,10 +245,14 @@ class EvidenceService:
     ) -> ImportResult:
         case_obj = self.get_case(case)
         parent = self.get_item(derived_from) if derived_from else None
-        files, skipped = self._files(path.expanduser())
+        source = path.expanduser()
+        files, skipped = self._files(source)
         if not files:
             raise InvalidInputError(f"No files to import from {path}.", details={"skipped": skipped})
-        max_bytes = int(self.ctx.settings.get("ingest.max_file_mb")) * 1024 * 1024
+        max_bytes = int(self.ctx.settings.get("evidence.max_item_mb")) * 1024 * 1024
+        if files == [source] and source.stat().st_size > max_bytes:
+            # One artifact was asked for: refuse it outright (from a directory, oversized files are skipped).
+            raise item_too_large(source.name, source.stat().st_size, max_bytes)
         result = ImportResult(case=case_obj.name, skipped=skipped, incident=case_obj.incident)
 
         def work(jc: JobContext) -> dict[str, Any]:
@@ -244,7 +262,7 @@ class EvidenceService:
                 jc.progress(index / max(1, len(files)), file.name)
                 try:
                     stored = self.store.put(file, max_bytes=max_bytes)
-                except (InvalidInputError, OSError) as exc:
+                except (InvalidInputError, ResourceLimitExceeded, OSError) as exc:
                     result.skipped.append({"path": str(file), "reason": getattr(exc, "message", str(exc))})
                     continue
                 item_id = f"ev-{self.ctx.store.counters.next('evidence'):04d}"

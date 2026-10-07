@@ -16,11 +16,19 @@ raf lens [SCOPE] [--filter EXPR] [--source TEXT] [--from T] [--to T] [--group-by
 ```
 
 Scopes: nothing (the workspace), any object (`10.30.0.5`, `APP-01`, `alice`), an incident
-(`INC-001`), an analysis (`analysis-3`), a job, or an evidence item (`evidence:ev-0005` - the events
-parsed from that artifact). `--source` narrows to data from one source, for example an imported
-packet capture (`--source raven-inc001.pcap`). Filters use the shared filter language
-(`type=auth.* outcome=failure actor=alice`, see `raf help filters`). Group by `category`,
-`event_type`, `actor`, `target`, `severity`, `source` or `outcome`.
+(`INC-001`), an analysis (`analysis-3`), a job, or an evidence item (`ev-0005` or
+`evidence:ev-0005` - the events parsed from that artifact: those of its import job whose source is
+the item's name). `--source` narrows to data from one source, for example an imported packet
+capture (`--source raven-inc001.pcap`). Filters use the shared filter language
+(`type=auth.* outcome=failure actor=alice`, see `raf help query` or `raf help filters`). Group by
+`category`, `event_type`, `actor`, `target`, `severity`, `source` or `outcome`.
+
+`--filter`, `--source`, `--from` and `--to` only ever narrow the scope; they never widen it
+([filter language](../cli.md#filter-language)). `raf lens ev-0004 --filter object:APP-01` shows the
+proxy-log events that involve APP-01. A combination that cannot be selected is an error (exit 4)
+instead of a wider result: `object:` on a scope that is already another object (use `actor:` or
+`target:`), or a `--source` text and a source (`source:` term, analysis or evidence item) of which
+neither contains the other.
 
 ## Output
 
@@ -44,6 +52,8 @@ exposure findings of the hosts involved.
 `GET /lens/query?ref=&filter=&source=&start=&end=&group_by=&buckets=&limit=&cursor=` returns
 `{scope, filters, total, first, last, items, names, next_cursor, group_by, groups, histogram, involved:
 [{type, count}], top_objects: [{id, name, type, count, criticality}], findings, relationships, pivots}`.
+`filters` lists the filter terms, then `evidence item NAME` and `source contains TEXT` when they
+apply. `ref` takes the same scopes as the command (`ev-0005` included).
 
 ## Limitations
 

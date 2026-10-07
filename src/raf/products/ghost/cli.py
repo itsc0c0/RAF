@@ -123,6 +123,7 @@ def create_cmd(
 ) -> None:
     ctx = rt.ctx()
     model = GhostService(ctx).create(name, base=base, description=description)
+    ctx.refs.remember("ghost", model.name)
 
     def render() -> None:
         rt.success(f"Ghost model '{model.name}' created from {model.base_label}.")
@@ -135,6 +136,7 @@ def create_cmd(
 def clone_cmd(source: str = typer.Argument(...), name: str = typer.Argument(...)) -> None:
     ctx = rt.ctx()
     model = GhostService(ctx).clone(source, name)
+    ctx.refs.remember("ghost", model.name)
 
     def render() -> None:
         rt.success(f"Ghost model '{model.name}' created from {source} ({len(model.ops)} operation(s) copied).")
@@ -170,6 +172,7 @@ def list_cmd() -> None:
 def show_cmd(name: str = typer.Argument(...)) -> None:
     ctx = rt.ctx()
     model = GhostService(ctx).get(name)
+    ctx.refs.remember("ghost", model.name)
     rt.output("raf.ghost.model/v1", model.to_json_dict(), lambda: render_model(model))
 
 
@@ -213,6 +216,7 @@ def modify_cmd(
     service = GhostService(ctx)
     if undo:
         model, removed = service.undo(name)
+        ctx.refs.remember("ghost", model.name)
 
         def render_undo() -> None:
             rt.success(f"Removed '{removed.op} {removed.arg}' from {model.name} ({len(model.ops)} left).")
@@ -241,6 +245,7 @@ def modify_cmd(
         operations.append((parts[0].lower(), parts[1]))
     if not operations:
         model = service.get(name)
+        ctx.refs.remember("ghost", model.name)
 
         def render_help() -> None:
             render_model(model)
@@ -251,6 +256,7 @@ def modify_cmd(
         rt.output("raf.ghost.model/v1", model.to_json_dict(), render_help)
         return
     model, applied = service.modify(name, operations)
+    ctx.refs.remember("ghost", model.name)
 
     def render() -> None:
         rt.success(f"Applied {len(applied)} operation(s) to {model.name}.")

@@ -70,12 +70,17 @@ KEYS: tuple[ConfigKey, ...] = (
         "core.log_level",
         str,
         "WARNING",
-        "Minimum level for console logs.",
+        "Minimum level of the CLI's console logs on stderr (--debug shows everything).",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
     ),
     ConfigKey("core.log_file", bool, True, "Write structured JSON logs to RAF_HOME/logs/raf.log."),
     ConfigKey("core.color", bool, True, "Use color in terminal output."),
-    ConfigKey("core.confirm_destructive", bool, True, "Require confirmation for destructive operations."),
+    ConfigKey(
+        "core.confirm_destructive",
+        bool,
+        True,
+        "Ask before destructive CLI operations; false confirms them as --yes does.",
+    ),
     # storage
     ConfigKey("storage.url", str, "", "SQLAlchemy URL; empty means the workspace SQLite database."),
     # ingestion
@@ -98,17 +103,27 @@ KEYS: tuple[ConfigKey, ...] = (
     ConfigKey("blast.max_depth", int, 8, "Maximum traversal depth for blast radius.", minimum=1),
     ConfigKey("blast.min_confidence", float, 0.2, "Minimum path confidence for blast propagation.", minimum=0),
     ConfigKey(
-        "trace.correlation_window_minutes", int, 720, "Window for session-context correlation in trace.", minimum=1
+        "trace.correlation_window_minutes",
+        int,
+        720,
+        "Maximum minutes between correlated trace events: credential read -> login, DNS resolution -> connection.",
+        minimum=1,
     ),
     ConfigKey("iam.dormant_days", int, 90, "Days without activity before a privileged identity is dormant.", minimum=1),
     ConfigKey(
         "iam.broad_role_threshold", int, 10, "Principals holding a privileged role before it is 'broad'.", minimum=2
     ),
-    ConfigKey("replay.checkpoint_interval", int, 500, "Events between replay state checkpoints.", minimum=10),
+    ConfigKey(
+        "replay.checkpoint_interval",
+        int,
+        500,
+        "Steps between replay checkpoints (state hashes, not stored states).",
+        minimum=10,
+    ),
     # products
     ConfigKey("vault.max_file_kb", int, 2048, "Largest file scanned for secrets.", minimum=1),
     ConfigKey("vault.entropy_threshold", float, 4.2, "Shannon entropy threshold for generic secrets.", minimum=0),
-    ConfigKey("range.default_seed", int, 42, "Seed used when none is given."),
+    ConfigKey("range.default_seed", int, 42, "Seed of raf range create when --seed is not given.", minimum=0),
     ConfigKey(
         "lab.backend",
         str,
@@ -120,7 +135,7 @@ KEYS: tuple[ConfigKey, ...] = (
     ConfigKey("lab.memory", str, "512m", "Memory limit per lab container."),
     ConfigKey("lab.cpus", str, "1.0", "CPU limit per lab container."),
     ConfigKey("lab.pids_limit", int, 256, "Process limit per lab container.", minimum=16),
-    ConfigKey("evidence.max_item_mb", int, 4096, "Largest single evidence item.", minimum=1),
+    ConfigKey("evidence.max_item_mb", int, 4096, "Largest single evidence item; larger files are refused.", minimum=1),
     # oracle
     ConfigKey(
         "oracle.provider",

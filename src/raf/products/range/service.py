@@ -21,6 +21,7 @@ import yaml
 from pydantic import Field
 
 from raf.core.context.app import RafContext
+from raf.core.context.refs import ContextRefs
 from raf.core.errors import ConflictError, InvalidInputError, NotFoundError
 from raf.core.ingestion.pipeline import IngestionPipeline, IngestOptions, IngestReport
 from raf.core.jobs.manager import JobContext
@@ -201,12 +202,20 @@ class RangeService:
     def ranges(self) -> list[RangeState]:
         return sorted((RangeState.model_validate(v) for v in self.kv.items(NAMESPACE).values()), key=lambda r: r.name)
 
+    def resolve_name(self, ref: str) -> str:
+        """A range name, or a context reference (``@range``, ``@last``) to the range used last."""
+        if ContextRefs.is_reference(ref.strip()):
+            _kind, stored = self.ctx.refs.resolve(ref.strip(), accept=("range",))
+            return stored
+        return ref.strip().lower()
+
     def get(self, name: str) -> RangeState:
-        raw = self.kv.get(NAMESPACE, name.strip().lower())
+        key = self.resolve_name(name)
+        raw = self.kv.get(NAMESPACE, key)
         if raw is None:
             raise NotFoundError(
-                f"Range '{name}' does not exist in this workspace.",
-                suggestions=["raf range list", f"raf range create {name}"],
+                f"Range '{key}' does not exist in this workspace.",
+                suggestions=["raf range list", f"raf range create {key}"],
             )
         return RangeState.model_validate(raw)
 
@@ -268,11 +277,14 @@ class RangeService:
         name: str,
         *,
         preset: str | None = None,
-        seed: int = 42,
+        seed: int | None = None,
         config: dict[str, Any] | None = None,
         start: datetime | None = None,
     ) -> RangeRun:
+        """Create a range; without ``seed`` the configured ``range.default_seed`` is used."""
         name = validate_range_name(name)
+        if seed is None:
+            seed = int(self.ctx.settings.get("range.default_seed"))
         if self.kv.get(NAMESPACE, name) is not None:
             raise ConflictError(
                 f"Range '{name}' already exists.", suggestions=[f"raf range status {name}", f"raf range reset {name}"]
