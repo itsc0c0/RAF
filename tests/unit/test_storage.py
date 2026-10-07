@@ -132,6 +132,9 @@ def test_context_refs(ctx: RafContext) -> None:
     ctx.store.objects.upsert_drafts([ObjectDraft.make("user", "bob")])
     ctx.refs.remember("object", "user:bob")
     assert ctx.resolve("@last").id == "user:bob"
+    ctx.refs.remember("lab", "demo-lab")  # not a graph object: @last for objects skips it
+    assert ctx.resolve("@last").id == "user:bob"
+    assert ctx.refs.resolve("@last") == ("lab", "demo-lab")
     assert ctx.refs.resolve("@workspace") == ("workspace", "default")
     with pytest.raises(NotFoundError):
         ctx.refs.resolve("@snapshot")

@@ -180,8 +180,9 @@ def render_internal(exc: BaseException) -> None:
 def dispatch(args: Sequence[str]) -> int:
     command = typer.main.get_command(app)
     try:
-        command.main(args=list(args), prog_name="raf", standalone_mode=False)
-        return 0
+        # Without standalone mode Click *returns* the code of a ``typer.Exit(n)`` raised by a command.
+        result = command.main(args=list(args), prog_name="raf", standalone_mode=False)
+        return result if isinstance(result, int) and not isinstance(result, bool) else 0
     except Exit as exc:
         return int(exc.exit_code)
     except Abort:

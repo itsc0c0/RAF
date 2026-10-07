@@ -155,8 +155,12 @@ interactive docs at `/api/docs`.
 | GET | `/forge/catalog` | generators and scenarios |
 | POST | `/forge/generate` `{kind, count<=100000, seed, start?, hours, noise, population}` | `{kind, seed, population, window, records, job, report, sample}` |
 | POST | `/forge/scenario` `{name, seed, start?, population}` | same + `incident`, `subject` |
-| GET | `/lab/status` | `{backend, available, reason}` |
-| GET | `/lab/labs`, POST `/lab/labs`, POST `/lab/labs/{name}/start|stop`, DELETE `/lab/labs/{name}` | isolated labs |
+| GET | `/lab/status?backend=` | `{backend, available, reason, version}` |
+| GET | `/lab/labs` | `{items: [Lab], total, invalid?}`; Lab = `{name, state, live, image, network, allow_outbound, mounts: [{source, target, read_only}], memory, cpus, pids_limit, user, root, backend, container, container_id, description, created_at, updated_at, state_at, note?}` |
+| POST | `/lab/labs` `{name, image?, mounts?: [absolute paths], allow_outbound?, memory?, cpus?, root?, description?, backend?}` | 201 + Lab with `container_args` (no container yet; unknown fields rejected) |
+| GET | `/lab/labs/{name}` | Lab with live state and `container_args` |
+| POST | `/lab/labs/{name}/start`, `/lab/labs/{name}/stop` | Lab + `{changed, created}`; 503 when no container backend is available |
+| DELETE | `/lab/labs/{name}?forget=` | `{name, destroyed, container, container_removed, note?}` — there is deliberately no exec or shell route |
 
 ## Specialized analysis and AI
 

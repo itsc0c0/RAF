@@ -129,6 +129,13 @@ def test_cli_evidence(raf_home: Path, cli: Any) -> None:
     show = cli("evidence", "show", imported.json()["items"][0]["id"])
     assert show.exit_code == 0 and "Chain of custody" in show.stdout
     assert cli("evidence", "import", "/nonexistent", "--case", "INC-007").exit_code != 0
+    # A failed verification reaches the shell as exit status 5.
+    item = imported.json()["items"][0]
+    stored = next(p for p in raf_home.rglob(f"{item['sha256']}*") if p.is_file())
+    stored.chmod(0o600)
+    stored.write_bytes(b"tampered\n")
+    tampered = cli("evidence", "verify", "--case", "INC-007")
+    assert tampered.exit_code == 5 and "FAILED" in tampered.stdout + tampered.stderr
 
 
 @pytest.fixture

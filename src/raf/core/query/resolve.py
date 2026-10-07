@@ -92,7 +92,8 @@ class Resolver:
             for kind in accept:
                 allowed.extend(context_kinds.get(kind, (kind,)))
             if "object" in accept:
-                allowed.extend(["incident", "case", "range", "lab", "ghost"])
+                # A case is named after its incident; labs, ranges and ghost models are not graph objects.
+                allowed.extend(["incident", "case"])
             kind, stored = self.refs.resolve(text, accept=allowed)
             resolved = self.resolve(stored, types=types if kind == "object" else None, accept=accept)
             resolved.notes.append(f"{text} -> {stored}")
