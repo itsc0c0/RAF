@@ -773,7 +773,7 @@ def analyze_policy(world: PolicyWorld, policy: Policy) -> list[Finding]:
 
 
 def _broad(world: PolicyWorld, policy: Policy, rule: PolicyRule) -> list[Finding]:
-    if rule.effect != "allow":
+    if rule.effect != "allow" or _passes(rule):
         return []
     reasons: list[str] = []
     severity: Severity | None = None
@@ -834,13 +834,20 @@ def _broad(world: PolicyWorld, policy: Policy, rule: PolicyRule) -> list[Finding
 
 
 def _closes_chain(rule: PolicyRule) -> bool:
-    """A rule standing for a chain's policy (iptables INPUT/OUTPUT, see :mod:`policy.iptables`): it
+    """A rule standing for a chain's policy (iptables/nftables, see :mod:`policy.netfilter`): it
     catches what the chain's own rules leave, so overlapping other rules is its purpose, not a conflict."""
     return "chain_policy" in rule.metadata
 
 
+def _passes(rule: PolicyRule) -> bool:
+    """A rule that leaves traffic to other policies (:mod:`policy.netfilter`): not a rule anyone wrote."""
+    return bool(rule.metadata.get("pass"))
+
+
 def _anomalies(world: PolicyWorld, policy: Policy, rule: PolicyRule, earlier: list[PolicyRule]) -> list[Finding]:
     domain = policy.domain
+    if _closes_chain(rule) or _passes(rule):
+        return []  # a chain's policy is what is left after its rules: being covered or overlapped is its nature
     if policy.evaluation == "first-match":
         for prior in earlier:
             if not rule_covers(world, domain, prior, rule):

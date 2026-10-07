@@ -1,0 +1,43 @@
+table ip nat {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+		oifname "eth0" ip saddr 10.0.0.0/8 masquerade
+	}
+}
+table inet filter {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		ct state vmap { established : accept, related : accept, invalid : drop }
+		iif "lo" accept
+		ip saddr 10.10.0.0/16 tcp dport 22 accept comment "admin SSH from CORP"
+		icmp type echo-request accept
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept
+		ip daddr 10.40.0.0/16 tcp dport 443 counter packets 0 bytes 0 accept comment "r10-internet-to-dmz: Public website and VPN"
+		ip daddr 10.40.0.0/16 udp dport 1194 counter packets 0 bytes 0 accept comment "r10-internet-to-dmz: Public website and VPN"
+		ip saddr 10.10.0.0/16 ip daddr 10.40.0.0/16 tcp dport 443 counter packets 0 bytes 0 accept comment "r20-corp-to-dmz: Staff access to DMZ services"
+		ip saddr 10.10.0.0/16 ip daddr 10.20.0.0/16 tcp dport { 22, 443 } counter packets 0 bytes 0 accept comment "r30-corp-to-dev: Engineers to development"
+		ip saddr 10.20.0.0/16 ip daddr 10.30.0.0/16 jump raven-deploy comment "r40-dev-to-prod: Deployments (temporarily widened for the September migration)"
+		ip saddr 10.40.0.0/16 ip daddr 10.30.0.0/16 tcp dport 8443 counter packets 0 bytes 0 accept comment "r50-dmz-to-prod: Portal front end to the application tier"
+		ip saddr 10.40.0.0/16 ip daddr 10.40.0.21 tcp dport 21 counter packets 0 bytes 0 accept comment "r55-dmz-to-legacy-ftp: Legacy partner file drop"
+		ip saddr 10.40.0.0/16 ip daddr 10.10.0.0/16 tcp dport { 3389, 22 } counter packets 0 bytes 0 accept comment "r60-vpn-to-corp: VPN users to workstations"
+		ip saddr 10.30.0.0/16 tcp dport 443 counter packets 0 bytes 0 accept comment "r70-prod-egress: Production egress (updates, backups)"
+		ip saddr 10.10.0.0/16 tcp dport { 80, 443 } counter packets 0 bytes 0 accept comment "r80-corp-egress: Staff web access"
+		ip saddr 10.20.0.0/16 ip daddr 10.30.0.10 tcp dport 5432 counter packets 0 bytes 0 drop comment "r85-deny-dev-to-prod-db: Development must not reach the production database directly"
+		ip saddr 10.10.0.0/16 ip daddr 10.20.0.0/16 tcp dport 22 counter packets 0 bytes 0 accept comment "r90-corp-to-dev-ssh: SSH for engineers"
+		ip saddr 10.50.0.0/16 counter packets 0 bytes 0 drop comment "r95-lab-isolation: The lab is isolated"
+		counter packets 0 bytes 0 drop comment "r99-default-deny: Explicit default deny"
+		limit rate 5/minute log prefix "raven-edge drop: "
+	}
+
+	chain output {
+		type filter hook output priority filter; policy accept;
+	}
+
+	chain raven-deploy {
+		accept
+	}
+}

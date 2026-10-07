@@ -39,11 +39,13 @@ import { routeTo } from '../../lib/routes';
 import { ComputedFindingDrawer } from '../findings/FindingDetail';
 import { FindingsTable } from '../findings/FindingsTable';
 import {
+  HOST_FORMATS,
   hostFromFileName,
   inferPolicyFormat,
   IPTABLES_SUFFIXES,
   isEmptyPolicyDiff,
   MAX_POLICY_DOCUMENT_BYTES,
+  NFT_SUFFIXES,
   POLICY_FORMATS,
   ruleFieldText,
 } from './policyModel';
@@ -618,6 +620,7 @@ const FORMAT_LABELS: Record<PolicyFormat, string> = {
   yaml: 'YAML (raf-policy/1)',
   csv: 'CSV (firewall export)',
   iptables: 'iptables-save (filter table)',
+  nftables: 'nftables (ruleset or nft -j JSON)',
 };
 
 function PolicyCheckResultView({ result }: { result: PolicyCheckResult }) {
@@ -712,7 +715,7 @@ export function PolicyCheckView() {
         setText(content);
         setFileName(file.name);
         setFormat(inferred);
-        if (inferred === 'iptables') setHost(hostFromFileName(file.name));
+        if (HOST_FORMATS.includes(inferred)) setHost(hostFromFileName(file.name));
       },
       () => setProblem(`${file.name} could not be read.`),
     );
@@ -736,7 +739,7 @@ export function PolicyCheckView() {
               document: text,
               format,
               principal: principal.trim() || undefined,
-              host: format === 'iptables' ? host.trim() || undefined : undefined,
+              host: HOST_FORMATS.includes(format) ? host.trim() || undefined : undefined,
             });
           }}
         >
@@ -751,12 +754,15 @@ export function PolicyCheckView() {
               id={fileId}
               type="file"
               className="input input--file"
-              accept={['.json', '.yaml', '.yml', '.csv', ...IPTABLES_SUFFIXES].join(',')}
+              accept={['.json', '.yaml', '.yml', '.csv', '.conf', ...IPTABLES_SUFFIXES, ...NFT_SUFFIXES].join(
+                ',',
+              )}
               onChange={(event) => pick(event.target.files?.[0])}
             />
             <p className="field__hint">
-              raf-policy/1 JSON or YAML, AWS-style JSON, a CSV firewall export or iptables-save output; at
-              most 5 MB. The file is loaded into the document below.
+              raf-policy/1 JSON or YAML, AWS-style JSON, a CSV firewall export, iptables-save output or an
+              nftables ruleset (text or nft -j JSON); at most 5 MB. The file is loaded into the document
+              below.
             </p>
             {fileName ? <p className="small muted break">Loaded {fileName}.</p> : null}
           </div>
@@ -798,7 +804,7 @@ export function PolicyCheckView() {
                 />
               )}
             </Field>
-            {format === 'iptables' ? (
+            {HOST_FORMATS.includes(format) ? (
               <Field
                 label="Host (optional)"
                 className="grow"

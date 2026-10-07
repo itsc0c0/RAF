@@ -27,9 +27,9 @@ Known gaps and the planned order of work after 0.1.0. Each item names what remai
 
 ## Product depth
 
-* **Policy:** parsers for more firewall configuration formats (nftables, vendor configurations) in
-  addition to iptables-save and the CSV export path; interface-to-zone mappings so interface-based
-  iptables rules can be modeled instead of imported disabled.
+* **Policy:** parsers for vendor firewall configurations in addition to iptables-save, nftables and
+  the CSV export path; interface-to-zone mappings so interface-based netfilter rules can be modeled
+  instead of imported disabled.
 * **IAM:** cloud-provider permission evaluation (conditions, permission boundaries) from imported
   policy documents.
 * **Dependency:** advisory feeds beyond imported OSV files (still offline-first), lockfile formats for

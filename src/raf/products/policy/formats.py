@@ -6,6 +6,8 @@ Supported (auto-detected):
 * ``aws-iam``       - AWS-IAM-style JSON documents (``Version``/``Statement``)
 * ``csv-firewall``  - firewall rule exports as CSV (id, action, source, destination, protocol, port, ...)
 * ``iptables-save`` - Linux iptables/ip6tables rule sets (:mod:`raf.products.policy.iptables`)
+* ``nftables``      - nftables rulesets: ``nft list ruleset``, nftables scripts, ``nft -j`` JSON
+  (:mod:`raf.products.policy.nftables`)
 
 Policy files are untrusted input: parsed with safe loaders only, size- and count-limited, and
 every identifier is normalized; nothing is ever executed or interpolated into commands.
@@ -36,9 +38,10 @@ from raf.products.policy.model import (
     normalize_principal,
     normalize_resource,
 )
+from raf.products.policy.nftables import NFT_SUFFIXES, looks_like_nftables, looks_like_nftables_json, parse_nftables
 
 MAX_POLICY_FILE_BYTES = 5 * 1024 * 1024
-POLICY_SUFFIXES = (".json", ".yaml", ".yml", ".csv", *IPTABLES_SUFFIXES)
+POLICY_SUFFIXES = (".json", ".yaml", ".yml", ".csv", *IPTABLES_SUFFIXES, *NFT_SUFFIXES)
 _CSV_ALIASES = {
     "id": ("id", "rule", "rule_id", "name", "rule_name"),
     "effect": ("action", "effect", "decision", "verdict"),
@@ -382,7 +385,7 @@ def sniff_policy(head: bytes, suffix: str) -> float:
     lowered = text.lower()
     if "raf-policy/" in lowered:
         return 0.98
-    if looks_like_iptables(text):
+    if looks_like_iptables(text) or looks_like_nftables_json(text) or looks_like_nftables(text):
         return 0.95
     if suffix in (".json", ".yaml", ".yml"):
         if '"statement"' in lowered and '"effect"' in lowered:
@@ -414,12 +417,14 @@ def parse_policy_text(
     host: str | None = None,
 ) -> PolicySet:
     """Parse a policy document. ``principal`` names the subject of AWS-style documents without one;
-    ``host`` the machine an iptables-save rule set belongs to (default: the document's name)."""
+    ``host`` the machine an iptables or nftables rule set belongs to (default: the document's name)."""
     if len(text.encode("utf-8", "replace")) > MAX_POLICY_FILE_BYTES:
         raise InvalidInputError(f"Policy document exceeds {MAX_POLICY_FILE_BYTES // (1024 * 1024)} MB.")
     suffix = suffix.lower()
     if suffix in IPTABLES_SUFFIXES or looks_like_iptables(text):
         return parse_iptables(text, source, host=host)
+    if suffix in NFT_SUFFIXES or looks_like_nftables_json(text) or looks_like_nftables(text):
+        return parse_nftables(text, source, host=host)
     if suffix == ".csv":
         return parse_csv(text, source)
     try:

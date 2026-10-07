@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body
 from pydantic import BaseModel, Field
 
 from raf.core.errors import InvalidInputError
-from raf.products.policy.formats import MAX_POLICY_FILE_BYTES, parse_policy_text
+from raf.products.policy.formats import MAX_POLICY_FILE_BYTES, POLICY_SUFFIXES, parse_policy_text
 from raf.products.policy.service import PolicyService, resolve_endpoint
 from raf.sdk.api import Ctx
 
@@ -42,11 +42,14 @@ class EvaluateRequest(BaseModel):
 
 class CheckRequest(BaseModel):
     document: str = Field(
-        ..., description="Policy document text (raf-policy/1 JSON/YAML, AWS-style JSON, CSV or iptables-save)."
+        ...,
+        description="Policy document text (raf-policy/1 JSON/YAML, AWS-style JSON, CSV, iptables-save or nftables).",
     )
-    format: str = Field("json", pattern="^(json|yaml|yml|csv|iptables)$")
+    format: str = Field("json", pattern="^(json|yaml|yml|csv|iptables|nftables)$")
     principal: str | None = Field(None, max_length=300)
-    host: str | None = Field(None, max_length=200, description="iptables-save: the host the rules belong to.")
+    host: str | None = Field(
+        None, max_length=200, description="iptables-save or nftables: the host the rules belong to."
+    )
 
 
 @router.get("/policies")
@@ -97,7 +100,7 @@ def check(request: Annotated[CheckRequest, Body()], ctx: Ctx) -> dict[str, Any]:
     """Normalize and analyze a policy document without storing it."""
     if len(request.document.encode("utf-8", "replace")) > MAX_POLICY_FILE_BYTES:
         raise InvalidInputError("Policy document is too large.")
-    suffix = ".rules" if request.format == "iptables" else f".{request.format}"
+    suffix = {"iptables": ".rules", "nftables": ".nft"}.get(request.format, f".{request.format}")
     policy_set = parse_policy_text(
         request.document, source="request", suffix=suffix, principal=request.principal, host=request.host
     )
@@ -113,7 +116,7 @@ def check(request: Annotated[CheckRequest, Body()], ctx: Ctx) -> dict[str, Any]:
 def diff(ctx: Ctx, before: str, after: str = "current") -> dict[str, Any]:
     """Compare stored revisions (``current`` or snapshot names). Files are CLI-only."""
     for ref in (before, after):
-        if "/" in ref or "\\" in ref or ref.endswith((".json", ".yaml", ".yml", ".csv")):
+        if "/" in ref or "\\" in ref or ref.lower().endswith(POLICY_SUFFIXES):
             raise InvalidInputError("The API compares workspace states only (current, snapshot names).")
     # files=False: a bare name such as "exports" must never resolve to a path next to the server process.
     result = PolicyService(ctx).diff(before, after, files=False)

@@ -307,8 +307,12 @@ describe('Policy: check a document', () => {
     expect(inferPolicyFormat('policy')).toBe('json');
     expect(inferPolicyFormat('edge.rules')).toBe('iptables');
     expect(inferPolicyFormat('etc/iptables/RULES.V4')).toBe('iptables');
+    expect(inferPolicyFormat('edge.nft')).toBe('nftables');
+    expect(inferPolicyFormat('/etc/nftables.conf')).toBe('nftables');
+    expect(inferPolicyFormat('edge.nft.json')).toBe('json'); // nft -j output: the server reads it by content
     expect(hostFromFileName('C:\\exports\\raven-edge.rules')).toBe('raven-edge');
     expect(hostFromFileName('fw.backup.v4')).toBe('fw.backup');
+    expect(hostFromFileName('raven-edge.nft.json')).toBe('raven-edge');
     expect(hostFromFileName('.rules')).toBe('.rules');
     expect(ruleFieldText(['tcp/22', 'tcp/8443'])).toBe('tcp/22, tcp/8443');
     expect(ruleFieldText([])).toBe('(none)');

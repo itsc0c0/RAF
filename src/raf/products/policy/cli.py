@@ -19,6 +19,7 @@ app = typer.Typer(
 
   raf policy check policies.json        normalize and analyze a file (nothing is stored)
   raf policy check edge.rules --host VPN-01   the same for an iptables-save rule set
+  raf policy check /etc/nftables.conf         ... or an nftables ruleset (also nft -j JSON)
   raf policy import policies.json       store policies in the workspace graph
   raf policy analyze                    analyze stored policies and record findings
   raf policy can USER-17 access DB-01   evaluate a hypothetical flow / access with the decision chain
@@ -208,13 +209,15 @@ def render_diff(diff: PolicyDiff) -> None:
         c.print("No policy changes.")
 
 
-_HOST_HELP = "iptables-save: the host the rules belong to (default: the file name without suffix)."
+_HOST_HELP = "iptables-save or nftables: the host the rules belong to (default: the file name without suffix)."
 
 
 @app.command("check", help="Normalize and analyze policy file(s) without storing anything.")
 def check_cmd(
     path: Path = typer.Argument(
-        ..., help="Policy file or directory (.json, .yaml, .yml, .csv, or iptables-save: .rules, .iptables, .v4, .v6)."
+        ...,
+        help="Policy file or directory (.json, .yaml, .yml, .csv, iptables-save: .rules, .iptables, .v4, .v6, "
+        "nftables: .nft, .nftables; other names are recognized by content).",
     ),
     principal: str | None = typer.Option(None, "--principal", help="Principal for AWS-style policies without one."),
     host: str | None = typer.Option(None, "--host", help=_HOST_HELP),

@@ -383,7 +383,7 @@ their defaults.
 | `raf iam analyze [--no-save] [--min-severity S] [--limit 30]` | run the IAM analyzers and record findings (`raf.iam.analysis/v1`); [IAM](products/iam.md) | `raf iam analyze --no-save` |
 | `raf iam show REF [--limit 40]` | effective access of a principal (`raf.iam.access/v1`) | `raf iam show sarah` |
 | `raf iam path SOURCE TARGET [--max-depth 10] [--paths 3]` | how a principal could obtain control of a target (`raf.iam.paths/v1`) | `raf iam path alice production` |
-| `raf policy check PATH [--principal P] [--host NAME] [--limit 40]` | normalize and analyze policy files without storing them (`raf.policy.check/v1`): raf-policy/1, IAM JSON, CSV exports, iptables-save (`--host` names the host whose rules they are); [Policy](products/policy.md) | `raf policy check fixtures/policies/raven-edge.rules` |
+| `raf policy check PATH [--principal P] [--host NAME] [--limit 40]` | normalize and analyze policy files without storing them (`raf.policy.check/v1`): raf-policy/1, IAM JSON, CSV exports, iptables-save, nftables (text or `nft -j` JSON; `--host` names the host whose rules they are); [Policy](products/policy.md) | `raf policy check fixtures/policies/raven-edge.rules` |
 | `raf policy import PATH [--principal P] [--host NAME]` | store policies in the workspace graph (`raf.policy.import/v1`) | `raf policy import fixtures/policies/raven-fw-export.csv` |
 | `raf policy list` / `show POLICY` | stored policies; one policy with its normalized rules (`raf.policy.list/v1`, `raf.policy/v1`) | `raf policy show raven-fw` |
 | `raf policy analyze [PATH] [--no-save] [--limit 40]` | analyze stored policies (or a path) and record findings (`raf.policy.analysis/v1`) | `raf policy analyze --no-save` |

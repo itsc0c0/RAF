@@ -40,7 +40,7 @@ class PolicyFileParser(Parser):
     name: ClassVar[str] = "raf-policy"
     version: ClassVar[str] = "1.0"
     description: ClassVar[str] = (
-        "Policy documents: raf-policy/1 (JSON/YAML), AWS-style IAM JSON, CSV firewall exports, iptables-save"
+        "Policy documents: raf-policy/1 (JSON/YAML), AWS-style IAM JSON, CSV firewall exports, iptables-save, nftables"
     )
     extensions: ClassVar[tuple[str, ...]] = POLICY_SUFFIXES
     normalizer: ClassVar[str] = "raf-native"

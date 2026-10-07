@@ -131,7 +131,7 @@ interactive docs at `/api/docs`.
 | GET | `/policy/policies/{id}` | one normalized policy |
 | POST | `/policy/evaluate` `{subject?|principal?, source?, target, action?, port?, protocol?, ports?, sources?}` | `{decision: allow|deny|not-evaluated, reason, parts: [{part: network|identity, policy, decision, allowed_ports, decisions: [{policy, rule, effect, ports, actions, summary}], preempted, explanation}], indirect: [{pivot, legs, summary}], notes}` |
 | POST | `/policy/analyze?persist=` | `{policies, findings, by_rule, warnings}` |
-| POST | `/policy/check` `{document, format: json|yaml|csv|iptables, principal?, host?}` | normalize + analyze without storing: `{set: {name, format, revision, source, policies, warnings}, analysis: {policies, findings, by_rule, warnings, workspace_aware}}` |
+| POST | `/policy/check` `{document, format: json|yaml|csv|iptables|nftables, principal?, host?}` (iptables-save and nftables text or JSON are also recognized by content) | normalize + analyze without storing: `{set: {name, format, revision, source, policies, warnings}, analysis: {policies, findings, by_rule, warnings, workspace_aware}}` |
 | GET | `/policy/diff?before=&after=current` | revision diff between workspace states (current, snapshots; never files or directories on the server, which only `raf policy diff` compares): `{before, after, policies_added, policies_removed, defaults_changed: [{policy, before, after}], changes: [{policy, rule, change: added|removed|modified|moved, impact: access-expanded|access-reduced|changed, fields, before, after}], findings_introduced, findings_resolved, access_expanded}` (`access_expanded` counts the access-expanding rule changes) |
 
 ## Synthetic environments

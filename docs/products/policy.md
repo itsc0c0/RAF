@@ -52,18 +52,45 @@ raf policy diff BEFORE [AFTER=current]              files, directories, current 
   | `INPUT`, `OUTPUT` (traffic to and from the host) | `<name>-host`, scoped to `host:<name>`: INPUT rules without `-d` target the host, OUTPUT rules without `-s` come from it, and each chain policy closes its part as a final rule (`input-policy`, `output-policy`) |
   | `-j ACCEPT`; `-j DROP`, `-j REJECT` | allow; deny |
   | jump to a user chain | inlined with both rules' conditions combined (rule `forward-6.raven-deploy-1` is rule 1 of `RAVEN-DEPLOY` reached through FORWARD rule 6); after `RETURN` the calling chain continues, and in a built-in chain the chain policy decides |
+  | `-g` (goto) a user chain | inlined too, but the packet does not come back: what the target leaves undecided gets the built-in chain's policy (rule `forward-2.end`) |
   | `LOG`, `NFLOG`, `MARK`, `SET` and other non-terminating targets | nothing: the packet continues |
   | loopback rules (`-i lo`), `--ctstate ESTABLISHED,RELATED`, `INVALID` | left out: they decide nothing about new flows between hosts |
 
   Rule descriptions come from `-m comment`; metadata keeps each rule's chain, line and target.
   Conditions the model cannot express exactly - negation, interfaces other than loopback, source
   ports, ICMP codes, connection states such as `DNAT`, match modules other than tcp, udp, icmp,
-  multiport, comment, conntrack/state and iprange, options it does not know, `--goto`, jump loops,
-  rules after a conditional `RETURN` - are never approximated away: such a rule is imported
-  **disabled** with the reasons in `metadata.unmodeled`, and the set's warnings count them.
-  `raf policy check fixtures/policies/raven-edge.rules` shows the Raven router's rules: the jump of
-  r40 to `RAVEN-DEPLOY` accepts every port from DEV to PROD, so r85, the database protection, can
-  never apply.
+  multiport, comment, conntrack/state and iprange, options it does not know, jump loops, rules
+  after a conditional `RETURN` - are never approximated away: such a rule is imported **disabled**
+  with the reasons in `metadata.unmodeled`, and the set's warnings count them. ip6tables-save
+  output (its header, a `.v6` file, or IPv6 addresses only) becomes `<name>-ip6-forward` and
+  `<name>-ip6-host` and applies to IPv6 addresses only. `raf policy check
+  fixtures/policies/raven-edge.rules` shows the Raven router's rules: the jump of r40 to
+  `RAVEN-DEPLOY` accepts every port from DEV to PROD, so r85, the database protection, can never
+  apply.
+* **nftables** rulesets (`.nft`, `.nftables`, or any file whose content is recognized, such as
+  `/etc/nftables.conf`): `nft list ruleset` output, nftables scripts (`flush ruleset`, `define`,
+  `include` (reported, never followed), blocks, `add`/`insert`/`delete` commands) and
+  `nft -j list ruleset` JSON. Tables of the `ip`, `ip6` and `inet` families are read; `filter`
+  chains on the `input`, `forward` and `output` hooks become policies the same way as iptables
+  chains (`<name>-forward`, `<name>-host`), regular chains are inlined where they are `jump`ed or
+  `goto`ed to, `return` behaves like `RETURN`.
+
+  | nftables | R$F |
+  |---|---|
+  | several base chains on one hook (tables, priorities: iptables-nft, firewalld, Docker, Kubernetes) | one policy each, `<name>-forward-<chain>`, `<name>-host-<family>-<table>`: a packet must pass all of them (a drop is final, an accept ends only its own chain), which is how R$F combines policies |
+  | `ip`/`ip6 saddr`/`daddr`: addresses, prefixes, ranges, `{ anonymous sets }`, `@named` sets, `$variables` | CIDR selectors; sets of more than 256 elements are reported, not modeled |
+  | `tcp`/`udp`/`th dport`: numbers, ranges, sets, service names, `!=`, `<`, `>=` ... | exact port sets (`tcp dport != 22` is tcp/0-21 and tcp/23-65535) |
+  | `meta l4proto`, `ip protocol`, `ip6 nexthdr`, `icmp`/`icmpv6 type`, `meta nfproto` | protocols, ICMP types; IPv6-only rules (an `ip6` table, `meta nfproto ipv6`, `icmpv6`) apply to IPv6 addresses only |
+  | `ct state vmap { ... }`, `tcp dport vmap @map` | one rule per element (`input-1-v1`, `input-1-v2`) |
+  | `counter`, `log`, `continue`, assignments (`meta mark set ...`) | nothing: the packet continues |
+  | `ct state established,related`, `invalid`; `iif lo` | left out: they decide nothing about new flows between hosts |
+  | `nat` and `route` chains; `filter` chains on `prerouting`, `postrouting`, `ingress`, `egress`; `arp`, `bridge`, `netdev` tables; dormant tables | reported and ignored |
+
+  Negated addresses, interfaces other than loopback, source ports, `limit`, `quota`, dynamic or
+  concatenated sets, `fib`, `tcp flags`, marks, `queue`, set updates and other statements the model
+  cannot express make the rule **disabled** with the reasons in `metadata.unmodeled`.
+  `fixtures/policies/raven-edge.nft` and `raven-edge.nft.json` hold the Raven router's ruleset; they
+  import to exactly the policies and findings of `raven-edge.rules`.
 
 Selectors: `any`, CIDRs (`10.20.0.0/16`), typed objects (`network:DEV`, `host:DB-01`,
 `service:postgres`, `group:engineering`, `role:developer`), `type:*` and glob patterns for
@@ -73,8 +100,9 @@ wildcards (`deploy:*`).
 
 Policy files are untrusted input: safe loaders only (YAML anchors/aliases are refused), 5 MB and
 5,000-rule limits, scalar selectors only; nothing is executed. iptables rules are split into words
-like a shell command line but never run; flattening user chains is bounded (100,000 rule visits),
-and every resulting policy keeps the 5,000-rule limit.
+like a shell command line but never run; nftables text is tokenized (at most 1,000,000 tokens,
+`define` values of at most 100,000) and JSON is read with a safe loader; flattening user chains is
+bounded (100,000 rule visits), and every resulting policy keeps the 5,000-rule limit.
 
 ## Semantics
 

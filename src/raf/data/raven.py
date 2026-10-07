@@ -9,6 +9,7 @@ storyline (INC-001) contains no harmful payloads: commands are mundane and the
 
 from __future__ import annotations
 
+import json
 import random
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -739,6 +740,146 @@ def firewall_iptables() -> str:
         "# Completed on Tue Oct  6 06:00:00 2026",
     ]
     return "\n".join(line.rstrip() for line in lines) + "\n"
+
+
+def _router_forward() -> list[dict[str, Any]]:
+    """FIREWALL_RULES as the router applies them: addresses as CIDRs, one entry per protocol."""
+    cidrs = {f"network:{n['name']}": n["cidr"] for n in NETWORKS}
+    cidrs |= {f"host:{h['name']}": f"{h['ip']}/32" for h in HOSTS}
+    cidrs["host:FTP-OLD"] = f"{LEGACY_FTP_ADDRESS}/32"
+    entries: list[dict[str, Any]] = []
+    for rule in FIREWALL_RULES:
+        base = {
+            "saddr": None if cidrs.get(rule["source"], "0.0.0.0/0") == "0.0.0.0/0" else cidrs[rule["source"]],
+            "daddr": None if cidrs.get(rule["destination"], "0.0.0.0/0") == "0.0.0.0/0" else cidrs[rule["destination"]],
+            "comment": f"{rule['id']}: {rule['description']}".replace('"', "'"),
+            "verdict": "accept" if rule["action"] == "allow" else "drop",
+        }
+        if rule["id"] == "r40-dev-to-prod":  # the deployment path goes through its own chain
+            entries.append(base | {"protocol": None, "ports": [], "verdict": "jump raven-deploy"})
+            continue
+        by_protocol: dict[str | None, list[int]] = {}
+        for port in rule["ports"]:
+            protocol, _, number = port.partition("/")
+            if port == "any":
+                by_protocol = {None: []}
+                break
+            by_protocol.setdefault(protocol, []).append(int(number))
+        entries += [base | {"protocol": protocol, "ports": ports} for protocol, ports in by_protocol.items()]
+    return entries
+
+
+def _nft_address(cidr: str) -> str:
+    return cidr.removesuffix("/32")
+
+
+def firewall_nftables() -> str:
+    """The router's firewall as ``nft list ruleset`` prints it: the rules of
+    :func:`firewall_iptables` (FIREWALL_RULES in order, the deployment chain, connection tracking,
+    the host part, a nat table) in nftables syntax, so both import to the same policies."""
+    forward = ["ct state established,related accept"]
+    for entry in _router_forward():
+        parts = [f"ip {field} {_nft_address(entry[field])}" for field in ("saddr", "daddr") if entry[field]]
+        if entry["ports"]:
+            numbers = ", ".join(str(p) for p in entry["ports"])
+            parts.append(f"{entry['protocol']} dport " + (numbers if len(entry["ports"]) == 1 else f"{{ {numbers} }}"))
+        if not entry["verdict"].startswith("jump"):
+            parts.append("counter packets 0 bytes 0")
+        parts += [entry["verdict"], f'comment "{entry["comment"]}"']
+        forward.append(" ".join(parts))
+    forward.append('limit rate 5/minute log prefix "raven-edge drop: "')
+
+    def chain(name: str, header: str | None, rules: list[str]) -> list[str]:
+        body = ([f"\t\t{header}"] if header else []) + [f"\t\t{rule}" for rule in rules]
+        return [f"\tchain {name} {{", *body, "\t}"]
+
+    lines = [
+        "table ip nat {",
+        *chain(
+            "postrouting",
+            "type nat hook postrouting priority srcnat; policy accept;",
+            ['oifname "eth0" ip saddr 10.0.0.0/8 masquerade'],
+        ),
+        "}",
+        "table inet filter {",
+        *chain(
+            "input",
+            "type filter hook input priority filter; policy drop;",
+            [
+                "ct state vmap { established : accept, related : accept, invalid : drop }",
+                'iif "lo" accept',
+                'ip saddr 10.10.0.0/16 tcp dport 22 accept comment "admin SSH from CORP"',
+                "icmp type echo-request accept",
+            ],
+        ),
+        "",
+        *chain("forward", "type filter hook forward priority filter; policy drop;", forward),
+        "",
+        *chain("output", "type filter hook output priority filter; policy accept;", []),
+        "",
+        *chain("raven-deploy", None, ["accept"]),
+        "}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def firewall_nftables_json() -> str:
+    """:func:`firewall_nftables` as ``nft -j list ruleset`` prints it (pretty-printed)."""
+
+    def address(field: str, cidr: str) -> dict[str, Any]:
+        network, _, length = cidr.partition("/")
+        right: Any = network if length == "32" else {"prefix": {"addr": network, "len": int(length)}}
+        return {"match": {"op": "==", "left": {"payload": {"protocol": "ip", "field": field}}, "right": right}}
+
+    def meta(key: str, value: Any, op: str = "==") -> dict[str, Any]:
+        return {"match": {"op": op, "left": {"meta": {"key": key}}, "right": value}}
+
+    def payload(protocol: str, field: str, value: Any) -> dict[str, Any]:
+        return {"match": {"op": "==", "left": {"payload": {"protocol": protocol, "field": field}}, "right": value}}
+
+    counter = {"counter": {"packets": 0, "bytes": 0}}
+    items: list[dict[str, Any]] = [
+        {"metainfo": {"version": "1.0.9", "release_name": "Old Doc Yak #3", "json_schema_version": 1}},
+        {"table": {"family": "ip", "name": "nat", "handle": 1}},
+    ]
+    handles = iter(range(1, 1000))
+
+    def chain(family: str, table: str, name: str, **hook: Any) -> None:
+        items.append({"chain": {"family": family, "table": table, "name": name, "handle": next(handles), **hook}})
+
+    def rule(family: str, table: str, chain_name: str, expr: list[dict[str, Any]], comment: str = "") -> None:
+        entry = {"family": family, "table": table, "chain": chain_name, "handle": next(handles), "expr": expr}
+        items.append({"rule": entry | ({"comment": comment} if comment else {})})
+
+    chain("ip", "nat", "postrouting", type="nat", hook="postrouting", prio=100, policy="accept")
+    rule("ip", "nat", "postrouting", [meta("oifname", "eth0"), address("saddr", "10.0.0.0/8"), {"masquerade": None}])
+    items.append({"table": {"family": "inet", "name": "filter", "handle": 2}})
+    chain("inet", "filter", "input", type="filter", hook="input", prio=0, policy="drop")
+    chain("inet", "filter", "forward", type="filter", hook="forward", prio=0, policy="drop")
+    chain("inet", "filter", "output", type="filter", hook="output", prio=0, policy="accept")
+    chain("inet", "filter", "raven-deploy")
+    states = [["established", {"accept": None}], ["related", {"accept": None}], ["invalid", {"drop": None}]]
+    rule("inet", "filter", "input", [{"vmap": {"key": {"ct": {"key": "state"}}, "data": {"set": states}}}])
+    rule("inet", "filter", "input", [meta("iif", "lo"), {"accept": None}])
+    ssh = [address("saddr", "10.10.0.0/16"), payload("tcp", "dport", 22), {"accept": None}]
+    rule("inet", "filter", "input", ssh, "admin SSH from CORP")
+    rule("inet", "filter", "input", [payload("icmp", "type", "echo-request"), {"accept": None}])
+    established = {"match": {"op": "in", "left": {"ct": {"key": "state"}}, "right": ["established", "related"]}}
+    rule("inet", "filter", "forward", [established, {"accept": None}])
+    for entry in _router_forward():
+        expr = [address(field, entry[field]) for field in ("saddr", "daddr") if entry[field]]
+        if entry["ports"]:
+            ports = entry["ports"]
+            expr.append(payload(entry["protocol"], "dport", ports[0] if len(ports) == 1 else {"set": ports}))
+        if entry["verdict"].startswith("jump"):
+            expr.append({"jump": {"target": "raven-deploy"}})
+        else:
+            expr += [counter, {entry["verdict"]: None}]
+        rule("inet", "filter", "forward", expr, entry["comment"])
+    log: list[dict[str, Any]] = [{"limit": {"rate": 5, "per": "minute"}}, {"log": {"prefix": "raven-edge drop: "}}]
+    rule("inet", "filter", "forward", log)
+    rule("inet", "filter", "raven-deploy", [{"accept": None}])
+    return json.dumps({"nftables": items}, indent=2) + "\n"
 
 
 DOMAINS: dict[str, str] = {
