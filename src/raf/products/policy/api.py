@@ -111,7 +111,8 @@ def diff(ctx: Ctx, before: str, after: str = "current") -> dict[str, Any]:
     for ref in (before, after):
         if "/" in ref or "\\" in ref or ref.endswith((".json", ".yaml", ".yml", ".csv")):
             raise InvalidInputError("The API compares workspace states only (current, snapshot names).")
-    result = PolicyService(ctx).diff(before, after)
+    # files=False: a bare name such as "exports" must never resolve to a path next to the server process.
+    result = PolicyService(ctx).diff(before, after, files=False)
     data: dict[str, Any] = result.to_json_dict()
     data["access_expanded"] = result.expanded
     return data

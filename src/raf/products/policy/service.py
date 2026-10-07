@@ -418,10 +418,10 @@ class PolicyService:
         return out
 
     # ------------------------------------------------------------------ revisions
-    def load_ref(self, ref: str) -> tuple[str, list[Policy]]:
-        """A policy file/directory, ``current``, a snapshot name, or a state provider ref."""
+    def load_ref(self, ref: str, *, files: bool = True) -> tuple[str, list[Policy]]:
+        """A policy file/directory (only with ``files``), ``current``, a snapshot name, or a state provider ref."""
         path = Path(ref)
-        if path.exists():
+        if files and path.exists():
             return path.name, policies_of(load_policy_path(path))
         state = resolve_state(self.ctx, ref)
         ids = {k: h for k, h in state.hashes.get("object", {}).items() if k.startswith("policy:")}
@@ -435,9 +435,10 @@ class PolicyService:
                     policies.append(policy)
         return state.label, sorted(policies, key=lambda p: p.id)
 
-    def diff(self, before_ref: str, after_ref: str) -> PolicyDiff:
-        before_label, before = self.load_ref(before_ref)
-        after_label, after = self.load_ref(after_ref)
+    def diff(self, before_ref: str, after_ref: str, *, files: bool = True) -> PolicyDiff:
+        """Compare two revisions; ``files=False`` (the API) resolves workspace states only, never local paths."""
+        before_label, before = self.load_ref(before_ref, files=files)
+        after_label, after = self.load_ref(after_ref, files=files)
         if not before and not after:
             raise NotFoundError(
                 "Neither side contains policies.",

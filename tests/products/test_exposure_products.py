@@ -195,3 +195,16 @@ def test_api_exposure_products(api: Any) -> None:
     ).json()
     assert checked["analysis"]["findings"][0]["rule_id"] == "overly-broad-rule"
     assert api.get("/api/v1/policy/diff", params={"before": "../etc/passwd"}).status_code == 422
+
+
+def test_api_policy_diff_compares_workspace_states_never_server_files(
+    api: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exports = tmp_path / "exports"  # a policy directory next to the server process, named like a snapshot
+    exports.mkdir()
+    (exports / "fw.csv").write_text((FIXTURES / "policies" / "raven-fw-export.csv").read_text())
+    monkeypatch.chdir(tmp_path)
+    response = api.get("/api/v1/policy/diff", params={"before": "exports", "after": "current"})
+    assert response.status_code == 404 and response.json()["error"]["code"] == "raf.not_found", response.text
+    same = api.get("/api/v1/policy/diff", params={"before": "current", "after": "current"}).json()
+    assert same["changes"] == [] and same["access_expanded"] == 0
