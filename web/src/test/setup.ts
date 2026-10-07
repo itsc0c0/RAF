@@ -5,6 +5,8 @@ import { afterEach, vi } from 'vitest';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  // The API token lives in sessionStorage: never let it leak from one test into the next.
+  window.sessionStorage.clear();
 });
 
 // jsdom lacks these browser APIs used by layout-aware components.

@@ -1,11 +1,10 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { downloadUrl } from '../api/client';
 import { useTimeline } from '../api/hooks';
 import type { RafEvent } from '../api/types';
-import { useWorkspaceName } from '../app/workspace';
 import { Badge } from '../components/Badge';
 import { Button, IconButton } from '../components/Button';
+import { DownloadLink } from '../components/DownloadLink';
 import { Histogram } from '../components/Histogram';
 import { PageHeader, Panel } from '../components/Panel';
 import { LoadingState } from '../components/Spinner';
@@ -48,7 +47,6 @@ function hasFilters(state: TimelineFilterState): boolean {
 }
 
 function TimelineView({ initialScope }: { initialScope: string }) {
-  const workspace = useWorkspaceName();
   const [filters, setFilters] = useState<TimelineFilterState>({ ...EMPTY_FILTERS, scope: initialScope });
   const [selected, setSelected] = useState<RafEvent | null>(null);
   const query = useTimeline(toTimelineParams(filters));
@@ -168,14 +166,15 @@ function TimelineView({ initialScope }: { initialScope: string }) {
         actions={
           <div className="row" role="group" aria-label="Export timeline">
             {EXPORTS.map((item) => (
-              <a
+              <DownloadLink
                 key={item.format}
                 className="btn btn--secondary btn--sm"
-                href={downloadUrl('/timeline/export', exportParams(filters, item.format), workspace)}
-                download
+                path="/timeline/export"
+                query={exportParams(filters, item.format)}
+                filename={`raf-timeline.${item.format}`}
               >
                 {item.label}
-              </a>
+              </DownloadLink>
             ))}
           </div>
         }

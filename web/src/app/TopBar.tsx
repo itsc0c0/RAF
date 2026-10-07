@@ -3,6 +3,7 @@ import { IconButton } from '../components/Button';
 import { Kbd } from '../components/Data';
 import { Icon } from '../components/Icon';
 import { GlobalSearch } from '../features/search/GlobalSearch';
+import { AuthIndicator } from './auth';
 import { JobIndicator } from './JobIndicator';
 import { useOracle, usePalette } from './shellState';
 import { useTheme } from './theme';
@@ -29,6 +30,7 @@ export function TopBar({ navCollapsed, onToggleNav }: { navCollapsed: boolean; o
       <WorkspaceSwitcher />
       <GlobalSearch />
       <div className="topbar__actions">
+        <AuthIndicator />
         <JobIndicator />
         <button
           type="button"

@@ -1,0 +1,9 @@
+/* Oracle page (the answer styles are shared with the panel in shell.css). */
+
+.oracle-page .oracle-answer {
+  padding: 12px 14px;
+}
+
+.oracle-conversation--wide .oracle-history {
+  gap: var(--space-5);
+}

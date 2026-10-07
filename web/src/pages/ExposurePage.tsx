@@ -10,9 +10,10 @@ import {
   ExposureRanking,
   IamPathsView,
 } from '../features/exposure/ExposureViews';
+import { EvaluatePanel, PolicyAnalysisPanel, PolicyList } from '../features/policy/PolicyViews';
 import '../styles/exposure.css';
 
-type Mode = 'ranking' | 'asset' | 'blast' | 'iam';
+type Mode = 'ranking' | 'asset' | 'blast' | 'iam' | 'policies';
 
 function RefPrompt({
   label,
@@ -56,20 +57,35 @@ export default function ExposurePage() {
   const blast = params.get('blast');
   const object = params.get('object');
   const iam = params.get('iam');
-  // A pivot (?blast=, ?iam=, ?object=) decides the view; otherwise the user's tab choice does.
-  const fromParams: Mode | null = blast ? 'blast' : iam ? 'iam' : object ? 'asset' : null;
+  const policy = params.get('policy');
+  const policiesView = params.get('view') === 'policies';
+  // A pivot (?blast=, ?iam=, ?object=, ?policy=) decides the view; otherwise the user's tab choice does.
+  const fromParams: Mode | null = blast
+    ? 'blast'
+    : iam
+      ? 'iam'
+      : object
+        ? 'asset'
+        : policy || policiesView
+          ? 'policies'
+          : null;
   const [chosen, setChosen] = useState<Mode>('ranking');
   const mode = fromParams ?? chosen;
 
   const select = (next: Mode) => {
     if (next === mode) return;
     setChosen(next);
-    if (fromParams) setParams({});
+    // Policies are deep-linkable (`?view=policies`, `?policy=<id>`); the other tabs clear pivots.
+    if (next === 'policies') setParams({ view: 'policies' });
+    else if (fromParams) setParams({});
   };
 
   return (
     <div className="page">
-      <PageHeader title="Exposure" subtitle="Explainable exposure ranking, blast radius and privilege paths">
+      <PageHeader
+        title="Exposure"
+        subtitle="Explainable exposure ranking, blast radius, privilege paths and the policies that decide flows"
+      >
         <Tabs<Mode>
           label="Exposure views"
           idPrefix="exposure"
@@ -80,6 +96,7 @@ export default function ExposurePage() {
             { key: 'asset', label: 'Asset' },
             { key: 'blast', label: 'Blast radius' },
             { key: 'iam', label: 'IAM paths' },
+            { key: 'policies', label: 'Policies' },
           ]}
         />
       </PageHeader>
@@ -117,6 +134,13 @@ export default function ExposurePage() {
               onSubmit={(ref) => setParams({ iam: ref })}
             />
           )
+        ) : null}
+        {mode === 'policies' ? (
+          <div className="stack">
+            <PolicyList selected={policy} onSelect={(id) => setParams({ policy: id })} />
+            <PolicyAnalysisPanel />
+            <EvaluatePanel />
+          </div>
         ) : null}
       </TabPanel>
     </div>

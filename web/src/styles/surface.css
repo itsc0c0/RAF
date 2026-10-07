@@ -1,0 +1,56 @@
+/* Surface: domain tree (names → records → addresses → services and certificates). */
+
+.surface-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 10px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.surface-tree--root {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.surface-tree__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.surface-tree__name {
+  padding: 2px 0;
+}
+
+.surface-records {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 18px;
+}
+
+.surface-record {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.surface-endpoints {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 1px dashed var(--border-strong);
+}
+
+.surface-endpoints__kind {
+  min-width: 72px;
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

@@ -54,4 +54,28 @@ describe('toInternalRoute (pivot views are data)', () => {
     expect(routeTo.trace('a&b')).toBe('/investigate?trace=a%26b');
     expect(new URLSearchParams(routeTo.timeline('user:a+b').split('?')[1]).get('object')).toBe('user:a+b');
   });
+
+  it('knows the new views and the manifest routes (/lab, /surface, /range, /oracle...)', () => {
+    for (const route of [
+      '/lab',
+      '/analyses',
+      '/diff',
+      '/ghost',
+      '/protocol',
+      '/oracle',
+      '/surface',
+      '/range',
+      '/labs',
+    ]) {
+      expect(toInternalRoute(route)).toBe(route);
+    }
+    expect(toInternalRoute('/surface?view=scope')).toBe('/surface?view=scope');
+    expect(routeTo.analysis('analysis-3')).toBe('/analyses?analysis=analysis-3');
+    expect(routeTo.diff('a', 'ghost:exp')).toBe('/diff?a=a&b=ghost%3Aexp');
+    expect(routeTo.ghost('exp', 'compare')).toBe('/ghost?model=exp&view=compare');
+    expect(routeTo.policy('raven-fw')).toBe('/exposure?policy=raven-fw');
+    expect(
+      new URLSearchParams(routeTo.dependencyProject('project:/srv/a&b').split('?')[1]).get('project'),
+    ).toBe('project:/srv/a&b');
+  });
 });

@@ -1,10 +1,9 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { downloadUrl } from '../api/client';
 import { useInspector } from '../app/shellState';
-import { useWorkspaceName } from '../app/workspace';
 import { Badge } from '../components/Badge';
 import { Button, IconButton } from '../components/Button';
+import { DownloadLink } from '../components/DownloadLink';
 import { Select, TextInput } from '../components/Form';
 import { Callout, PageHeader, Toolbar } from '../components/Panel';
 import { LoadingState } from '../components/Spinner';
@@ -56,7 +55,6 @@ function GraphView() {
   const focus = params.get('focus');
   const depth = clampDepth(params.get('depth'));
   const at = params.get('at');
-  const workspace = useWorkspaceName();
   const inspector = useInspector();
   const explorer = useGraphExplorer({ focus, depth, at });
   const { model } = explorer;
@@ -231,17 +229,15 @@ function GraphView() {
               value={exportFormat}
               onChange={(event) => setExportFormat(event.target.value as (typeof EXPORT_FORMATS)[number])}
             />
-            <a
+            <DownloadLink
               className="btn btn--secondary btn--sm"
-              href={downloadUrl(
-                '/graph/export',
-                { ref: focus ?? undefined, depth: focus ? depth : undefined, format: exportFormat },
-                workspace,
-              )}
-              download={`raf-graph.${exportFormat === 'cytoscape' ? 'json' : exportFormat}`}
+              path="/graph/export"
+              query={{ ref: focus ?? undefined, depth: focus ? depth : undefined, format: exportFormat }}
+              filename={`raf-graph.${exportFormat === 'cytoscape' ? 'json' : exportFormat}`}
+              nameLink
             >
               Export
-            </a>
+            </DownloadLink>
           </span>
         </Toolbar>
       </PageHeader>

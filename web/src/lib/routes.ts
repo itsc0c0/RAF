@@ -11,13 +11,22 @@ export const APP_ROUTES = [
   '/graph',
   '/replay',
   '/timeline',
+  '/analyses',
+  '/diff',
   '/exposure',
+  '/surface',
+  '/ghost',
   '/ranges',
-  '/labs',
+  '/lab',
+  '/protocol',
   '/evidence',
   '/findings',
+  '/oracle',
   '/products',
   '/settings',
+  // Aliases that redirect: product manifests declare `/range`; `/labs` was the previous Lab route.
+  '/range',
+  '/labs',
 ] as const;
 
 export type AppRoute = (typeof APP_ROUTES)[number];
@@ -73,6 +82,15 @@ function withParam(path: AppRoute, key: string, value: string | null | undefined
   return value ? `${path}?${key}=${encodeURIComponent(value)}` : path;
 }
 
+function withParams(path: AppRoute, params: Record<string, string | number | null | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined && value !== '') search.set(key, String(value));
+  }
+  const text = search.toString();
+  return text ? `${path}?${text}` : path;
+}
+
 /** Builders for every pivot the UI creates itself (always encoded). */
 export const routeTo = {
   overview: () => '/',
@@ -88,4 +106,16 @@ export const routeTo = {
   evidence: (ref?: string | null) => withParam('/evidence', 'object', ref),
   evidenceCase: (name: string) => withParam('/evidence', 'case', name),
   finding: (id?: string | null) => withParam('/findings', 'finding', id),
+  analysis: (id?: string | null) => withParam('/analyses', 'analysis', id),
+  diff: (a?: string | null, b?: string | null, category?: string | null) =>
+    withParams('/diff', { a, b, category }),
+  ghost: (model?: string | null, view?: string | null) => withParams('/ghost', { model, view }),
+  protocol: (upload?: string | null, packet?: number | null) => withParams('/protocol', { upload, packet }),
+  policy: (id?: string | null) => (id ? withParam('/exposure', 'policy', id) : '/exposure?view=policies'),
+  findingsTab: (tab: 'all' | 'vault' | 'dependency') =>
+    tab === 'all' ? '/findings' : `/findings?tab=${tab}`,
+  dependencyProject: (ref: string) => withParams('/findings', { tab: 'dependency', project: ref }),
+  surface: (view?: string | null) => withParams('/surface', { view }),
+  oracle: () => '/oracle',
+  lab: () => '/lab',
 } as const;

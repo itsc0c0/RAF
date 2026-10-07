@@ -99,6 +99,21 @@ export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="kbd">{children}</kbd>;
 }
 
+/** CLI commands rendered as code with a copy button each (suggestions, how-to hints). */
+export function CommandList({ commands, label }: { commands: readonly string[]; label: string }) {
+  if (commands.length === 0) return null;
+  return (
+    <ul className="cmd-list" aria-label={label}>
+      {commands.map((command, index) => (
+        <li key={`${index}:${command}`} className="cmd-list__item">
+          <code className="cmd-list__code break">{command}</code>
+          <CopyButton value={command} label={`Copy command: ${command}`} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function StatTile({ label, value, detail }: { label: string; value: ReactNode; detail?: ReactNode }) {
   return (
     <div className="stat">

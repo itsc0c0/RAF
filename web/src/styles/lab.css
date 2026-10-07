@@ -1,0 +1,62 @@
+/* Lab: create form, mounts, container command. */
+
+.lab-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.lab-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space-3);
+}
+
+.lab-form__wide {
+  grid-column: span 2;
+}
+
+.lab-form__mounts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.lab-form__mounts legend {
+  margin-bottom: 2px;
+  padding: 0;
+}
+
+.lab-form__flags {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 760px;
+}
+
+.lab-mount {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.lab-command {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 700px) {
+  .lab-form__wide {
+    grid-column: auto;
+  }
+}

@@ -1,0 +1,53 @@
+/* Protocol: capture summary, flows, packet layers. */
+
+.protocol-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.protocol-bars__row {
+  display: grid;
+  grid-template-columns: 64px minmax(80px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.packet-number {
+  width: 72px;
+}
+
+.packet-tree {
+  padding: 10px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  white-space: pre;
+}
+
+.packet-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 4px 10px;
+  border-left: 2px solid var(--border-strong);
+}
+
+.packet-layer__head {
+  font-size: var(--text-md);
+}
+
+.packet-layer__malformed {
+  color: var(--bad);
+}
+
+.packet-fields td:first-child {
+  width: 22%;
+}
+
+.packet-fields td:nth-child(2) {
+  width: 28%;
+}

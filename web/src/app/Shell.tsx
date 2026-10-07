@@ -1,5 +1,6 @@
 import { Suspense, useState, type ReactNode } from 'react';
 import { Outlet } from 'react-router-dom';
+import { isApiError } from '../api/client';
 import { LoadingState } from '../components/Spinner';
 import { ErrorState } from '../components/States';
 import { InspectorHost } from '../features/inspector/InspectorHost';
@@ -7,6 +8,7 @@ import { OracleHost } from '../features/oracle/OraclePanel';
 import { CommandPaletteHost } from '../features/palette/CommandPalette';
 import { readStorage, STORAGE_KEYS, writeStorage } from '../lib/storage';
 import { AnalyzeProvider } from './analyze';
+import { AuthRequiredState } from './auth';
 import { LeftNav } from './LeftNav';
 import { InspectorProvider, OracleProvider, PaletteProvider } from './shellState';
 import { TopBar } from './TopBar';
@@ -28,6 +30,13 @@ export function ShellProviders({ children }: { children: ReactNode }) {
 /** Pages render only once the workspace is known (every request is workspace scoped). */
 function WorkspaceGate({ children }: { children: ReactNode }) {
   const { workspace, isLoading, error, retry } = useWorkspace();
+  if (error && !workspace && isApiError(error) && error.isUnauthorized) {
+    return (
+      <div className="page">
+        <AuthRequiredState />
+      </div>
+    );
+  }
   if (error && !workspace) {
     return (
       <div className="page">

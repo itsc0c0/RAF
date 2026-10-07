@@ -1535,3 +1535,137 @@
   font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
+
+/* ---------------------------------------------------------------- additions: forms, commands, data */
+
+.field__error {
+  color: var(--bad);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+
+.input--file {
+  height: auto;
+  padding: 6px 8px;
+}
+
+.input--file::file-selector-button {
+  margin-right: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.filters__error {
+  flex-basis: 100%;
+}
+
+.state__problems {
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.cmd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cmd-list__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.cmd-list__code {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.chip--static {
+  cursor: default;
+}
+
+.chip--static:hover {
+  border-color: var(--border);
+  background: var(--bg-sunken);
+}
+
+.chip--bad {
+  border-color: var(--bad);
+}
+
+.kv--compact .kv__row {
+  grid-template-columns: minmax(96px, 30%) minmax(0, 1fr);
+  padding: 3px 0;
+  font-size: var(--text-sm);
+}
+
+.importance-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: var(--space-2);
+}
+
+.importance-counts li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delta {
+  font-weight: 600;
+}
+
+.delta--good {
+  color: var(--good);
+}
+
+.delta--bad {
+  color: var(--bad);
+}
+
+.delta--neutral {
+  color: var(--ink-muted);
+}
+
+/* Values redacted by the API (Vault): labelled so they never read as the secret itself. */
+.redacted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.redacted__label {
+  padding: 0 5px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+a.is-busy {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+details > summary {
+  cursor: pointer;
+}

@@ -8,7 +8,20 @@ export interface NavItem {
   description: string;
   /** Backing product(s); the nav marks the item when none of them is available. */
   products?: readonly string[];
+  /** Section heading in the left navigation (follows the product categories). */
+  group: NavGroup;
 }
+
+export type NavGroup = 'Workspace' | 'Investigation' | 'Exposure' | 'Synthetic' | 'Analysis' | 'Platform';
+
+export const NAV_GROUPS: readonly NavGroup[] = [
+  'Workspace',
+  'Investigation',
+  'Exposure',
+  'Synthetic',
+  'Analysis',
+  'Platform',
+];
 
 export const NAV_ITEMS: readonly NavItem[] = [
   {
@@ -16,6 +29,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Overview',
     icon: 'overview',
     description: 'Workspace status, incidents, jobs, snapshots',
+    group: 'Workspace',
+  },
+  {
+    path: '/findings',
+    label: 'Findings',
+    icon: 'findings',
+    description: 'Triage findings across products, secrets (Vault) and dependencies',
+    group: 'Workspace',
   },
   {
     path: '/investigate',
@@ -23,6 +44,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: 'investigate',
     description: 'Search, filter, group and trace (Lens, Trace)',
     products: ['trace', 'lens', 'timeline'],
+    group: 'Investigation',
   },
   {
     path: '/graph',
@@ -30,6 +52,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: 'graph',
     description: 'Security relationship graph',
     products: ['graph'],
+    group: 'Investigation',
   },
   {
     path: '/replay',
@@ -37,6 +60,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: 'replay',
     description: 'Replay incidents step by step',
     products: ['replay'],
+    group: 'Investigation',
   },
   {
     path: '/timeline',
@@ -44,13 +68,46 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: 'timeline',
     description: 'Unified event timelines',
     products: ['timeline'],
+    group: 'Investigation',
+  },
+  {
+    path: '/analyses',
+    label: 'Analyses',
+    icon: 'analyses',
+    description: 'Analyze files (upload) and review every analysis step',
+    group: 'Investigation',
+  },
+  {
+    path: '/diff',
+    label: 'Diff',
+    icon: 'diff',
+    description: 'Snapshots and what changed between security states',
+    products: ['diff'],
+    group: 'Investigation',
   },
   {
     path: '/exposure',
     label: 'Exposure',
     icon: 'exposure',
-    description: 'Exposure ranking, blast radius, IAM paths',
-    products: ['exposure', 'blast', 'iam'],
+    description: 'Exposure ranking, blast radius, IAM paths, policies',
+    products: ['exposure', 'blast', 'iam', 'policy'],
+    group: 'Exposure',
+  },
+  {
+    path: '/surface',
+    label: 'Surface',
+    icon: 'surface',
+    description: 'Authorized external attack surface from imported inventories (no scanning)',
+    products: ['surface'],
+    group: 'Exposure',
+  },
+  {
+    path: '/ghost',
+    label: 'Ghost',
+    icon: 'ghost',
+    description: 'What-if models: simulate and compare changes',
+    products: ['ghost'],
+    group: 'Synthetic',
   },
   {
     path: '/ranges',
@@ -58,21 +115,52 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: 'ranges',
     description: 'Synthetic organizations',
     products: ['range'],
+    group: 'Synthetic',
   },
-  { path: '/labs', label: 'Labs', icon: 'labs', description: 'Isolated labs', products: ['lab'] },
+  {
+    path: '/lab',
+    label: 'Lab',
+    icon: 'labs',
+    description: 'Isolated container labs',
+    products: ['lab'],
+    group: 'Synthetic',
+  },
+  {
+    path: '/protocol',
+    label: 'Protocol',
+    icon: 'protocol',
+    description: 'Packet captures: summary, flows, explained packets',
+    products: ['protocol'],
+    group: 'Analysis',
+  },
   {
     path: '/evidence',
     label: 'Evidence',
     icon: 'evidence',
     description: 'Cases, items, custody',
     products: ['evidence'],
+    group: 'Analysis',
   },
-  { path: '/findings', label: 'Findings', icon: 'findings', description: 'Triage findings across products' },
-  { path: '/products', label: 'Products', icon: 'products', description: 'Product registry' },
+  {
+    path: '/oracle',
+    label: 'Oracle',
+    icon: 'oracle',
+    description: 'Grounded answers about this workspace, with citations',
+    products: ['oracle'],
+    group: 'Analysis',
+  },
+  {
+    path: '/products',
+    label: 'Products',
+    icon: 'products',
+    description: 'Product registry',
+    group: 'Platform',
+  },
   {
     path: '/settings',
     label: 'Settings',
     icon: 'settings',
-    description: 'Configuration, workspaces, Oracle',
+    description: 'Configuration, workspaces, access token, Oracle',
+    group: 'Platform',
   },
 ];

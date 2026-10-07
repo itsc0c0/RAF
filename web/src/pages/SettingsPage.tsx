@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { isApiError } from '../api/client';
 import { useConfig, useOracleStatus, useVersion } from '../api/hooks';
 import type { ConfigEntry, WorkspaceInfo } from '../api/types';
+import { TOKEN_STORAGE_NOTE, useAuth } from '../app/auth';
 import { useTheme, type Theme } from '../app/theme';
 import { useWorkspace } from '../app/workspace';
 import { Badge, type Tone } from '../components/Badge';
@@ -268,6 +269,40 @@ function OracleSettings() {
   );
 }
 
+/** Bearer token for remote `raf serve` deployments: status and "Forget token" (never the value). */
+function AccessToken() {
+  const { hasToken, required, openPrompt, forgetToken } = useAuth();
+  return (
+    <Panel title="Access token">
+      <div className="stack">
+        <div className="row row--wrap">
+          {hasToken ? (
+            <Badge tone="good">TOKEN SET FOR THIS TAB</Badge>
+          ) : (
+            <Badge tone="neutral" outline>
+              NO TOKEN
+            </Badge>
+          )}
+          {required ? <Badge tone="warn">THE SERVER ASKS FOR A TOKEN</Badge> : null}
+        </div>
+        <p className="small">
+          Needed only when <code>raf serve</code> is bound to a non-loopback address: it then requires a
+          bearer token (the <code>api.token</code> secret, <code>RAF_API_TOKEN</code>, or the one it prints
+          once at startup). {TOKEN_STORAGE_NOTE} Exports are downloaded with the same header.
+        </p>
+        <div className="row row--wrap">
+          <Button size="sm" icon="key" onClick={openPrompt}>
+            {hasToken ? 'Replace token…' : 'Enter token…'}
+          </Button>
+          <Button size="sm" variant="danger" icon="trash" disabled={!hasToken} onClick={forgetToken}>
+            Forget token
+          </Button>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function About() {
   const version = useVersion();
   return (
@@ -288,11 +323,15 @@ function About() {
 export default function SettingsPage() {
   return (
     <div className="page">
-      <PageHeader title="Settings" subtitle="Appearance, workspaces, configuration and Oracle" />
+      <PageHeader
+        title="Settings"
+        subtitle="Appearance, access token, workspaces, configuration and Oracle"
+      />
       <div className="grid-2">
         <Appearance />
         <About />
       </div>
+      <AccessToken />
       <Workspaces />
       <OracleSettings />
       <ConfigTable />

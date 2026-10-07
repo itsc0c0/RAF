@@ -1,6 +1,8 @@
 import { SEVERITIES, type Severity } from '../../api/types';
 import { SeverityBadge } from '../../components/Badge';
 import { formatNumber } from '../../lib/format';
+// The component carries its own styles: Surface reuses it without loading the Overview page.
+import '../../styles/overview.css';
 
 const ORDER: Severity[] = [...SEVERITIES].reverse();
 

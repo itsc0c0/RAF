@@ -1,0 +1,25 @@
+/* Findings page: Vault and Dependency tabs. */
+
+.dep-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 10px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.dep-tree--root {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.dep-tree__row {
+  padding: 3px 0;
+}
+
+/* Project names (e.g. "raven-shop") stay whole in the narrow projects column. */
+.dep-project__name {
+  white-space: nowrap;
+}

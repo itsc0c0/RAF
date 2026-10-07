@@ -1,0 +1,84 @@
+/* Analyses: executed steps with their status, detail, duration and statistics. */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.step--ok {
+  border-left-color: var(--good);
+}
+
+.step--skipped {
+  border-left-color: var(--border-strong);
+  border-left-style: dashed;
+}
+
+.step--failed {
+  border-left-color: var(--bad);
+  background: var(--bad-soft);
+}
+
+.step__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.step--ok .step__status {
+  color: var(--good);
+}
+
+.step--skipped .step__status {
+  color: var(--ink-muted);
+}
+
+.step--failed .step__status {
+  color: var(--bad);
+}
+
+.step__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.step__index {
+  font-size: var(--text-sm);
+}
+
+.step__detail {
+  color: var(--ink-2);
+  font-size: var(--text-md);
+}
+
+.step__stats > summary {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+.step__stats[open] > summary {
+  margin-bottom: 4px;
+}
+
+/* The list lives in the narrow column: identifiers never wrap mid-word. */
+.analysis-list__id {
+  white-space: nowrap;
+}

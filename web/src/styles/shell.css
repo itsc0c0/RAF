@@ -355,6 +355,9 @@
 }
 
 .main {
+  /* Containing block for absolutely positioned descendants (e.g. .sr-only captions): without it they
+     are laid out against the document and stretch it beyond the shell, adding a second scrollbar. */
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: auto;
@@ -724,4 +727,101 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+/* ---------------------------------------------------------------- navigation sections */
+
+.nav__section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nav__section--labelled {
+  margin-top: 10px;
+}
+
+.nav__group {
+  padding: 0 10px 4px;
+  color: var(--ink-faint);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nav--collapsed .nav__section--labelled {
+  margin-top: 6px;
+}
+
+/* Collapsed navigation: the section heading becomes a hairline separator. */
+.nav--collapsed .nav__group {
+  height: 1px;
+  margin: 0 10px 6px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--hairline);
+  color: transparent;
+}
+
+@media (max-width: 900px) {
+  .nav .nav__group {
+    height: 1px;
+    margin: 0 10px 6px;
+    padding: 0;
+    overflow: hidden;
+    background: var(--hairline);
+    color: transparent;
+  }
+}
+
+.auth-indicator {
+  color: var(--warn);
+}
+
+.pivot:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pivot:disabled:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-raised);
+}
+
+/* ---------------------------------------------------------------- oracle answers (panel and page) */
+
+.oracle-answer__facts-wrap > summary {
+  list-style-position: inside;
+}
+
+.oracle-answer__facts-title {
+  display: inline;
+}
+
+.oracle-answer__facts-wrap[open] > summary {
+  margin-bottom: 6px;
+}
+
+.oracle-fact {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.oracle-answer__notice {
+  padding-top: 6px;
+  border-top: 1px solid var(--hairline);
+}
+
+.untrusted__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.untrusted__list li + li {
+  border-top: 1px solid var(--hairline);
+}
+
+.untrusted .raw__body {
+  max-height: 160px;
 }

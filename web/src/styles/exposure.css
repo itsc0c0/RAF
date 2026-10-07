@@ -7,3 +7,35 @@
 .split .table td .meter {
   width: 72px;
 }
+
+/* Policies tab. */
+
+.policy-verdict {
+  font-size: var(--text-md);
+}
+
+.policy-part {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.policy-explanation {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  list-style: decimal;
+}
+
+.policy-decision {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

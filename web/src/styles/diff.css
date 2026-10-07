@@ -1,0 +1,32 @@
+/* Snapshots & Diff. */
+
+.diff-head {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+}
+
+.diff-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.change-kind {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.change-kind--added {
+  color: var(--accent);
+}
+
+.change-kind--removed {
+  color: var(--ink-muted);
+}
+
+.change-kind--changed {
+  color: var(--ink-2);
+}

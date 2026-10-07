@@ -14,9 +14,16 @@ import {
 import { useWorkspaceName } from '../app/workspace';
 import { api, encodeRef, type QueryParams } from './client';
 import type {
-  AnalyzeResponse,
+  Advisory,
+  AnalysisList,
+  AnalysisRecord,
   BlastResult,
+  CaptureFlows,
+  CaptureSummary,
   ConfigEntry,
+  DependencyGraph,
+  DependencyProject,
+  DiffResult,
   EvidenceCase,
   EvidenceItem,
   EvidenceVerifyResult,
@@ -24,10 +31,20 @@ import type {
   ExposureResponse,
   Finding,
   FindingStatus,
+  GhostComparison,
+  GhostModel,
+  GhostModelSummary,
+  GhostOperationInfo,
+  GhostOpResult,
+  GhostSimulation,
+  GhostUndoResult,
   IamPathResponse,
   Incident,
   Job,
-  LabInfo,
+  Lab,
+  LabCreateRequest,
+  LabDestroyResult,
+  LabList,
   LabStatus,
   LensResponse,
   ObjectDetail,
@@ -36,8 +53,13 @@ import type {
   ObjectTypeCounts,
   OracleAnswer,
   OracleStatus,
+  PacketDetail,
   Page,
   PathResult,
+  Policy,
+  PolicyAnalysis,
+  PolicyEvaluateRequest,
+  PolicyEvaluation,
   ProductInfo,
   RafEvent,
   RangeInfo,
@@ -47,9 +69,18 @@ import type {
   Snapshot,
   StatusResponse,
   Subgraph,
+  SurfaceAnalysis,
+  SurfaceAsset,
+  SurfaceImportResult,
+  SurfaceScopeEntry,
+  SurfaceScopeResult,
+  SurfaceSummary,
   TimelineResponse,
   TraceResult,
+  VaultRule,
+  VaultSecret,
   VersionInfo,
+  VulnerablePackage,
 } from './types';
 
 export function apiKey(workspace: string | null, path: string, query?: QueryParams) {
@@ -172,20 +203,59 @@ export function useCreateSnapshot() {
   return useApiMutation(
     (body: { name: string; source?: string; description?: string }, workspace) =>
       api.post<Snapshot>('/snapshots', { workspace, body: { source: 'current', description: '', ...body } }),
-    ['/snapshots', '/status'],
+    ['/snapshots', '/status', '/diff'],
   );
 }
 
+// ------------------------------------------------------------------ analyses
+
+export interface AnalyzeUploadInput {
+  file: File;
+  /** Optional incident name to link the imported events to. */
+  incident?: string;
+  /** Correlation re-runs the workspace-wide IAM and exposure analyses (server default: true). */
+  correlate?: boolean;
+}
+
+/**
+ * `POST /analyze` (multipart `file`, form fields `incident`, `correlate`). The analysis runs during
+ * the request and the response is the complete record; the import changes data everywhere, so every
+ * cached query is invalidated.
+ */
 export function useAnalyzeUpload() {
   return useApiMutation(
-    (file: File, workspace) => {
+    ({ file, incident, correlate }: AnalyzeUploadInput, workspace) => {
       const form = new FormData();
       form.append('file', file, file.name);
-      return api.post<AnalyzeResponse>('/analyze', { workspace, form });
+      if (incident?.trim()) form.append('incident', incident.trim());
+      if (correlate !== undefined) form.append('correlate', correlate ? 'true' : 'false');
+      return api.post<AnalysisRecord>('/analyze', { workspace, form });
     },
-    ['/jobs', '/analyses'],
+    ['*'],
   );
 }
+
+export const useAnalyses = (limit = 100) =>
+  useApiQuery<AnalysisList>('/analyses', { limit }, { keepPrevious: true });
+
+export const useAnalysis = (id: string | null) =>
+  useApiQuery<AnalysisRecord>(id ? `/analyses/${encodeRef(id)}` : null);
+
+// ------------------------------------------------------------------ diff
+
+export interface DiffParams {
+  a: string | null;
+  b: string | null;
+  category?: string | null;
+  limit?: number;
+}
+
+export const useDiff = ({ a, b, category, limit }: DiffParams) =>
+  useApiQuery<DiffResult>(
+    a && b ? '/diff' : null,
+    { a: a ?? undefined, b: b ?? undefined, category: category || undefined, limit },
+    { keepPrevious: true },
+  );
 
 // ------------------------------------------------------------------ investigation
 
@@ -343,27 +413,332 @@ export function useRangeAction() {
 }
 
 export const useLabStatus = () => useApiQuery<LabStatus>('/lab/status', undefined, { staleTime: 30_000 });
-export const useLabs = () => useApiQuery<Page<LabInfo>>('/lab/labs');
+export const useLabs = () => useApiQuery<LabList>('/lab/labs');
+export const useLab = (name: string | null) => useApiQuery<Lab>(name ? `/lab/labs/${encodeRef(name)}` : null);
 
+/** `POST /lab/labs`: only the fields the API accepts (unknown fields are rejected with 422). */
 export function useCreateLab() {
   return useApiMutation(
-    (body: { name: string; template?: string }, workspace) =>
-      api.post<LabInfo>('/lab/labs', { workspace, body }),
+    (body: LabCreateRequest, workspace) => api.post<Lab>('/lab/labs', { workspace, body }),
     ['/lab'],
   );
 }
 
+export type LabAction = 'start' | 'stop' | 'destroy';
+
+/**
+ * Lab lifecycle. There is deliberately no exec/shell route: commands run in a lab only through the
+ * local CLI (`raf lab exec`, `raf lab shell`).
+ */
 export function useLabAction() {
-  return useApiMutation(
-    ({ name, action }: { name: string; action: LifecycleAction }, workspace) => {
+  const workspace = useWorkspaceName();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      name,
+      action,
+      forget = false,
+    }: {
+      name: string;
+      action: LabAction;
+      forget?: boolean;
+    }): Promise<Lab | LabDestroyResult> => {
       const path = `/lab/labs/${encodeRef(name)}`;
       return action === 'destroy'
-        ? api.delete<unknown>(path, { workspace })
-        : api.post<unknown>(`${path}/${action}`, { workspace });
+        ? api.delete<LabDestroyResult>(path, { workspace, query: { forget: forget ? 'true' : undefined } })
+        : api.post<Lab>(`${path}/${action}`, { workspace });
     },
-    ['/lab'],
+    onSuccess: (_result, { name, action }) => {
+      // A destroyed lab no longer exists: refetching its detail (still open in the drawer until the
+      // caller closes it) would only answer 404. Everything else under /lab is refreshed.
+      const gone = action === 'destroy' ? `/lab/labs/${encodeRef(name)}` : null;
+      return client.invalidateQueries({
+        predicate: (query) => {
+          const path = query.queryKey[2];
+          return typeof path === 'string' && path.startsWith('/lab') && path !== gone;
+        },
+      });
+    },
+  });
+}
+
+// ------------------------------------------------------------------ ghost
+
+export const useGhostModels = () => useApiQuery<{ items: GhostModelSummary[] }>('/ghost/models');
+
+export const useGhostModel = (name: string | null) =>
+  useApiQuery<GhostModel>(name ? `/ghost/models/${encodeRef(name)}` : null);
+
+export const useGhostOperations = () =>
+  useApiQuery<{ items: GhostOperationInfo[] }>('/ghost/operations', undefined, { staleTime: Infinity });
+
+export const useGhostSimulation = (name: string | null, limit = 20) =>
+  useApiQuery<GhostSimulation>(name ? `/ghost/models/${encodeRef(name)}/simulate` : null, { limit });
+
+export const useGhostCompare = (a: string | null, b: string | null) =>
+  useApiQuery<GhostComparison>(a && b ? '/ghost/compare' : null, { a: a ?? undefined, b: b ?? undefined });
+
+// Creating or deleting a model also creates/removes its frozen base snapshot.
+const GHOST_PATHS = ['/ghost', '/snapshots', '/diff'];
+
+export function useCreateGhostModel() {
+  return useApiMutation(
+    (body: { name: string; base: string; description?: string }, workspace) =>
+      api.post<GhostModel>('/ghost/models', { workspace, body }),
+    GHOST_PATHS,
   );
 }
+
+export function useCloneGhostModel() {
+  return useApiMutation(
+    ({ source, name }: { source: string; name: string }, workspace) =>
+      api.post<GhostModel>(`/ghost/models/${encodeRef(source)}/clone`, { workspace, body: { name } }),
+    GHOST_PATHS,
+  );
+}
+
+export function useDeleteGhostModel() {
+  return useApiMutation(
+    (name: string, workspace) =>
+      api.delete<{ model: string; base_snapshot_removed: string | null }>(
+        `/ghost/models/${encodeRef(name)}`,
+        {
+          workspace,
+        },
+      ),
+    GHOST_PATHS,
+  );
+}
+
+export function useApplyGhostOp() {
+  return useApiMutation(
+    ({ model, op, arg }: { model: string; op: string; arg: string }, workspace) =>
+      api.post<GhostOpResult>(`/ghost/models/${encodeRef(model)}/ops`, { workspace, body: { op, arg } }),
+    ['/ghost', '/diff'],
+  );
+}
+
+export function useUndoGhostOp() {
+  return useApiMutation(
+    (model: string, workspace) =>
+      api.post<GhostUndoResult>(`/ghost/models/${encodeRef(model)}/undo`, { workspace }),
+    ['/ghost', '/diff'],
+  );
+}
+
+// ------------------------------------------------------------------ policy
+
+export const usePolicies = () => useApiQuery<{ items: Policy[] }>('/policy/policies');
+
+/** `POST /policy/analyze?persist=false` is a dry run; `persist=true` records (and resolves) findings. */
+export function usePolicyAnalyze() {
+  return useApiMutation(
+    (persist: boolean, workspace) =>
+      api.post<PolicyAnalysis>('/policy/analyze', {
+        workspace,
+        query: { persist: persist ? 'true' : 'false' },
+      }),
+    ['/findings', '/status', '/objects'],
+  );
+}
+
+export function usePolicyEvaluate() {
+  const workspace = useWorkspaceName();
+  return useMutation({
+    mutationFn: (body: PolicyEvaluateRequest) =>
+      api.post<PolicyEvaluation>('/policy/evaluate', { workspace, body }),
+  });
+}
+
+// ------------------------------------------------------------------ protocol
+
+export interface CaptureFilterParams {
+  protocol?: string | null;
+  host?: string | null;
+  port?: number | null;
+  flow?: number | null;
+  limit?: number;
+}
+
+function captureQuery(filters: CaptureFilterParams): QueryParams {
+  return {
+    protocol: filters.protocol || undefined,
+    host: filters.host || undefined,
+    port: filters.port ?? undefined,
+    flow: filters.flow ?? undefined,
+    limit: filters.limit,
+  };
+}
+
+/** `POST /protocol/inspect` (multipart `file`): stores the capture and returns its summary + upload ID. */
+export function useInspectCapture() {
+  return useApiMutation(({ file }: { file: File }, workspace) => {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return api.post<CaptureSummary>('/protocol/inspect', { workspace, form, query: { limit: 50 } });
+  }, []);
+}
+
+export const useCaptureSummary = (upload: string | null, filters: CaptureFilterParams) =>
+  useApiQuery<CaptureSummary>(
+    upload ? '/protocol/inspect' : null,
+    { upload: upload ?? undefined, ...captureQuery(filters) },
+    { staleTime: Infinity, keepPrevious: true },
+  );
+
+export const useCaptureFlows = (upload: string | null, sort: string, limit = 200) =>
+  useApiQuery<CaptureFlows>(
+    upload ? '/protocol/flows' : null,
+    { upload: upload ?? undefined, sort, limit },
+    { staleTime: Infinity, keepPrevious: true },
+  );
+
+export const useCapturePacket = (upload: string | null, n: number | null) =>
+  useApiQuery<PacketDetail>(
+    upload && n ? '/protocol/packet' : null,
+    { upload: upload ?? undefined, n: n ?? undefined },
+    { staleTime: Infinity, keepPrevious: true },
+  );
+
+// ------------------------------------------------------------------ vault (values are always redacted)
+
+export const useVaultFindings = (query: QueryParams) =>
+  useApiQuery<Page<Finding>>('/vault/findings', query, { keepPrevious: true });
+
+export const useVaultSecrets = (includeRemoved: boolean) =>
+  useApiQuery<Page<VaultSecret>>(
+    '/vault/secrets',
+    { include_removed: includeRemoved ? 'true' : undefined, limit: 500 },
+    { keepPrevious: true },
+  );
+
+export const useVaultRules = () =>
+  useApiQuery<{ items: VaultRule[] }>('/vault/rules', undefined, { staleTime: 5 * 60_000 });
+
+// ------------------------------------------------------------------ surface (never scans: imported inventories only)
+
+export const useSurfaceSummary = (expiringDays?: number) =>
+  useApiQuery<SurfaceSummary>('/surface/summary', { expiring_days: expiringDays }, { keepPrevious: true });
+
+export interface SurfaceAssetQuery {
+  kind?: string | null;
+  scope?: 'in' | 'out' | 'all';
+  references?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export const useSurfaceAssets = ({
+  kind,
+  scope = 'all',
+  references = false,
+  limit = 100,
+  offset = 0,
+}: SurfaceAssetQuery) =>
+  useApiQuery<Page<SurfaceAsset>>(
+    '/surface/assets',
+    { kind: kind || undefined, scope, references: references ? 'true' : undefined, limit, offset },
+    { keepPrevious: true },
+  );
+
+export const useSurfaceScope = () =>
+  useApiQuery<{ items: SurfaceScopeEntry[]; total: number }>('/surface/scope');
+
+export const useSurfaceFindings = (query: QueryParams) =>
+  useApiQuery<Page<Finding>>('/surface/findings', query, { keepPrevious: true });
+
+// Scope, imports and analyses change what is judged: summary, assets, findings everywhere.
+const SURFACE_PATHS = ['/surface', '/findings', '/status', '/objects', '/graph', '/search'];
+
+export interface SurfaceScopeInput {
+  target: string;
+  kind?: string;
+  owner?: string;
+  authorization?: string;
+  replace?: boolean;
+}
+
+export function useAddSurfaceScope() {
+  return useApiMutation(
+    (body: SurfaceScopeInput, workspace) =>
+      api.post<SurfaceScopeResult>('/surface/scope', { workspace, body }),
+    SURFACE_PATHS,
+  );
+}
+
+/** CIDR targets contain `/`: the reference is encoded, the API's path converter accepts it. */
+export function useRemoveSurfaceScope() {
+  return useApiMutation(
+    (target: string, workspace) =>
+      api.delete<SurfaceScopeResult>(`/surface/scope/${encodeRef(target)}`, { workspace }),
+    SURFACE_PATHS,
+  );
+}
+
+export function useAnalyzeSurface() {
+  return useApiMutation(
+    (persist: boolean, workspace) =>
+      api.post<SurfaceAnalysis>('/surface/analyze', {
+        workspace,
+        query: { persist: persist ? 'true' : 'false' },
+      }),
+    SURFACE_PATHS,
+  );
+}
+
+export type SurfaceFormat = 'json' | 'jsonl' | 'yaml' | 'csv';
+
+export const SURFACE_CONTENT_TYPES: Record<SurfaceFormat, string> = {
+  json: 'application/json',
+  jsonl: 'application/x-ndjson',
+  yaml: 'application/yaml',
+  csv: 'text/csv',
+};
+
+export interface SurfaceImportInput {
+  file: Blob;
+  format: SurfaceFormat;
+  sourceName: string;
+  /** Adds the document's `scope` section to the authorized scope (explicit operator choice). */
+  applyScope: boolean;
+}
+
+/** `POST /surface/import`: the inventory travels as the request body (the API never takes a path). */
+export function useImportSurface() {
+  return useApiMutation(
+    ({ file, format, sourceName, applyScope }: SurfaceImportInput, workspace) =>
+      api.post<SurfaceImportResult>('/surface/import', {
+        workspace,
+        query: {
+          format,
+          source_name: sourceName.slice(0, 200) || undefined,
+          apply_scope: applyScope ? 'true' : undefined,
+        },
+        raw: { body: file, contentType: SURFACE_CONTENT_TYPES[format] },
+      }),
+    SURFACE_PATHS,
+  );
+}
+
+// ------------------------------------------------------------------ dependency
+
+export const useDependencyProjects = () =>
+  useApiQuery<{ items: DependencyProject[]; total: number }>('/dependency/projects');
+
+export const useDependencyGraph = (ref: string | null) =>
+  useApiQuery<DependencyGraph>(ref ? `/dependency/projects/${encodeRef(ref)}/graph` : null);
+
+export const useVulnerablePackages = (includeUnused: boolean) =>
+  useApiQuery<{ items: VulnerablePackage[]; total: number }>(
+    '/dependency/vulnerable',
+    { include_unused: includeUnused ? 'true' : undefined },
+    { keepPrevious: true },
+  );
+
+export const useAdvisories = () =>
+  useApiQuery<{ items: Advisory[]; total: number }>('/dependency/advisories', undefined, {
+    staleTime: 60_000,
+  });
 
 // ------------------------------------------------------------------ oracle
 

@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Finding } from '../api/types';
 import { InspectorProvider } from '../app/shellState';
-import { FindingsTable } from '../pages/FindingsPage';
+import { FindingsTable } from '../features/findings/FindingsTable';
 import { confidenceLevel, ConfidenceBadge, SeverityBadge } from './Badge';
 
 function finding(id: string, severity: Finding['severity'], confidence: number): Finding {

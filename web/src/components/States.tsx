@@ -11,6 +11,8 @@ export interface ErrorInfo {
   reason?: string;
   hint?: string;
   suggestions: string[];
+  /** Field problems of invalid requests (422), e.g. `name: String should have at least 1 character`. */
+  problems: string[];
   code?: string;
   status?: number;
 }
@@ -22,12 +24,20 @@ export function describeError(error: unknown): ErrorInfo {
       reason: error.reason,
       hint: error.hint,
       suggestions: error.suggestions,
+      problems: error.problems,
       code: error.code,
       status: error.status,
     };
   }
-  if (error instanceof Error) return { message: error.message || 'Unexpected error.', suggestions: [] };
-  return { message: 'Unexpected error.', suggestions: [] };
+  if (error instanceof Error)
+    return { message: error.message || 'Unexpected error.', suggestions: [], problems: [] };
+  return { message: 'Unexpected error.', suggestions: [], problems: [] };
+}
+
+/** One-line description of an error for toasts (message, problems, hint). */
+export function errorSummary(error: unknown): string {
+  const info = describeError(error);
+  return [info.message, info.problems.join('; '), info.hint].filter(Boolean).join(' ');
 }
 
 /** Renders an API error: message, why (reason), what to do (hint), suggested commands. */
@@ -49,6 +59,13 @@ export function ErrorState({
       <div className="state__body">
         {title ? <p className="state__title">{title}</p> : null}
         <p className="state__message">{info.message}</p>
+        {info.problems.length > 0 ? (
+          <ul className="state__detail state__problems">
+            {info.problems.map((problem, index) => (
+              <li key={`${index}:${problem}`}>{problem}</li>
+            ))}
+          </ul>
+        ) : null}
         {info.reason ? (
           <p className="state__detail">
             <span className="state__label">Reason</span> {info.reason}

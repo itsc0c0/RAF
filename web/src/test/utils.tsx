@@ -12,7 +12,12 @@ export interface MockRoute {
   path: string | RegExp;
   status?: number;
   /** JSON payload, or a function `(url, init) => payload`. */
-  body: unknown;
+  body?: unknown;
+  /** Full control over the answer (status depends on the request, e.g. its Authorization header). */
+  handler?: (request: { url: URL; headers: Headers; init?: RequestInit }) => {
+    status?: number;
+    body: unknown;
+  };
 }
 
 export interface RecordedCall {
@@ -20,7 +25,10 @@ export interface RecordedCall {
   url: URL;
   path: string;
   headers: Headers;
+  /** Parsed JSON body (string bodies only). */
   body: unknown;
+  /** The body as sent (FormData for multipart uploads, Blob/File for raw uploads). */
+  rawBody: unknown;
 }
 
 function json(status: number, body: unknown): Response {
@@ -62,13 +70,17 @@ export function mockFetch(routes: MockRoute[]) {
     const headers = new Headers(init?.headers);
     let body: unknown = undefined;
     if (typeof init?.body === 'string') body = JSON.parse(init.body) as unknown;
-    calls.push({ method, url, path, headers, body });
+    calls.push({ method, url, path, headers, body, rawBody: init?.body });
     const route = all.find(
       (candidate) =>
         (candidate.method ?? 'GET').toUpperCase() === method &&
         (typeof candidate.path === 'string' ? candidate.path === path : candidate.path.test(path)),
     );
     if (!route) return Promise.resolve(json(404, { error: { code: 'raf.http_404', message: 'Not Found' } }));
+    if (route.handler) {
+      const answer = route.handler({ url, headers, init });
+      return Promise.resolve(json(answer.status ?? 200, answer.body));
+    }
     const payload =
       typeof route.body === 'function'
         ? (route.body as (u: URL, i?: RequestInit) => unknown)(url, init)

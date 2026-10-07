@@ -7,44 +7,60 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { isApiError } from '../api/client';
-import { useAnalyzeUpload } from '../api/hooks';
+import { useAnalyzeUpload, type AnalyzeUploadInput } from '../api/hooks';
+import type { AnalysisRecord } from '../api/types';
+import { errorSummary } from '../components/States';
 import { useToast } from '../components/Toast';
+import { routeTo } from '../lib/routes';
 
 interface AnalyzeContextValue {
-  /** Opens the file picker; the chosen file is uploaded to `POST /analyze`. */
+  /** Opens the file picker; the chosen file is uploaded to `POST /analyze` and the result opens. */
   pickFile: () => void;
+  /** Uploads `input` (Analyses page form); resolves with the analysis record. */
+  analyze: (input: AnalyzeUploadInput) => Promise<AnalysisRecord>;
   isUploading: boolean;
 }
 
 const AnalyzeContext = createContext<AnalyzeContextValue | null>(null);
 
+/** Short outcome line of an analysis (`completed`, steps that failed or were skipped). */
+export function analysisOutcome(record: AnalysisRecord): string {
+  const failed = record.steps.filter((step) => step.status === 'failed').length;
+  const skipped = record.steps.filter((step) => step.status === 'skipped').length;
+  const parts = [`${record.id} ${record.status}`];
+  if (failed) parts.push(`${failed} step${failed === 1 ? '' : 's'} failed`);
+  if (skipped) parts.push(`${skipped} skipped`);
+  return parts.join(' · ');
+}
+
+/**
+ * `POST /analyze` (multipart). The analysis runs during the request and the response is the full
+ * record, so a successful upload opens it on the Analyses page.
+ */
 export function AnalyzeProvider({ children }: { children: ReactNode }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const upload = useAnalyzeUpload();
   const { notify } = useToast();
-  const { mutate } = upload;
+  const navigate = useNavigate();
+  const { mutateAsync } = upload;
 
   const pickFile = useCallback(() => inputRef.current?.click(), []);
 
-  const onChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    notify({ tone: 'info', title: `Uploading ${file.name}…` });
-    mutate(file, {
-      onSuccess: (result) => {
-        const job = typeof result?.job?.id === 'string' ? result.job.id : null;
-        const analysis = typeof result?.analysis?.id === 'string' ? result.analysis.id : null;
+  const analyze = useCallback(
+    async (input: AnalyzeUploadInput) => {
+      notify({ tone: 'info', title: `Analyzing ${input.file.name}…` });
+      try {
+        const record = await mutateAsync(input);
         notify({
-          tone: 'good',
-          title: 'Analysis started',
-          description:
-            [analysis && `analysis ${analysis}`, job && `job ${job}`].filter(Boolean).join(' · ') ||
-            file.name,
+          tone: record.status === 'completed' ? 'good' : record.status === 'partial' ? 'warn' : 'bad',
+          title: `Analysis of ${record.input} ${record.status}`,
+          description: analysisOutcome(record),
         });
-      },
-      onError: (error) => {
+        void navigate(routeTo.analysis(record.id));
+        return record;
+      } catch (error) {
         if (isApiError(error) && error.isUnavailable) {
           notify({
             tone: 'warn',
@@ -52,17 +68,25 @@ export function AnalyzeProvider({ children }: { children: ReactNode }) {
             description: 'Use the CLI meanwhile: raf analyze <file>',
           });
         } else {
-          notify({
-            tone: 'bad',
-            title: 'Analysis failed',
-            description: error instanceof Error ? error.message : undefined,
-          });
+          notify({ tone: 'bad', title: 'Analysis failed', description: errorSummary(error) });
         }
-      },
-    });
+        throw error;
+      }
+    },
+    [mutateAsync, navigate, notify],
+  );
+
+  const onChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    analyze({ file }).catch(() => undefined);
   };
 
-  const value = useMemo(() => ({ pickFile, isUploading: upload.isPending }), [pickFile, upload.isPending]);
+  const value = useMemo(
+    () => ({ pickFile, analyze, isUploading: upload.isPending }),
+    [pickFile, analyze, upload.isPending],
+  );
 
   return (
     <AnalyzeContext.Provider value={value}>

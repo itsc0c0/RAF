@@ -1,0 +1,76 @@
+/* Ghost: operations log, operation form, simulated assets. */
+
+.ghost-op-form {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.6fr) minmax(0, 2fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .ghost-op-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ghost-ops {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ghost-op {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--violet);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.ghost-op__index {
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.ghost-op__summary {
+  font-weight: 500;
+}
+
+.ghost-op__explanation {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 18px;
+  color: var(--ink-2);
+  font-size: var(--text-md);
+  list-style: disc;
+}
+
+.ghost-effects {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+
+.ghost-asset {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ghost-asset > summary {
+  padding: 6px 0;
+}
+
+.ghost-asset__score {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 140px;
+}
+
+.ghost-asset__body {
+  padding: 4px 0 10px 18px;
+}

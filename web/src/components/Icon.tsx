@@ -227,6 +227,44 @@ const ICONS = {
       <circle cx="12" cy="12" r="2.8" />
     </>
   ),
+  key: (
+    <>
+      <circle cx="8" cy="15.5" r="4" />
+      <path d="M10.9 12.6 20 3.5M16.5 7l2.5 2.5M14 9.5l2 2" />
+    </>
+  ),
+  analyses: (
+    <>
+      <rect x="5" y="4.5" width="14" height="16.5" rx="1.5" />
+      <path d="M9 4.5V3h6v1.5" />
+      <path d="m8.5 13 2.5 2.5 4.5-5" />
+    </>
+  ),
+  diff: (
+    <>
+      <path d="M4 7.5h12M13 4.5l3 3-3 3" />
+      <path d="M20 16.5H8M11 13.5l-3 3 3 3" />
+    </>
+  ),
+  ghost: (
+    <>
+      <path d="M5 20.5V10a7 7 0 0 1 14 0v10.5l-2.4-1.8-2.3 1.8-2.3-1.8-2.3 1.8-2.3-1.8z" />
+      <circle cx="9.5" cy="10.5" r="0.9" fill="currentColor" />
+      <circle cx="14.5" cy="10.5" r="0.9" fill="currentColor" />
+    </>
+  ),
+  protocol: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="1.5" />
+      <path d="M3.5 9h17M3.5 13.5h17M9 9v4.5M14.5 13.5v6" />
+    </>
+  ),
+  surface: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.2 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.2-3.5-8.5s1.1-6.1 3.5-8.5z" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICONS;
