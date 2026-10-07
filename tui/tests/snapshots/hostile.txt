@@ -1,0 +1,39 @@
+R$F TIMELINE �]0;owned��[2J— INC-001
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+invoice�gpj.exe · zero�width · C1�31m · tab�here
+
+─── 2026-10-06 ─────────────────────────────────────────────────────────────────────────────────────
+
+22:47:00.000  AUTH�[5m
+               bob logged in�[31m RED�[0m
+               line��Injected: header
+               nul�byte del�
+�[1mlabel         value�isolate��
+A�B       C
+────────────────────────────────────────────────────────────────────────────────────────────────────
+�P1;2q   �9
+      a�[A [ip]
+       │
+       │ x�y   ● observed �]8;;http://evil�\link
+       ▼
+       b
+◆ critical  ▲ high  ■ medium   ═══ critical path   ▼ outgoing  ▲ incoming
+
+                                            ╔══════════╗
+                                            ║ �[7mroot ║
+                                            ║   user   ║
+                                            ╚═════╤════╝
+                                                  │
+                                                  │
+                                                 E�
+                                                  ▼
+                                             ┌────────┐
+                                             │ ▲ kid� │
+                                             │  host  │
+                                             └────────┘
+
+OTHER RELATIONSHIPS
+  �[7mroot ─L�→ kid�
+[unsupported block: �[31mevil]
+
+※ note�[2K

@@ -1,0 +1,89 @@
+{
+ "page": "home",
+ "title": "R$F FUTURE",
+ "subtitle": null,
+ "param": null,
+ "schema": "raf-tui/9.0",
+ "blocks": [
+  {
+   "t": "hologram",
+   "beam": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "t": "section",
+   "text": "KNOWN BLOCKS WITH EXTRA FIELDS",
+   "icon": "sparkles"
+  },
+  {
+   "t": "kv",
+   "rows": [
+    {
+     "k": "Score",
+     "v": 97,
+     "style": "danger",
+     "ref": null,
+     "tooltip": "new"
+    },
+    {
+     "k": "Missing style",
+     "v": "ok"
+    }
+   ],
+   "density": "compact"
+  },
+  {
+   "t": "text",
+   "lines": [
+    "no style field at all"
+   ]
+  },
+  {
+   "t": "bars",
+   "rows": [
+    {
+     "label": "HIGH",
+     "value": "20",
+     "style": "danger"
+    },
+    {
+     "label": "LOW",
+     "value": 5.5
+    }
+   ]
+  },
+  {
+   "t": "grid",
+   "items": [
+    {
+     "label": "Graph",
+     "status": "BETA"
+    }
+   ]
+  },
+  {
+   "t": "timeline3d",
+   "frames": 12
+  },
+  {
+   "t": "tree",
+   "root": "not an object"
+  },
+  {
+   "t": "spacer",
+   "height": 3
+  }
+ ],
+ "notes": [
+  "rendered by an older raf-os"
+ ],
+ "actions": [
+  {
+   "key": "x",
+   "label": "future action"
+  }
+ ]
+}

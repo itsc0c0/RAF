@@ -1,0 +1,25 @@
+EVENT auth.failure
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+event:e49aa7bd2897ad0805cbc31d
+
+Time              2026-10-06T22:47:00Z
+Type              auth.failure
+Severity          LOW
+Actor             bob
+Target            VPN-01
+Outcome           failure
+Source            raven-events.jsonl
+Parser            raven-demo/1.0
+
+ATTRIBUTES
+────────────────────────────────────────────────────────────────────────────────────────────────────
+method            password
+protocol          vpn
+reason            invalid credentials
+src_ip            203.0.113.45
+
+OBJECTS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+actor             bob
+src_ip            203.0.113.45
+target            VPN-01

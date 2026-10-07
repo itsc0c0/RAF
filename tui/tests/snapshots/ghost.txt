@@ -1,0 +1,42 @@
+R$F GHOST — containment-test
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+what-if model of the current workspace (not saved)
+
+Objective:
+  Remove modeled path bob → production
+
+Minimum cut found: cut 3 relationship(s) so that bob no longer controls production.
+
+PROPOSED CHANGES
+────────────────────────────────────────────────────────────────────────────────────────────────────
+1. remove bob LOGGED_INTO VPN-01 (credential exposure): bob has authenticated to VPN-01; compromised
+   credentials of bob can be used on VPN-01
+2. remove bob LOGGED_INTO DEV-01 (credential exposure): bob has authenticated to DEV-01; compromised
+   credentials of bob can be used on DEV-01
+3. remove svc-deploy LOGGED_INTO APP-01 (credential exposure): svc-deploy has had a session on
+   APP-01; whoever controls APP-01 may capture svc-deploy's credentials or session
+
+No production changes have been made: this ran in an unsaved Ghost model.
+
+BEFORE / AFTER
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                      BEFORE       AFTER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+bob → production                      REACHABLE  → BLOCKED    ✔ better
+  incl. exploitable vulnerabilities   REACHABLE  → REACHABLE  = same
+Blast score                           94         → 78         ▼ better
+Critical/high assets controllable     14         → 13         ▼ better
+Reachable privileged identities       3          → 0          ▼ better
+Attack paths (workspace)              135        → 122        ▼ better
+Critical paths (workspace)            59         → 56         ▼ better
+Attack paths broken                                13         ✔ better
+New attack paths                                   0          = same
+Operational impact                                 3 modeled relationship(s) removed
+bob can still reach production through network access combined with an exploitable vulnerability:
+access changes alone do not close it (try the patch-vuln operation).
+
+SAVE THIS EXPERIMENT
+────────────────────────────────────────────────────────────────────────────────────────────────────
+raf ghost create containment-test
+raf ghost modify containment-test --remove-access bob:production
+raf ghost compare current containment-test

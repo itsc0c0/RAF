@@ -1,0 +1,61 @@
+R$F TRACE — INC-001
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+entry → production
+
+                203.0.113.45 [ip]
+                     │
+                     │ network observation   ● observed 22:52:11.000 auth.login
+                     ▼
+                   VPN-01 [host]
+                     │
+                     │ authenticated as      ● observed 22:52:11.000 auth.login
+                     ▼
+                    bob [user]
+                     │
+                     │ logged into           ● observed 22:58:03.000 auth.login
+                     ▼
+                   DEV-01 [host]
+                     │
+                     │ contains              ● observed 23:01:47.000 file.read
+                     ▼
+                    .env [file]
+                     │
+                     │ contains secret       ◌ modeled
+                     ▼
+      DEPLOY_TOKEN in /opt/deploy/.env [secret]
+                     │
+                     │ authenticates as      ● observed 23:04:41.000 auth.login
+                     ▼
+                 svc-deploy [identity]
+                     │
+                     │ member of             ◌ modeled
+                     ▼
+                 deployers [group]
+                     │
+                     │ holds role            ◌ modeled
+                     ▼
+               prod-deployer [role]
+                     │
+                     │ can access            ◌ modeled
+                     ▼
+                   ci-cd [service]
+                     │
+                     │ deploys to            ◌ modeled
+                     ▼
+                 production [cloud_resource]
+
+CORROBORATION
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Observed edges       5
+Modeled edges        5
+Path confidence      0.44  (LOW)
+Target criticality   CRITICAL
+Observed edges are backed by incident events; modeled edges come from the security model
+(credentials, memberships, roles) and are possible, not proven.
+
+EVIDENCE
+────────────────────────────────────────────────────────────────────────────────────────────────────
+event:04348b78eff807b44f676011   22:52:11.000 auth.login
+event:3953225fb61f7d21b62609da   22:58:03.000 auth.login
+event:0ab15d6dfe6ce715173370f1   23:01:47.000 file.read
+event:9d5d888d1b22ac22f55f12de   23:04:41.000 auth.login

@@ -1,0 +1,59 @@
+R$F OS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Every security capability. One command away.
+
+Version           0.1.0
+Workspace         default
+Products          20 of 20 online
+Oracle            builtin
+
+SECURITY WORLD MODEL
+────────────────────────────────────────────────────────────────────────────────────────────────────
+RAW LOGS ············· 5 telemetry source(s)
+   ↓
+INGEST ··············· 4 job(s), provenance on every fact
+   ↓
+SECURITY WORLD MODEL · 426 objects · 849 relationships · 562 events
+   ↓
+┌──────────────────────────────────────┐
+│ Graph       Timeline    Trace        │
+│ IAM         Policy      Blast        │
+│ Exposure    Replay      Evidence     │
+│ Ghost       Diff        Lens         │
+│ Range       Forge       Lab          │
+│ Protocol    Vault       Dependency   │
+│ Surface                              │
+└──────────────────────────────────────┘
+   ↓
+ORACLE ··············· builtin reasoner, cited answers
+
+PRODUCTS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+● Graph      BETA                ● Timeline   BETA                ● Trace      BETA
+● Replay     BETA                ● Diff       BETA                ● Blast      BETA
+● IAM        BETA                ● Policy     BETA                ● Exposure   BETA
+● Ghost      BETA                ● Range      BETA                ● Forge      BETA
+● Lab        EXPERIMENTAL        ● Protocol   BETA                ● Vault      BETA
+● Dependency BETA                ● Evidence   BETA                ● Surface    BETA
+● Lens       BETA                ● Oracle     BETA
+
+OPEN FINDINGS  42
+────────────────────────────────────────────────────────────────────────────────────────────────────
+CRITICAL  ████████████████▊·······························   7
+HIGH      ████████████████████████████████████████████████  20
+MEDIUM    ███████████████████▎····························   8
+LOW       ████████████████▊·······························   7
+INFO      ················································   0
+
+INCIDENTS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+INCIDENT   SEVERITY   STATUS          EVENTS   TITLE
+────────────────────────────────────────────────────────────────────────────────────────────────────
+INC-001    HIGH       investigating       44   Suspicious production data access via the deployment…
+
+FOCUS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Pages open on this story by default; press / on a page to choose another subject.
+Incident          INC-001
+Identity          bob
+Critical target   production

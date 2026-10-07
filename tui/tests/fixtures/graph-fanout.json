@@ -1,0 +1,239 @@
+{
+ "page": "graph",
+ "title": "R$F GRAPH — bob (fan-out fixture)",
+ "subtitle": "user · user:bob",
+ "param": "bob",
+ "blocks": [
+  {
+   "t": "graph",
+   "root": "user:bob",
+   "nodes": [
+    {
+     "id": "user:bob",
+     "label": "bob",
+     "type": "user",
+     "criticality": null,
+     "highlight": true,
+     "parent": null,
+     "edge": null,
+     "dir": null
+    },
+    {
+     "id": "host:dev-01",
+     "label": "DEV-01",
+     "type": "host",
+     "criticality": "medium",
+     "highlight": true,
+     "parent": "user:bob",
+     "edge": "LOGGED_INTO",
+     "dir": "out"
+    },
+    {
+     "id": "host:vpn-01",
+     "label": "VPN-01",
+     "type": "host",
+     "criticality": "high",
+     "highlight": false,
+     "parent": "user:bob",
+     "edge": "LOGGED_INTO",
+     "dir": "out"
+    },
+    {
+     "id": "group:finance",
+     "label": "finance",
+     "type": "group",
+     "criticality": null,
+     "highlight": false,
+     "parent": "user:bob",
+     "edge": "MEMBER_OF",
+     "dir": "out"
+    },
+    {
+     "id": "role:developer",
+     "label": "developer",
+     "type": "role",
+     "criticality": null,
+     "highlight": false,
+     "parent": "user:bob",
+     "edge": "CAN_ACCESS",
+     "dir": "in"
+    },
+    {
+     "id": "file:dev-01|/opt/deploy/.env",
+     "label": ".env",
+     "type": "file",
+     "criticality": null,
+     "highlight": true,
+     "parent": "host:dev-01",
+     "edge": "CONTAINS",
+     "dir": "out"
+    },
+    {
+     "id": "identity:svc-deploy",
+     "label": "svc-deploy",
+     "type": "identity",
+     "criticality": null,
+     "highlight": false,
+     "parent": "host:dev-01",
+     "edge": "USES",
+     "dir": "out"
+    },
+    {
+     "id": "service:git",
+     "label": "git",
+     "type": "service",
+     "criticality": "high",
+     "highlight": false,
+     "parent": "host:dev-01",
+     "edge": "RUNS",
+     "dir": "out"
+    },
+    {
+     "id": "vulnerability:SIM-2026-0003",
+     "label": "VULN-18",
+     "type": "vulnerability",
+     "criticality": "critical",
+     "highlight": false,
+     "parent": "host:dev-01",
+     "edge": "HAS",
+     "dir": "out"
+    },
+    {
+     "id": "service:vpn",
+     "label": "vpn",
+     "type": "service",
+     "criticality": "high",
+     "highlight": false,
+     "parent": "host:vpn-01",
+     "edge": "RUNS",
+     "dir": "out"
+    },
+    {
+     "id": "ip:203.0.113.45",
+     "label": "203.0.113.45",
+     "type": "ip",
+     "criticality": null,
+     "highlight": false,
+     "parent": "host:vpn-01",
+     "edge": "CONNECTED_TO",
+     "dir": "in"
+    },
+    {
+     "id": "network:dmz",
+     "label": "DMZ",
+     "type": "network",
+     "criticality": null,
+     "highlight": false,
+     "parent": "host:vpn-01",
+     "edge": "MEMBER_OF",
+     "dir": "out"
+    },
+    {
+     "id": "ip:198.51.100.10",
+     "label": "198.51.100.10",
+     "type": "ip",
+     "criticality": null,
+     "highlight": false,
+     "parent": "host:vpn-01",
+     "edge": "HAS_ADDRESS",
+     "dir": "out"
+    },
+    {
+     "id": "role:finance-approver",
+     "label": "finance-approver",
+     "type": "role",
+     "criticality": null,
+     "highlight": false,
+     "parent": "group:finance",
+     "edge": "HAS_ROLE",
+     "dir": "out"
+    },
+    {
+     "id": "user:alice",
+     "label": "alice",
+     "type": "user",
+     "criticality": null,
+     "highlight": false,
+     "parent": "group:finance",
+     "edge": "MEMBER_OF",
+     "dir": "in"
+    },
+    {
+     "id": "user:carol",
+     "label": "carol",
+     "type": "user",
+     "criticality": null,
+     "highlight": false,
+     "parent": "group:finance",
+     "edge": "MEMBER_OF",
+     "dir": "in"
+    },
+    {
+     "id": "service:app",
+     "label": "app",
+     "type": "service",
+     "criticality": "high",
+     "highlight": false,
+     "parent": "group:finance",
+     "edge": "CAN_ACCESS",
+     "dir": "out"
+    },
+    {
+     "id": "user:dave",
+     "label": "dave",
+     "type": "user",
+     "criticality": null,
+     "highlight": false,
+     "parent": "role:developer",
+     "edge": "HAS_ROLE",
+     "dir": "in"
+    },
+    {
+     "id": "host:ci-01",
+     "label": "CI-01",
+     "type": "host",
+     "criticality": "high",
+     "highlight": false,
+     "parent": "role:developer",
+     "edge": "CAN_ACCESS",
+     "dir": "out"
+    },
+    {
+     "id": "service:ci-cd",
+     "label": "ci-cd",
+     "type": "service",
+     "criticality": "high",
+     "highlight": false,
+     "parent": "role:developer",
+     "edge": "CAN_ACCESS",
+     "dir": "out"
+    },
+    {
+     "id": "host:ws-05",
+     "label": "WS-05",
+     "type": "host",
+     "criticality": "medium",
+     "highlight": false,
+     "parent": "role:developer",
+     "edge": "CAN_ACCESS",
+     "dir": "out"
+    }
+   ],
+   "links": [
+    {
+     "source": "identity:svc-deploy",
+     "target": "service:ci-cd",
+     "label": "CAN_ACCESS"
+    },
+    {
+     "source": "host:dev-01",
+     "target": "service:git",
+     "label": "CONNECTED_TO"
+    }
+   ]
+  }
+ ],
+ "notes": [
+  "21 objects within 2 hops; 21 drawn"
+ ]
+}

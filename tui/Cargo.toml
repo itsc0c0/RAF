@@ -1,0 +1,31 @@
+[package]
+name = "raf-os"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "R$F OS: a full-screen, mouse-enabled terminal control panel for the R$F security platform"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "raf_os"
+path = "src/lib.rs"
+
+[[bin]]
+name = "raf-os"
+path = "src/main.rs"
+
+[dependencies]
+# Terminal UI (crossterm 0.29 backend, re-exported as `ratatui::crossterm`).
+ratatui = { version = "0.30", default-features = false, features = ["crossterm_0_29", "layout-cache"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Plain HTTP/1.1 to the local R$F API only: no TLS, no compression, no async runtime.
+ureq = { version = "3", default-features = false }
+unicode-segmentation = "1"
+unicode-width = "0.2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "symbols"

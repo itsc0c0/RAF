@@ -1,0 +1,30 @@
+LOGGED_INTO bob → DEV-01
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+rel:1f1434863428c6030311131b
+
+Type              LOGGED_INTO
+From              bob
+To                DEV-01
+Confidence        0.80 (HIGH)
+First seen        2026-10-06T22:58:03Z
+Last seen         2026-10-06T22:58:03Z
+State             active
+Observations      2
+Source            raven-events.jsonl
+
+WHAT IT MEANS FOR PROPAGATION
+────────────────────────────────────────────────────────────────────────────────────────────────────
+control: bob has authenticated to DEV-01; compromised credentials of bob can be used on DEV-01
+control: bob has had a session on DEV-01; whoever controls DEV-01 may capture bob's credentials or
+session
+
+METADATA
+────────────────────────────────────────────────────────────────────────────────────────────────────
+method            password
+protocol          ssh
+via               auth.login
+
+PROVENANCE
+────────────────────────────────────────────────────────────────────────────────────────────────────
+2026-10-06T22:58:03Z   raven-events.jsonl · raven-demo/1.0 · record 763
+2026-10-06T22:58:03Z   auth.log · syslog-sshd/1.0 · line 1

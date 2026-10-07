@@ -60,3 +60,38 @@ jobs:
       - run: npm run format:check
       - run: npm run test
       - run: npm run build
+
+  tui:
+    name: R$F OS terminal panel (fmt, clippy, tests, build, end-to-end dump)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RAF_HOME: ${{ runner.temp }}/raf-home
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tui
+      - name: Format
+        run: cargo fmt --manifest-path tui/Cargo.toml --check
+      - name: Clippy
+        run: cargo clippy --manifest-path tui/Cargo.toml --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --manifest-path tui/Cargo.toml --locked
+      - name: Build
+        run: cargo build --manifest-path tui/Cargo.toml --release --locked
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: raf tui end to end (Python API → raf-os renderer, every page)
+        run: |
+          uv sync --frozen
+          uv run raf demo load
+          uv run pytest -q tests/integration/test_tui_screens.py
+          for page in home timeline trace iam blast exposure policy ghost graph oracle findings evidence; do
+            uv run raf tui --dump "$page" --width 120 > "$RUNNER_TEMP/$page.txt"
+            test -s "$RUNNER_TEMP/$page.txt"
+          done

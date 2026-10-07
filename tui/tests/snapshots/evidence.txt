@@ -1,0 +1,19 @@
+R$F EVIDENCE — INC-001
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hashed, read-only, chain of custody
+
+Case              INC-001
+Title             Suspicious production data access via the deployment pipeline
+Items             5
+Integrity         VERIFIED
+
+ITEMS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ID        NAME                        BYTES   SHA-256             STATUS     INTEGRITY
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ev-0001   analyst-notes.txt             728   2545de4f21b3effb…   unparsed   ✔ intact
+ev-0002   auth.log                      715   6e1fc36e45091115…   parsed     ✔ intact
+ev-0003   edr-process-events.jsonl    3,383   b96ef8aef2d0fa0e…   parsed     ✔ intact
+ev-0004   proxy.csv                     570   30aa046d3840be99…   parsed     ✔ intact
+ev-0005   raven-inc001.pcap          23,961   6ff14b609e7cbb28…   parsed     ✔ intact
+Originals are stored read-only and content-addressed; every action is in a hash-chained custody log.

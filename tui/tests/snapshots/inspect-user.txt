@@ -1,0 +1,48 @@
+USER bob
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+user:bob
+
+ID                user:bob
+Type              user
+Confidence        0.90
+First seen        2026-10-06T07:46:05Z
+Last seen         2026-10-06T23:27:00Z
+Source            raven-events.jsonl
+Tags              employee, raven
+
+METADATA
+────────────────────────────────────────────────────────────────────────────────────────────────────
+aliases            ['Bob Okafor']
+department         finance
+disabled           True
+email              bob@raven.example
+full_name          Bob Okafor
+state_changed_at   2026-10-06T23:25:12+00:00
+title              Financial analyst
+
+RELATIONSHIPS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+LOGGED_INTO       → DEV-01
+LOGGED_INTO       → VPN-01
+LOGGED_INTO       → WS-02
+MEMBER_OF         → all-staff
+MEMBER_OF         → finance
+OWNS              → WS-02
+STARTED           → find [20877]
+STARTED           → cat [20903]
+STARTED           → ssh [20950]
+STARTED           → excel.exe [14073]
+STARTED           → outlook.exe [15963]
+STARTED           → teams.exe [20982]
+STARTED           → excel.exe [21784]
+STARTED           → explorer.exe [22461]
+STARTED           → chrome.exe [23626]
+STARTED           → onedrive.exe [27144]
+STARTED           → chrome.exe [3206]
+STARTED           → outlook.exe [5773]
+
+FINDINGS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+SEVERITY   FINDING
+────────────────────────────────────────────────────────────────────────────────────────────────────
+HIGH       Credentials of svc-deploy exposed on DEV-01

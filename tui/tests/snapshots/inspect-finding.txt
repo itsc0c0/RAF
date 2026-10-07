@@ -1,0 +1,34 @@
+Internet-facing RDP on 198.51.100.12:3389
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+finding:surface:exposed-sensitive-service:0e8b39d8e9e9
+
+Severity          CRITICAL
+Confidence        0.85 (HIGH)
+Product           surface / exposed-sensitive-service
+Status            OPEN
+
+DESCRIPTION
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Microsoft Terminal Services on 198.51.100.12:3389 (host JUMP-01) is recorded as internet-facing.
+Internet-facing remote desktop services are a primary target for password spraying, credential
+stuffing and exploitation of unpatched vulnerabilities.
+
+RECOMMENDATION
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Remove direct Internet exposure: publish remote desktop only through the VPN or a gateway with MFA,
+or restrict source addresses. If the host is a leftover (a forgotten jump host), decommission it.
+
+WHY
+────────────────────────────────────────────────────────────────────────────────────────────────────
++                 RDP (remote desktop, identified by port 3389) on 198.51.100.12:3389 is recorded as
+                  internet-facing (baseline HIGH)
++                 Microsoft Terminal Services on 198.51.100.12:3389 has criticality high - raises
+                  severity
++                 no accountable owner is recorded, so nobody is known to patch or monitor it -
+                  severity is already at the rule's maximum
+
+AFFECTED
+────────────────────────────────────────────────────────────────────────────────────────────────────
+service           198.51.100.12:3389/tcp
+port              198.51.100.12:3389
+host              JUMP-01

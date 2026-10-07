@@ -1,0 +1,115 @@
+R$F ORACLE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+grounded answers with validated citations
+
+Q: Explain the most important security path in INC-001
+builtin · intent incident-path · 25 fact(s) retrieved
+
+INC-001: Suspicious production data access via the deployment pipeline [incident:inc-001]
+2026-10-06T22:40:00Z → 2026-10-06T23:45:00Z, 44 linked event(s).
+Most active identities: bob (16 events), svc-deploy (5 events), svc-app (2 events), dev-admin (2
+events) [user:bob] [identity:svc-deploy] [identity:svc-app] [identity:dev-admin]
+
+Most important security path
+  bob can obtain control of production (critical criticality) in 8 step(s), path confidence 0.44:
+  bob → DEV-01 → .env → DEPLOY_TOKEN in /opt/deploy/.env → svc-deploy → deployers → prod-deployer →
+  ci-cd → production [user:bob] [cloud_resource:production]
+  3 of 8 step(s) appear in the incident's events, which is why this path ranks first among the
+  identities' paths to high and critical assets.
+  1. Bob has authenticated to DEV-01; compromised credentials of bob can be used on DEV-01
+     [rel:1f1434863428c6030311131b] [host:dev-01]
+     observed: 2026-10-06T22:58:03Z auth.login [event:3953225fb61f7d21b62609da]
+  2. .env is stored on DEV-01 [rel:5e31eba8057d8132411bfd71] [file:dev-01|/opt/deploy/.env]
+     observed: 2026-10-06T23:01:47Z file.read [event:0ab15d6dfe6ce715173370f1]
+  3. The secret DEPLOY_TOKEN in /opt/deploy/.env is stored in .env [rel:8b031e37b040444e5d8ed6bb]
+     [secret:dev-01|/opt/deploy/.env|DEPLOY_TOKEN]
+  4. DEPLOY_TOKEN in /opt/deploy/.env is a credential for svc-deploy [rel:32b34c883a4b785068d61b1a]
+     [identity:svc-deploy]
+     observed: 2026-10-06T23:04:41Z auth.login [event:9d5d888d1b22ac22f55f12de]
+  5. Svc-deploy is a member of deployers and inherits its access [rel:38758dd7e7b542be62581a7d]
+     [group:deployers]
+  6. Deployers holds the role prod-deployer [rel:8d89a49c089473f454668d2b] [role:prod-deployer]
+  7. Prod-deployer is permitted to access ci-cd (access: deploy) [rel:1fc1dd7c9427252b0372fee9]
+     [service:ci-cd]
+  8. Ci-cd deploys code to production [rel:386675205d5971c85e978905] [cloud_resource:production]
+  From bob, 19 asset(s) are controllable, 13 of them high or critical [user:bob].
+  2 other principal(s) can obtain control of DEV-01, the first host on this path, and could continue
+  along it: alice, dave [host:dev-01] [user:alice] [user:dave]
+  bob is disabled now; the path shows what the account could reach, and steps that use other
+  credentials remain usable [user:bob].
+
+Incident events on this path
+  2026-10-06T22:47:00Z  auth.failure  bob → VPN-01 (failure) [event:e49aa7bd2897ad0805cbc31d]
+  2026-10-06T22:47:09Z  auth.failure  bob → VPN-01 (failure) [event:faf72c65e005b365c96e6bd5]
+  2026-10-06T22:47:18Z  auth.failure  bob → VPN-01 (failure) [event:e840e92c5037934dff9e22ee]
+  2026-10-06T22:52:11Z  auth.login  bob → VPN-01 (success) [event:04348b78eff807b44f676011]
+  2026-10-06T22:58:03Z  auth.login  bob → DEV-01 (success) [event:3953225fb61f7d21b62609da]
+  2026-10-06T23:01:10Z  auth.failure  bob → DEV-01 (failure) [event:c0b67b008cf377f179b7f4cf]
+  2026-10-06T23:01:47Z  file.read  - → .env [event:0ab15d6dfe6ce715173370f1]
+  2026-10-06T23:04:41Z  auth.login  svc-deploy → CI-01 (success) [event:9d5d888d1b22ac22f55f12de]
+  2026-10-06T23:04:41Z  auth.login  svc-deploy → CI-01 (success) [event:c85d34ddad0b95d75899e1b4]
+  2026-10-06T23:06:05Z  process.start  svc-deploy → deploy.sh [9120]
+  [event:e493c98340c01447cc66e648]
+  2026-10-06T23:25:12Z  iam.user.disable  dev-admin → bob (success) [event:0e4a927af36de213c415dd59]
+
+Related findings
+  CRITICAL Critical exposure: ci-cd (86/100) [finding:exposure:asset-exposure:81c04d5c728f]
+  HIGH     High exposure: production (63/100) [finding:exposure:asset-exposure:d42315835dfb]
+  HIGH     High exposure: DEV-01 (62/100) [finding:exposure:asset-exposure:d51cf0510cec]
+  HIGH     Credentials of svc-deploy exposed on DEV-01
+  [finding:iam:credential-exposure-path:6409415f44c1]
+  HIGH     frank has broad privileged access [finding:iam:excessive-privilege:039455a68a4e]
+
+CITATIONS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+[incident:inc-001]                                  INC-001
+[user:bob]                                          bob
+[identity:svc-deploy]                               svc-deploy
+[identity:svc-app]                                  svc-app
+[identity:dev-admin]                                dev-admin
+[cloud_resource:production]                         production
+[rel:1f1434863428c6030311131b]                      bob LOGGED_INTO DEV-01
+[host:dev-01]                                       DEV-01
+[event:3953225fb61f7d21b62609da]                    auth.login at 2026-10-06T22:58:03Z
+[rel:5e31eba8057d8132411bfd71]                      DEV-01 CONTAINS .env
+[file:dev-01|/opt/deploy/.env]                      .env
+[event:0ab15d6dfe6ce715173370f1]                    file.read at 2026-10-06T23:01:47Z
+[rel:8b031e37b040444e5d8ed6bb]                      .env CONTAINS_SECRET DEPLOY_TOKEN in /opt/deplo…
+[secret:dev-01|/opt/deploy/.env|DEPLOY_TOKEN]       DEPLOY_TOKEN in /opt/deploy/.env
+[rel:32b34c883a4b785068d61b1a]                      DEPLOY_TOKEN in /opt/deploy/.env AUTHENTICATES_…
+[event:9d5d888d1b22ac22f55f12de]                    auth.login at 2026-10-06T23:04:41Z
+[rel:38758dd7e7b542be62581a7d]                      svc-deploy MEMBER_OF deployers
+[group:deployers]                                   deployers
+[rel:8d89a49c089473f454668d2b]                      deployers HAS_ROLE prod-deployer
+[role:prod-deployer]                                prod-deployer
+[rel:1fc1dd7c9427252b0372fee9]                      prod-deployer CAN_ACCESS ci-cd
+[service:ci-cd]                                     ci-cd
+[rel:386675205d5971c85e978905]                      ci-cd DEPLOYS_TO production
+[user:alice]                                        alice
+[user:dave]                                         dave
+[event:e49aa7bd2897ad0805cbc31d]                    auth.failure at 2026-10-06T22:47:00Z
+[event:faf72c65e005b365c96e6bd5]                    auth.failure at 2026-10-06T22:47:09Z
+[event:e840e92c5037934dff9e22ee]                    auth.failure at 2026-10-06T22:47:18Z
+[event:04348b78eff807b44f676011]                    auth.login at 2026-10-06T22:52:11Z
+[event:c0b67b008cf377f179b7f4cf]                    auth.failure at 2026-10-06T23:01:10Z
+[event:c85d34ddad0b95d75899e1b4]                    auth.login at 2026-10-06T23:04:41Z
+[event:e493c98340c01447cc66e648]                    process.start at 2026-10-06T23:06:05Z
+[event:0e4a927af36de213c415dd59]                    iam.user.disable at 2026-10-06T23:25:12Z
+[finding:exposure:asset-exposure:81c04d5c728f]      Critical exposure: ci-cd (86/100)
+[finding:exposure:asset-exposure:d42315835dfb]      High exposure: production (63/100)
+[finding:exposure:asset-exposure:d51cf0510cec]      High exposure: DEV-01 (62/100)
+[finding:iam:credential-exposure-path:6409415f44c…  Credentials of svc-deploy exposed on DEV-01
+[finding:iam:excessive-privilege:039455a68a4e]      frank has broad privileged access
+
+NEXT (never executed by Oracle)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+raf timeline INC-001
+raf lens INC-001 --group-by actor
+raf blast bob
+raf graph path bob production
+raf ghost create what-if
+raf ghost modify what-if --remove-relationship rel:8b031e37b040444e5d8ed6bb
+raf ghost compare current what-if
+raf finding show finding:exposure:asset-exposure:81c04d5c728f
+Generated by R$F Oracle from workspace data. It is an explanation, not authoritative security data:
+verify it against the cited objects.

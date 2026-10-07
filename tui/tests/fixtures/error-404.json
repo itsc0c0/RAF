@@ -1,0 +1,13 @@
+{
+ "status": 404,
+ "body": {
+  "error": {
+   "code": "raf.not_found",
+   "message": "No object named 'no-such-thing' exists in this workspace.",
+   "hint": "Import data first (raf analyze <file>) or load the demo (raf demo load).",
+   "suggestions": [
+    "raf search no-such-thing"
+   ]
+  }
+ }
+}

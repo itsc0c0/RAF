@@ -1,0 +1,119 @@
+R$F POLICY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+firewall and access policy analysis
+
+Policies          raven-access, raven-fw
+Rules analyzed    27
+
+FINDINGS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+CRITICAL          0
+HIGH              3
+MEDIUM            0
+LOW               3
+
+HIGH  break-glass
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Overly broad rule break-glass in Raven access policy
+ALLOW  (break-glass)
+  source       role:break-glass
+  destination  *
+  port         any
+
+Reason:
+Rule break-glass allows role:break-glass actions * on *: all actions on all resources. Stated
+purpose: Emergency access.
+
+Recommendation: Restrict the rule to the sources, destinations, ports or actions that are actually
+required.
+
+HIGH  r40-dev-to-prod
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Overly broad rule r40-dev-to-prod in Raven firewall
+ALLOW  (r40-dev-to-prod)
+  source       network:dev
+  destination  network:prod
+  port         any
+
+Reason:
+Rule r40-dev-to-prod allows network:dev → network:prod ports any: every port open towards a
+critical-criticality destination. Stated purpose: Deployments (temporarily widened for the September
+migration).
+
+Recommendation: Restrict the rule to the sources, destinations, ports or actions that are actually
+required.
+
+HIGH  r85-deny-dev-to-prod-db
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Rule r85-deny-dev-to-prod-db in Raven firewall can never apply
+DENY  (r85-deny-dev-to-prod-db)
+  source       network:dev
+  destination  host:db-01
+  port         tcp/5432
+ALLOW  (r40-dev-to-prod)
+  source       network:dev
+  destination  network:prod
+  port         any
+
+Reason:
+Rule r85-deny-dev-to-prod-db (deny network:dev → host:db-01 ports tcp/5432) is fully covered by the
+earlier rule r40-dev-to-prod (allow network:dev → network:prod ports any) with the opposite effect.
+Because the first match wins, r85-deny-dev-to-prod-db is unreachable - its intent ('Development must
+not reach the production database directly') is not enforced.
+
+Recommendation: Move r85-deny-dev-to-prod-db above r40-dev-to-prod or narrow r40-dev-to-prod.
+
+LOW  r55-dmz-to-legacy-ftp
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Raven firewall rule r55-dmz-to-legacy-ftp references unknown objects
+ALLOW  (r55-dmz-to-legacy-ftp)
+  source       network:dmz
+  destination  host:ftp-old
+  port         tcp/21
+
+Reason:
+Rule r55-dmz-to-legacy-ftp (allow network:dmz → host:ftp-old ports tcp/21) references objects not
+present in this workspace: host:ftp-old. They may be decommissioned, renamed or not yet imported.
+
+Recommendation: Remove the rule if the objects are gone, or import the inventory that defines them.
+
+LOW  r90-corp-to-dev-ssh
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Rule r90-corp-to-dev-ssh in Raven firewall is redundant
+ALLOW  (r90-corp-to-dev-ssh)
+  source       network:corp
+  destination  network:dev
+  port         tcp/22
+ALLOW  (r30-corp-to-dev)
+  source       network:corp
+  destination  network:dev
+  port         tcp/22, tcp/443
+
+Reason:
+Rule r90-corp-to-dev-ssh (allow network:corp → network:dev ports tcp/22) is fully covered by the
+earlier rule r30-corp-to-dev (allow network:corp → network:dev ports tcp/22, tcp/443) with the same
+effect, so it never changes a decision.
+
+Recommendation: Remove r90-corp-to-dev-ssh (or r30-corp-to-dev if it is too broad).
+
+LOW  engineering-git-read
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Statement engineering-git-read in Raven access policy is redundant
+ALLOW  (engineering-git-read)
+  source       group:engineering
+  destination  service:git
+  port         any
+  actions      git:read
+ALLOW  (developer-git)
+  source       role:developer
+  destination  service:git
+  port         any
+  actions      git:read, git:write
+
+Reason:
+Allow statement engineering-git-read (allow group:engineering actions git:read on service:git)
+grants nothing beyond statement developer-git (allow role:developer actions git:read, git:write on
+service:git).
+
+Recommendation: Remove engineering-git-read or narrow developer-git if it is broader than intended.
+

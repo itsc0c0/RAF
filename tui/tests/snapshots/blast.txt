@@ -1,0 +1,52 @@
+R$F BLAST — bob
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+impact of a hypothetical compromise
+
+Starting assumption:
+  User bob is controlled.
+
+REACHABILITY
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Reachable objects      76
+Reachable assets       28
+Controllable assets    19
+Reachable hosts        13
+Controllable hosts     10
+Reachable identities   8
+Critical/high assets   14
+Privileged paths       8
+
+CRITICAL PATH
+────────────────────────────────────────────────────────────────────────────────────────────────────
+bob  [user]
+ └─► DEV-01  [host]  logged into
+      └─► .env  [file]  contains
+           └─► DEPLOY_TOKEN in /opt/deploy/.env  [secret]  contains secret
+                └─► svc-deploy  [identity]  authenticates as
+                     └─► deployers  [group]  member of
+                          └─► prod-deployer  [role]  holds role
+                               └─► ci-cd  [service]  can access
+                                    └─► production  [cloud_resource]  deploys to
+Also controllable: postgres, ldap, DC-01, DB-01, VPN-01, vpn, app, PROD
+
+BLAST ASSESSMENT
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Severity          CRITICAL
+Score             94 / 100
+Methodology       raf-risk/1.0
+
+WHY
+────────────────────────────────────────────────────────────────────────────────────────────────────
++50               5 critical asset(s) controllable
++30               8 high-criticality asset(s) controllable
++20               8 path(s) through privileged roles, identities or admin rights
++19               19 asset(s) controllable
++5                1 critical/high asset(s) network-reachable only (no control path)
+-30               subject account is disabled
+
+Primary reason:
+A compromise beginning at bob has a modeled control path to production.
+
+IMPORTANT
+────────────────────────────────────────────────────────────────────────────────────────────────────
+This is modeled reachability, not evidence that every step actually occurred.

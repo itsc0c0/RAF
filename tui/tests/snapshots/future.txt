@@ -1,0 +1,17 @@
+R$F FUTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[unsupported block: hologram]
+
+KNOWN BLOCKS WITH EXTRA FIELDS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Score             97
+Missing style     ok
+no style field at all
+HIGH  ████████████████████████████████████████████████   20
+LOW   █████████████▎··································  5.5
+● Graph BETA
+[unsupported block: timeline3d]
+[unsupported block: tree (invalid type: string "not an object", expected struct TreeNode)]
+
+※ rendered by an older raf-os

@@ -1,0 +1,123 @@
+R$F GRAPH — bob
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+user · user:bob
+
+◆ critical  ▲ high  ■ medium   ═══ critical path   ▼ outgoing  ▲ incoming
+
+                                                                           ╔══════╗
+                                                                           ║ bob  ║
+                                                                           ║ user ║
+                                                                           ╚═══╦══╝
+                            ╔════════════════════════════════════════════╤═════╩─────────────────────────┬─────────────────────────┐
+                            ║                                            │                               │                         │
+                       LOGGED_INTO                                  LOGGED_INTO                     LOGGED_INTO              MEMBER_OF ×2
+                            ▼                                            ▼                               ▼                         ▼
+                      ╔══════════╗                                 ┌──────────┐                     ┌─────────┐              ┌─ group ───┐
+                      ║ ■ DEV-01 ║                                 │ ▲ VPN-01 │                     │ ■ WS-02 │              │ all-staff │
+                      ║   host   ║                                 │   host   │                     │  host   │              │ finance   │
+                      ╚═════╦════╝                                 └─────┬────┘                     └────┬────┘              └───────────┘
+             ╔══════════════╩──────────────┐                             │                               │
+             ║                             │                             │                               │
+         CONTAINS                         ×10                           ×8                              ×9
+             ▼                             ▼                             ▼                               ▼
+         ╔══════╗           ┌────────────────────────────┐  ┌─────────────────────────┐  ┌───────────────────────────────┐
+         ║ .env ║           │ ← LOGGED_INTO alice        │  │ ← LOGGED_INTO sarah     │  │ MEMBER_OF → CORP              │
+         ║ file ║           │ ← LOGGED_INTO dave         │  │ MEMBER_OF → DMZ         │  │ RES… → docs.example.org       │
+         ╚═══╦══╝           │ MEMBER_OF → DEV            │  │ HAS_ADDRESS → 10.40.0.2 │  │ RES… → intranet.raven.example │
+             ║              │ ← CAN_ACCESS developer     │  │ ← CONNECTED… 192.0.2.77 │  │ RES… → mail.provider.example  │
+             ║              │ ← CONNECTED… 10.10.1.21    │  │ HAS_AD… → 198.51.100.10 │  │ RES… → portal.raven.example   │
+      CONTAINS_SECRET       │ ← CONNECTED… 10.10.1.22    │  │ ← CONNECT… 203.0.113.45 │  │ RES… → updates.vendor.example │
+             ▼              │ ← CONNECTED… 10.10.1.25    │  │ ← CAN_REACH INTERNET    │  │ REQ… → https://intranet.rave… │
+╔════════════════════════╗  │ HAS_ADDRE… → 10.20.0.11    │  │ RUNS → ▲ vpn            │  │ REQ… → https://intranet.rave… │
+║ DEPLOY_TOKEN in /opt/… ║  │ ← APP… Raven access policy │  └─────────────────────────┘  │ REQ… → https://portal.raven.… │
+║         secret         ║  │ RUNS → ■ git               │                               └───────────────────────────────┘
+╚════════════╦═══════════╝  └────────────────────────────┘
+             ║
+             ║
+     AUTHENTICATES_AS
+             ▼
+      ╔════════════╗
+      ║ svc-deploy ║
+      ║  identity  ║
+      ╚══════╦═════╝
+             ║
+             ║
+         MEMBER_OF
+             ▼
+       ╔═══════════╗
+       ║ deployers ║
+       ║   group   ║
+       ╚═════╦═════╝
+             ║
+             ║
+         HAS_ROLE
+             ▼
+     ╔═══════════════╗
+     ║ prod-deployer ║
+     ║     role      ║
+     ╚═══════╦═══════╝
+             ║
+             ║
+        CAN_ACCESS
+             ▼
+        ╔═════════╗
+        ║ ▲ ci-cd ║
+        ║ service ║
+        ╚════╦════╝
+             ║
+             ║
+        DEPLOYS_TO
+             ▼
+    ╔════════════════╗
+    ║  ◆ production  ║
+    ║ cloud_resource ║
+    ╚════════════════╝
+
+OTHER RELATIONSHIPS
+  alice ─MEMBER_OF→ all-staff
+  10.40.0.2 ─CONNECTED_TO→ WS-02
+  sarah ─MEMBER_OF→ all-staff
+  10.10.1.22 ─CONNECTED_TO→ WS-02
+  WS-02 ─CONNECTED_TO→ 10.20.0.11
+  dave ─MEMBER_OF→ all-staff
+  DEV-01 ─USES→ svc-deploy
+  WS-02 ─HAS_ADDRESS→ 10.10.1.22
+
+CRITICAL PATH
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                    bob [user]
+                     │
+                     │ LOGGED_INTO        ● observed 22:58:03.000 auth.login
+                     ▼
+                   DEV-01 [host]
+                     │
+                     │ CONTAINS           ● observed 23:01:47.000 file.read
+                     ▼
+                    .env [file]
+                     │
+                     │ CONTAINS_SECRET    ◌ modeled
+                     ▼
+      DEPLOY_TOKEN in /opt/deploy/.env [secret]
+                     │
+                     │ AUTHENTICATES_AS   ● observed 23:04:41.000 auth.login
+                     ▼
+                 svc-deploy [identity]
+                     │
+                     │ MEMBER_OF          ◌ modeled
+                     ▼
+                 deployers [group]
+                     │
+                     │ HAS_ROLE           ◌ modeled
+                     ▼
+               prod-deployer [role]
+                     │
+                     │ CAN_ACCESS         ◌ modeled
+                     ▼
+                   ci-cd [service]
+                     │
+                     │ DEPLOYS_TO         ◌ modeled
+                     ▼
+                 production [cloud_resource]
+
+※ 39 objects within 2 hops; 40 drawn
+※ process records are not drawn (raf graph bob shows everything)

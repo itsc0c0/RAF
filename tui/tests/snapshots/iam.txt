@@ -1,0 +1,52 @@
+R$F IAM — bob
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+effective access and how it is obtained
+
+Identity          bob
+Type              user
+Full name         Bob Okafor
+Department        finance
+Title             Financial analyst
+Privileged        no
+State             DISABLED
+Last activity     2026-10-06T23:27:00Z
+
+DIRECT MEMBERSHIPS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  all-staff
+  finance
+
+ROLES
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ROLE               VIA                                PRIVILEGED
+────────────────────────────────────────────────────────────────────────────────────────────────────
+finance-approver   bob → finance → finance-approver   no
+
+INHERITED ACCESS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+bob  [user]
+└─ finance  [group]
+   └─ finance-approver  [role]
+      └─ app  [service]  high
+
+CREDENTIAL-DERIVED PATH
+────────────────────────────────────────────────────────────────────────────────────────────────────
+bob  [user]
+└─ DEV-01  [host]  logged into
+   └─ .env  [file]  contains
+      └─ DEPLOY_TOKEN in /opt/deploy/.env  [secret]  contains secret
+         └─ svc-deploy  [identity]  authenticates as
+svc-deploy then leads to deployers → prod-deployer → ci-cd → production
+
+FINDINGS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+SEVERITY   FINDING
+────────────────────────────────────────────────────────────────────────────────────────────────────
+HIGH       Broad privileged role: break-glass
+HIGH       Credentials of svc-deploy exposed on DEV-01
+HIGH       dave has broad privileged access
+HIGH       dave inherits privileged role break-glass
+HIGH       frank has broad privileged access
+HIGH       sarah has broad privileged access
+MEDIUM     svc-deploy has broad privileged access
+Shortest critical path   1 hop → VPN-01

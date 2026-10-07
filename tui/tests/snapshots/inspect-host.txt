@@ -1,0 +1,59 @@
+HOST DEV-01
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+host:dev-01
+
+ID                host:dev-01
+Type              host
+Confidence        0.90
+First seen        2026-10-06T09:17:59Z
+Last seen         2026-10-06T23:13:01Z
+Source            raven-events.jsonl
+Tags              dev-server, raven
+
+METADATA
+────────────────────────────────────────────────────────────────────────────────────────────────────
+criticality       medium
+ip                10.20.0.11
+os                ubuntu-24.04
+owner             alice
+role              dev-server
+
+RELATIONSHIPS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+CONTAINS          → .env
+HAS_ADDRESS       → 10.20.0.11
+MEMBER_OF         → DEV
+RUNS              → python3 [10973]
+RUNS              → python3 [13548]
+RUNS              → git [17201]
+RUNS              → pytest [20208]
+RUNS              → find [20877]
+RUNS              → cat [20903]
+RUNS              → ssh [20950]
+RUNS              → python3 [2217]
+RUNS              → make [25512]
+RUNS              → git [31582]
+RUNS              → git [43754]
+RUNS              → python3 [4743]
+RUNS              → make [50286]
+RUNS              → python3 [5327]
+RUNS              → pytest [54277]
+RUNS              → pytest [59946]
+RUNS              → git [6328]
+RUNS              → git
+USES              → svc-deploy
+CONNECTED_TO      ← 10.10.1.21
+CONNECTED_TO      ← 10.10.1.22
+CONNECTED_TO      ← 10.10.1.25
+APPLIES_TO        ← Raven access policy
+CAN_ACCESS        ← developer
+LOGGED_INTO       ← alice
+LOGGED_INTO       ← bob
+LOGGED_INTO       ← dave
+
+FINDINGS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+SEVERITY   FINDING
+────────────────────────────────────────────────────────────────────────────────────────────────────
+HIGH       High exposure: DEV-01 (62/100)
+HIGH       Credentials of svc-deploy exposed on DEV-01

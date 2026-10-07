@@ -1,0 +1,57 @@
+R$F FINDINGS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+all products
+
+CRITICAL          7
+HIGH              20
+MEDIUM            8
+LOW               7
+INFO              0
+
+OPEN FINDINGS  42
+────────────────────────────────────────────────────────────────────────────────────────────────────
+SEVERITY   CONFIDENCE   PRODUCT    FINDING
+────────────────────────────────────────────────────────────────────────────────────────────────────
+CRITICAL   HIGH         surface    Internet-facing RDP on 198.51.100.12:3389
+CRITICAL   HIGH         exposure   Critical exposure: postgres (87/100)
+CRITICAL   HIGH         exposure   Critical exposure: vpn (82/100)
+CRITICAL   HIGH         exposure   Critical exposure: ci-cd (86/100)
+CRITICAL   HIGH         exposure   Critical exposure: VPN-01 (97/100)
+CRITICAL   HIGH         exposure   Critical exposure: CI-01 (96/100)
+CRITICAL   HIGH         exposure   Critical exposure: DB-01 (87/100)
+HIGH       HIGH         surface    Expired certificate: shop.raven.example (expired 2026-09-30)
+HIGH       HIGH         iam        dave inherits privileged role break-glass
+HIGH       HIGH         policy     Rule r85-deny-dev-to-prod-db in Raven firewall can never apply
+HIGH       HIGH         iam        Broad privileged role: break-glass
+HIGH       HIGH         policy     Overly broad rule r40-dev-to-prod in Raven firewall
+HIGH       HIGH         policy     Overly broad rule break-glass in Raven access policy
+HIGH       HIGH         exposure   High exposure: app (61/100)
+HIGH       HIGH         exposure   High exposure: APP-01 (68/100)
+HIGH       HIGH         exposure   High exposure: DC-01 (68/100)
+HIGH       HIGH         exposure   High exposure: WS-05 (52/100)
+HIGH       HIGH         exposure   High exposure: dns (58/100)
+HIGH       HIGH         exposure   High exposure: ldap (71/100)
+HIGH       HIGH         exposure   High exposure: production (63/100)
+HIGH       HIGH         exposure   High exposure: DEV-01 (62/100)
+HIGH       HIGH         surface    Certificate name mismatch at 198.51.100.10:443: vpn.raven.example
+HIGH       HIGH         surface    No accountable owner: Microsoft Terminal Services on 198.51.100.…
+HIGH       MEDIUM       iam        Credentials of svc-deploy exposed on DEV-01
+HIGH       MEDIUM       iam        frank has broad privileged access
+HIGH       MEDIUM       iam        dave has broad privileged access
+HIGH       MEDIUM       iam        sarah has broad privileged access
+MEDIUM     HIGH         surface    Certificate expires in 21 days: api.raven.example
+MEDIUM     HIGH         surface    Internal address in external DNS: dc01.raven.example → 10.10.0.5
+MEDIUM     HIGH         surface    Outside the authorized scope: raven-launch.example (+1 related)
+MEDIUM     HIGH         iam        Dormant privileged identity: old-admin
+MEDIUM     HIGH         iam        Privileged account without MFA: old-admin
+MEDIUM     MEDIUM       iam        svc-deploy has broad privileged access
+MEDIUM     MEDIUM       surface    Shadow asset: staging.raven.example is in DNS but not in the inv…
+MEDIUM     MEDIUM       surface    Dangling DNS record: legacy-ftp.raven.example CNAME ftp-old.rave…
+LOW        HIGH         surface    Public cloud storage: raven-public-assets
+LOW        HIGH         policy     Rule r90-corp-to-dev-ssh in Raven firewall is redundant
+LOW        HIGH         policy     Statement engineering-git-read in Raven access policy is redunda…
+LOW        HIGH         surface    Internet-facing SSH on 198.51.100.11:22
+LOW        HIGH         surface    No accountable owner: domain ci.raven.example
+LOW        MEDIUM       surface    Shadow asset: jump.raven.example is in DNS but not in the invent…
+LOW        MEDIUM       policy     Raven firewall rule r55-dmz-to-legacy-ftp references unknown obj…
+Severity and confidence are independent: a HIGH finding can rest on LOW-confidence evidence.
