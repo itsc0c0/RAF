@@ -98,7 +98,12 @@ jobs:
           sha256sum -c SHA256SUMS
           ls -l
           cd ..
-          sed "s/@VERSION@/${TAG#v}/g; s/@TAG@/$TAG/g; s|@REPO@|$GITHUB_REPOSITORY|g" packaging/RELEASE_NOTES.md > notes.md
+          glibc() { tar -xzOf "assets/raf-${TAG#v}-linux-$1.tar.gz" "raf-${TAG#v}-linux-$1/BUNDLE" | sed -n 's/^glibc_min=//p'; }
+          x86=$(glibc x86_64)
+          arm=$(glibc aarch64)
+          echo "minimum glibc: x86_64 $x86, aarch64 $arm"
+          sed "s/@VERSION@/${TAG#v}/g; s/@TAG@/$TAG/g; s|@REPO@|$GITHUB_REPOSITORY|g; s/@GLIBC_X86_64@/$x86/g; s/@GLIBC_AARCH64@/$arm/g" \
+            packaging/RELEASE_NOTES.md > notes.md
       - name: Publish
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then

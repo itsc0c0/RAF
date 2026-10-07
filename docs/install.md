@@ -78,8 +78,9 @@ running; it listens on 127.0.0.1 only.
 
 ### Requirements
 
-Linux on x86_64 or aarch64 with glibc 2.17 or newer: Debian, Ubuntu, RHEL/Rocky/Alma 8+, Fedora,
-SUSE, Arch and their derivatives. Alpine (musl) is not supported by the bundle: use a glibc base
+Linux on x86_64 or aarch64 with glibc 2.17 or newer (the release notes and each bundle's
+`BUNDLE` name its minimum: the oldest glibc every dependency has wheels for): Debian, Ubuntu,
+RHEL/Rocky/Alma 8+, Fedora, SUSE, Arch and their derivatives. Alpine (musl) is not supported by the bundle: use a glibc base
 image in containers, or install from source. Tools: `sh`, `tar`, `gzip`, `sed`, `sha256sum`.
 Optional: Docker or Podman for Lab, a PostgreSQL server for `RAF_STORAGE_URL`, an OS keyring.
 

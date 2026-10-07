@@ -27,6 +27,7 @@ case $ARCHIVE in
 esac
 BUNDLE=$(find "$TMP" -mindepth 1 -maxdepth 1 -type d -name 'raf-*' | head -n 1)
 [ -n "$BUNDLE" ] || { echo "no raf-* directory in $ARCHIVE" >&2; exit 1; }
+echo "bundle: $(tr '\n' ' ' <"$BUNDLE/BUNDLE")"
 chmod -R a+rX "$TMP"
 
 # Runs inside each container (POSIX sh, as root). The bundle is mounted read-only at /bundle.

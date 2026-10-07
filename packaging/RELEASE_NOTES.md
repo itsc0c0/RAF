@@ -31,8 +31,8 @@ raf tui           # R$F OS, the full-screen terminal panel
 
 ## Requirements
 
-Linux on x86_64 or aarch64 with glibc 2.17 or newer: Debian, Ubuntu, RHEL/Rocky/Alma 8+, Fedora,
-SUSE, Arch ... (not Alpine/musl). Each bundle was installed and used on Debian 12, Ubuntu 24.04,
+Linux with glibc @GLIBC_X86_64@ or newer on x86_64, @GLIBC_AARCH64@ or newer on aarch64: Debian, Ubuntu,
+RHEL/Rocky/Alma 8+, Fedora, SUSE, Arch ... (not Alpine/musl). Each bundle was installed and used on Debian 12, Ubuntu 24.04,
 AlmaLinux 8 and Fedora 42 containers without network access before this release was published.
 
 ## Verify
