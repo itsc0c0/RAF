@@ -1,0 +1,337 @@
+{
+  "format": "raf-policy/1",
+  "name": "raven-policies",
+  "revision": "2026-09-01",
+  "policies": [
+    {
+      "id": "raven-fw",
+      "name": "Raven firewall",
+      "domain": "network",
+      "default": "deny",
+      "description": "Perimeter and internal segmentation (first match wins)",
+      "rules": [
+        {
+          "id": "r10-internet-to-dmz",
+          "action": "allow",
+          "source": "network:INTERNET",
+          "destination": "network:DMZ",
+          "ports": [
+            "tcp/443",
+            "udp/1194"
+          ],
+          "description": "Public website and VPN"
+        },
+        {
+          "id": "r20-corp-to-dmz",
+          "action": "allow",
+          "source": "network:CORP",
+          "destination": "network:DMZ",
+          "ports": [
+            "tcp/443"
+          ],
+          "description": "Staff access to DMZ services"
+        },
+        {
+          "id": "r30-corp-to-dev",
+          "action": "allow",
+          "source": "network:CORP",
+          "destination": "network:DEV",
+          "ports": [
+            "tcp/22",
+            "tcp/443"
+          ],
+          "description": "Engineers to development"
+        },
+        {
+          "id": "r40-dev-to-prod",
+          "action": "allow",
+          "source": "network:DEV",
+          "destination": "network:PROD",
+          "ports": [
+            "tcp/22",
+            "tcp/8443"
+          ],
+          "description": "Deployments: SSH and the application port"
+        },
+        {
+          "id": "r50-dmz-to-prod",
+          "action": "allow",
+          "source": "network:DMZ",
+          "destination": "network:PROD",
+          "ports": [
+            "tcp/8443"
+          ],
+          "description": "Portal front end to the application tier"
+        },
+        {
+          "id": "r55-dmz-to-legacy-ftp",
+          "action": "allow",
+          "source": "network:DMZ",
+          "destination": "host:FTP-OLD",
+          "ports": [
+            "tcp/21"
+          ],
+          "description": "Legacy partner file drop"
+        },
+        {
+          "id": "r60-vpn-to-corp",
+          "action": "allow",
+          "source": "network:DMZ",
+          "destination": "network:CORP",
+          "ports": [
+            "tcp/3389",
+            "tcp/22"
+          ],
+          "description": "VPN users to workstations"
+        },
+        {
+          "id": "r70-prod-egress",
+          "action": "allow",
+          "source": "network:PROD",
+          "destination": "network:INTERNET",
+          "ports": [
+            "tcp/443"
+          ],
+          "description": "Production egress (updates, backups)"
+        },
+        {
+          "id": "r80-corp-egress",
+          "action": "allow",
+          "source": "network:CORP",
+          "destination": "network:INTERNET",
+          "ports": [
+            "tcp/80",
+            "tcp/443"
+          ],
+          "description": "Staff web access"
+        },
+        {
+          "id": "r85-deny-dev-to-prod-db",
+          "action": "deny",
+          "source": "network:DEV",
+          "destination": "host:DB-01",
+          "ports": [
+            "tcp/5432"
+          ],
+          "description": "Development must not reach the production database directly"
+        },
+        {
+          "id": "r95-lab-isolation",
+          "action": "deny",
+          "source": "network:LAB",
+          "destination": "any",
+          "ports": [
+            "any"
+          ],
+          "description": "The lab is isolated"
+        },
+        {
+          "id": "r99-default-deny",
+          "action": "deny",
+          "source": "any",
+          "destination": "any",
+          "ports": [
+            "any"
+          ],
+          "description": "Explicit default deny"
+        }
+      ]
+    },
+    {
+      "id": "raven-access",
+      "name": "Raven access policy",
+      "domain": "identity",
+      "default": "deny",
+      "description": "Who may do what on which resource (explicit deny overrides allow)",
+      "statements": [
+        {
+          "id": "developer-ssh",
+          "effect": "allow",
+          "principals": [
+            "role:developer"
+          ],
+          "actions": [
+            "ssh"
+          ],
+          "resources": [
+            "host:DEV-01"
+          ],
+          "description": "Developers log in to the development server"
+        },
+        {
+          "id": "developer-git",
+          "effect": "allow",
+          "principals": [
+            "role:developer"
+          ],
+          "actions": [
+            "git:read",
+            "git:write"
+          ],
+          "resources": [
+            "service:git"
+          ]
+        },
+        {
+          "id": "engineering-git-read",
+          "effect": "allow",
+          "principals": [
+            "group:engineering"
+          ],
+          "actions": [
+            "git:read"
+          ],
+          "resources": [
+            "service:git"
+          ],
+          "description": "Read access for engineering"
+        },
+        {
+          "id": "prod-deployer",
+          "effect": "allow",
+          "principals": [
+            "role:prod-deployer"
+          ],
+          "actions": [
+            "deploy:*"
+          ],
+          "resources": [
+            "service:ci-cd"
+          ]
+        },
+        {
+          "id": "deploy-ssh",
+          "effect": "allow",
+          "principals": [
+            "identity:svc-deploy"
+          ],
+          "actions": [
+            "ssh-deploy"
+          ],
+          "resources": [
+            "host:APP-01"
+          ]
+        },
+        {
+          "id": "db-admin",
+          "effect": "allow",
+          "principals": [
+            "role:db-admin"
+          ],
+          "actions": [
+            "admin"
+          ],
+          "resources": [
+            "host:DB-01"
+          ]
+        },
+        {
+          "id": "domain-admin",
+          "effect": "allow",
+          "principals": [
+            "role:domain-admin"
+          ],
+          "actions": [
+            "admin"
+          ],
+          "resources": [
+            "host:DC-01"
+          ]
+        },
+        {
+          "id": "finance-approver",
+          "effect": "allow",
+          "principals": [
+            "role:finance-approver"
+          ],
+          "actions": [
+            "approve-payments"
+          ],
+          "resources": [
+            "service:app"
+          ]
+        },
+        {
+          "id": "helpdesk",
+          "effect": "allow",
+          "principals": [
+            "role:helpdesk"
+          ],
+          "actions": [
+            "reset-password"
+          ],
+          "resources": [
+            "service:ldap"
+          ]
+        },
+        {
+          "id": "break-glass",
+          "effect": "allow",
+          "principals": [
+            "role:break-glass"
+          ],
+          "actions": [
+            "*"
+          ],
+          "resources": [
+            "*"
+          ],
+          "description": "Emergency access"
+        },
+        {
+          "id": "remote-access",
+          "effect": "allow",
+          "principals": [
+            "role:remote-access"
+          ],
+          "actions": [
+            "vpn-login"
+          ],
+          "resources": [
+            "service:vpn"
+          ]
+        },
+        {
+          "id": "backup-operator",
+          "effect": "allow",
+          "principals": [
+            "role:backup-operator"
+          ],
+          "actions": [
+            "write"
+          ],
+          "resources": [
+            "cloud_resource:backup-vault"
+          ]
+        },
+        {
+          "id": "app-database",
+          "effect": "allow",
+          "principals": [
+            "identity:svc-app"
+          ],
+          "actions": [
+            "read",
+            "write"
+          ],
+          "resources": [
+            "service:postgres"
+          ]
+        },
+        {
+          "id": "backup-read",
+          "effect": "allow",
+          "principals": [
+            "identity:svc-backup"
+          ],
+          "actions": [
+            "read"
+          ],
+          "resources": [
+            "service:postgres"
+          ]
+        }
+      ]
+    }
+  ]
+}

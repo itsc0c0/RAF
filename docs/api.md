@@ -118,11 +118,18 @@ interactive docs at `/api/docs`.
 |---|---|---|
 | GET | `/blast/{ref}?max_depth=&min_confidence=` | `{target: {id, name, type}, reachable_assets, critical_assets, privileged_paths, max_depth, direct: [Reach], indirect: [Reach], identity_propagation: [ids], network_propagation: [ids], trust_propagation: [ids], risk: {level, score, factors: [RiskFactor]}, primary_path: [Hop]}`; Reach = `{id, name, type, depth, confidence, mode: control|reach|trust, criticality}`; Hop = `{source, source_name, target, target_name, relationship_type, relationship_id, why, confidence}` |
 | GET | `/exposure?limit=&min_level=` | `{items: [{object: {id, name, type, criticality}, score, level, factors: [RiskFactor], entry_points, vulnerabilities: [{id, cvss}]}]}` |
-| GET | `/exposure/{ref}` | one explained assessment |
-| GET | `/iam/analyze` | `{summary, findings: [Finding]}` (runs the IAM analyzers) |
-| GET | `/iam/path?source=&target=` | privilege paths with per-hop explanations |
-| GET | `/policy/policies` | imported policies with rules |
-| POST | `/policy/evaluate` `{principal?, source?, target, port?, protocol?, action?}` | decision + matching rule chain |
+| GET | `/exposure/{ref}` | one explained assessment (+ `internet`, `controllers`, `stepping_stone_to`, `secrets`) |
+| POST | `/exposure/analyze` | recompute and record HIGH/CRITICAL findings |
+| GET | `/iam/analyze` | dry run: `{summary: {principals, privileged_principals, findings, by_rule, resolved, reference_time}, findings: [Finding]}` |
+| POST | `/iam/analyze?persist=true` | same shape; records findings |
+| GET | `/iam/principals/{ref}` | effective access `{principal, privileged, groups, roles, identities, resources, last_activity, findings}` |
+| GET | `/iam/path?source=&target=&max_depth=&limit=` | `{source, target, paths: [{confidence, hops: [Hop]}]}` |
+| GET | `/policy/policies` | `{items: [Policy + {object_id, rule_count, digest}]}` (rules included) |
+| GET | `/policy/policies/{id}` | one normalized policy |
+| POST | `/policy/evaluate` `{subject?|principal?, source?, target, action?, port?, protocol?, ports?, sources?}` | `{decision: allow|deny|not-evaluated, reason, parts: [{part: network|identity, policy, decision, allowed_ports, decisions: [{policy, rule, effect, ports, actions, summary}], preempted, explanation}], indirect: [{pivot, legs, summary}], notes}` |
+| POST | `/policy/analyze?persist=` | `{policies, findings, by_rule, warnings}` |
+| POST | `/policy/check` `{document, format: json|yaml|csv, principal?}` | normalize + analyze without storing |
+| GET | `/policy/diff?before=&after=current` | revision diff between workspace states (current, snapshots) |
 
 ## Synthetic environments
 

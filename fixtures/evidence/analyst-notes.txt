@@ -5,7 +5,7 @@ INC-001 analyst notes (synthetic)
 23:04        svc-deploy authenticated to CI-01 from DEV-01 (unusual source).
 23:06        deploy.sh ran with --skip-review outside the change window.
 23:09-23:16  Database export on DB-01, then a 48 MB upload from APP-01 to files.exfil-test.example.
-23:25        SOC disabled bob; svc-deploy removed from deployers.
+23:25        SOC disabled bob and removed him from vpn-users. The svc-deploy token was not rotated.
 
 Open questions: who else can reach production through svc-deploy? Was the
 deploy token rotated? Which other hosts store pipeline credentials?

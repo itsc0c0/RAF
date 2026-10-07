@@ -481,6 +481,7 @@ class TraceService:
                 observed = [lk for lk in candidates if lk.kind == "observed"] or candidates
                 pick = max(observed, key=lambda lk: (lk.timestamp, lk.confidence))
             else:
+
                 def score(lk: TraceLink, ref: datetime = bound) -> float:
                     gap_minutes = abs((ref - lk.timestamp).total_seconds()) / 60
                     return lk.confidence / (1 + gap_minutes / 15)

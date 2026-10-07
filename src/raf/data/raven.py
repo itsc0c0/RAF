@@ -220,11 +220,15 @@ IDENTITIES: list[dict[str, Any]] = [
 GROUPS: dict[str, list[str]] = {
     "engineering": ["user:alice", "user:dave"],
     "finance": ["user:bob"],
-    "operations": ["user:sarah", "user:frank"],
+    # oncall-support was nested into operations so on-call engineers get the helpdesk role;
+    # it silently also passes on break-glass (privilege inheritance through a nested group).
+    "operations": ["user:sarah", "user:frank", "group:oncall-support"],
+    "oncall-support": ["user:dave"],
     "hr": ["user:carol"],
     "deployers": ["identity:svc-deploy"],
     "domain-admins": ["identity:dev-admin", "identity:old-admin"],
     "all-staff": ["user:alice", "user:bob", "user:sarah", "user:carol", "user:dave", "user:frank"],
+    "vpn-users": ["user:bob", "user:sarah", "user:frank"],
 }
 
 # role -> (privileged, holders, grants)
@@ -263,6 +267,11 @@ ROLES: dict[str, dict[str, Any]] = {
         "holders": ["group:operations"],
         "wildcard": True,
         "grants": [("ADMIN_OF", "cloud_resource:production", {"actions": ["*"], "resources": ["*"]})],
+    },
+    "remote-access": {
+        "privileged": False,
+        "holders": ["group:vpn-users"],
+        "grants": [("CAN_ACCESS", "service:vpn", {"access": "vpn-login"})],
     },
     "backup-operator": {
         "privileged": False,
@@ -379,6 +388,284 @@ REACHABILITY: list[tuple[str, str, list[str], str]] = [
     ("PROD", "INTERNET", ["tcp/443"], "raven-fw:r70-prod-egress"),
     ("CORP", "INTERNET", ["tcp/80", "tcp/443"], "raven-fw:r80-corp-egress"),
 ]
+
+# Raven's policies (raf-policy/1). The firewall matches REACHABILITY above and the access policy
+# matches ROLES. Deliberate defects for the demo: r40 was widened to "any" for a migration (overly
+# broad, and it now shadows r85 so the database protection never applies), r90 duplicates r30,
+# r55 references a decommissioned host, and break-glass grants every action on every resource.
+POLICY_REVISION = "2026-10-01"
+PREVIOUS_POLICY_REVISION = "2026-09-01"
+FIREWALL_RULES: list[dict[str, Any]] = [
+    {
+        "id": "r10-internet-to-dmz",
+        "action": "allow",
+        "source": "network:INTERNET",
+        "destination": "network:DMZ",
+        "ports": ["tcp/443", "udp/1194"],
+        "description": "Public website and VPN",
+    },
+    {
+        "id": "r20-corp-to-dmz",
+        "action": "allow",
+        "source": "network:CORP",
+        "destination": "network:DMZ",
+        "ports": ["tcp/443"],
+        "description": "Staff access to DMZ services",
+    },
+    {
+        "id": "r30-corp-to-dev",
+        "action": "allow",
+        "source": "network:CORP",
+        "destination": "network:DEV",
+        "ports": ["tcp/22", "tcp/443"],
+        "description": "Engineers to development",
+    },
+    {
+        "id": "r40-dev-to-prod",
+        "action": "allow",
+        "source": "network:DEV",
+        "destination": "network:PROD",
+        "ports": ["any"],
+        "description": "Deployments (temporarily widened for the September migration)",
+    },
+    {
+        "id": "r50-dmz-to-prod",
+        "action": "allow",
+        "source": "network:DMZ",
+        "destination": "network:PROD",
+        "ports": ["tcp/8443"],
+        "description": "Portal front end to the application tier",
+    },
+    {
+        "id": "r55-dmz-to-legacy-ftp",
+        "action": "allow",
+        "source": "network:DMZ",
+        "destination": "host:FTP-OLD",
+        "ports": ["tcp/21"],
+        "description": "Legacy partner file drop",
+    },
+    {
+        "id": "r60-vpn-to-corp",
+        "action": "allow",
+        "source": "network:DMZ",
+        "destination": "network:CORP",
+        "ports": ["tcp/3389", "tcp/22"],
+        "description": "VPN users to workstations",
+    },
+    {
+        "id": "r70-prod-egress",
+        "action": "allow",
+        "source": "network:PROD",
+        "destination": "network:INTERNET",
+        "ports": ["tcp/443"],
+        "description": "Production egress (updates, backups)",
+    },
+    {
+        "id": "r80-corp-egress",
+        "action": "allow",
+        "source": "network:CORP",
+        "destination": "network:INTERNET",
+        "ports": ["tcp/80", "tcp/443"],
+        "description": "Staff web access",
+    },
+    {
+        "id": "r85-deny-dev-to-prod-db",
+        "action": "deny",
+        "source": "network:DEV",
+        "destination": "host:DB-01",
+        "ports": ["tcp/5432"],
+        "description": "Development must not reach the production database directly",
+    },
+    {
+        "id": "r90-corp-to-dev-ssh",
+        "action": "allow",
+        "source": "network:CORP",
+        "destination": "network:DEV",
+        "ports": ["tcp/22"],
+        "description": "SSH for engineers",
+    },
+    {
+        "id": "r95-lab-isolation",
+        "action": "deny",
+        "source": "network:LAB",
+        "destination": "any",
+        "ports": ["any"],
+        "description": "The lab is isolated",
+    },
+    {
+        "id": "r99-default-deny",
+        "action": "deny",
+        "source": "any",
+        "destination": "any",
+        "ports": ["any"],
+        "description": "Explicit default deny",
+    },
+]
+ACCESS_STATEMENTS: list[dict[str, Any]] = [
+    {
+        "id": "developer-ssh",
+        "effect": "allow",
+        "principals": ["role:developer"],
+        "actions": ["ssh"],
+        "resources": ["host:DEV-01"],
+        "description": "Developers log in to the development server",
+    },
+    {
+        "id": "developer-git",
+        "effect": "allow",
+        "principals": ["role:developer"],
+        "actions": ["git:read", "git:write"],
+        "resources": ["service:git"],
+    },
+    {
+        "id": "engineering-git-read",
+        "effect": "allow",
+        "principals": ["group:engineering"],
+        "actions": ["git:read"],
+        "resources": ["service:git"],
+        "description": "Read access for engineering",
+    },
+    {
+        "id": "prod-deployer",
+        "effect": "allow",
+        "principals": ["role:prod-deployer"],
+        "actions": ["deploy:*"],
+        "resources": ["service:ci-cd"],
+    },
+    {
+        "id": "deploy-ssh",
+        "effect": "allow",
+        "principals": ["identity:svc-deploy"],
+        "actions": ["ssh-deploy"],
+        "resources": ["host:APP-01"],
+    },
+    {
+        "id": "db-admin",
+        "effect": "allow",
+        "principals": ["role:db-admin"],
+        "actions": ["admin"],
+        "resources": ["host:DB-01"],
+    },
+    {
+        "id": "domain-admin",
+        "effect": "allow",
+        "principals": ["role:domain-admin"],
+        "actions": ["admin"],
+        "resources": ["host:DC-01"],
+    },
+    {
+        "id": "finance-approver",
+        "effect": "allow",
+        "principals": ["role:finance-approver"],
+        "actions": ["approve-payments"],
+        "resources": ["service:app"],
+    },
+    {
+        "id": "helpdesk",
+        "effect": "allow",
+        "principals": ["role:helpdesk"],
+        "actions": ["reset-password"],
+        "resources": ["service:ldap"],
+    },
+    {
+        "id": "break-glass",
+        "effect": "allow",
+        "principals": ["role:break-glass"],
+        "actions": ["*"],
+        "resources": ["*"],
+        "description": "Emergency access",
+    },
+    {
+        "id": "remote-access",
+        "effect": "allow",
+        "principals": ["role:remote-access"],
+        "actions": ["vpn-login"],
+        "resources": ["service:vpn"],
+    },
+    {
+        "id": "backup-operator",
+        "effect": "allow",
+        "principals": ["role:backup-operator"],
+        "actions": ["write"],
+        "resources": ["cloud_resource:backup-vault"],
+    },
+    {
+        "id": "app-database",
+        "effect": "allow",
+        "principals": ["identity:svc-app"],
+        "actions": ["read", "write"],
+        "resources": ["service:postgres"],
+    },
+    {
+        "id": "backup-read",
+        "effect": "allow",
+        "principals": ["identity:svc-backup"],
+        "actions": ["read"],
+        "resources": ["service:postgres"],
+    },
+]
+
+
+def policy_document(revision: str = POLICY_REVISION) -> dict[str, Any]:
+    """Raven's policies as a raf-policy/1 document (current or previous revision)."""
+    rules = [dict(rule) for rule in FIREWALL_RULES]
+    if revision == PREVIOUS_POLICY_REVISION:
+        rules = [rule for rule in rules if rule["id"] != "r90-corp-to-dev-ssh"]
+        for rule in rules:
+            if rule["id"] == "r40-dev-to-prod":
+                rule["ports"] = ["tcp/22", "tcp/8443"]
+                rule["description"] = "Deployments: SSH and the application port"
+    elif revision != POLICY_REVISION:
+        raise ValueError(f"unknown Raven policy revision {revision}")
+    return {
+        "format": "raf-policy/1",
+        "name": "raven-policies",
+        "revision": revision,
+        "policies": [
+            {
+                "id": "raven-fw",
+                "name": "Raven firewall",
+                "domain": "network",
+                "default": "deny",
+                "description": "Perimeter and internal segmentation (first match wins)",
+                "rules": rules,
+            },
+            {
+                "id": "raven-access",
+                "name": "Raven access policy",
+                "domain": "identity",
+                "default": "deny",
+                "description": "Who may do what on which resource (explicit deny overrides allow)",
+                "statements": [dict(statement) for statement in ACCESS_STATEMENTS],
+            },
+        ],
+    }
+
+
+def firewall_csv() -> str:
+    """The current firewall as a vendor-style CSV export (zones by bare name)."""
+
+    def zone(value: str) -> str:
+        return value.split(":", 1)[1] if value.startswith("network:") else value
+
+    lines = ["id,action,source,destination,protocol,port,description"]
+    for rule in FIREWALL_RULES:
+        ports = ";".join(rule["ports"])
+        lines.append(
+            ",".join(
+                [
+                    rule["id"],
+                    rule["action"],
+                    zone(rule["source"]),
+                    zone(rule["destination"]),
+                    "",
+                    ports,
+                    '"' + rule["description"].replace('"', "'") + '"',
+                ]
+            )
+        )
+    return "\n".join(lines) + "\n"
+
 
 DOMAINS: dict[str, str] = {
     "www.raven.example": "198.51.100.20",
@@ -1087,9 +1374,10 @@ def incident_soc_events(day: datetime = BASE_DAY) -> list[dict[str, Any]]:
         day.replace(hour=23, minute=27, second=0),
         "iam.group.remove",
         actor="dev-admin",
-        target="identity:svc-deploy",
+        target="bob",
         outcome="success",
-        attributes={"group": "deployers", "ticket": "SOC-7731"},
+        message="Containment: bob removed from vpn-users (deploy token NOT rotated yet)",
+        attributes={"group": "vpn-users", "ticket": "SOC-7731"},
         **common,
     )
     return ev.items
@@ -1378,7 +1666,7 @@ EVIDENCE_NOTES = """INC-001 analyst notes (synthetic)
 23:04        svc-deploy authenticated to CI-01 from DEV-01 (unusual source).
 23:06        deploy.sh ran with --skip-review outside the change window.
 23:09-23:16  Database export on DB-01, then a 48 MB upload from APP-01 to files.exfil-test.example.
-23:25        SOC disabled bob; svc-deploy removed from deployers.
+23:25        SOC disabled bob and removed him from vpn-users. The svc-deploy token was not rotated.
 
 Open questions: who else can reach production through svc-deploy? Was the
 deploy token rotated? Which other hosts store pipeline credentials?

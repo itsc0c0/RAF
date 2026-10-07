@@ -34,6 +34,11 @@ def outputs() -> dict[str, Callable[[], str]]:
         "evidence/edr-process-events.jsonl": lambda: jsonl(raven.evidence_edr_events()),
         "evidence/proxy.csv": raven.evidence_proxy_csv,
         "evidence/analyst-notes.txt": lambda: raven.EVIDENCE_NOTES,
+        "policies/raven-policies.json": lambda: json.dumps(raven.policy_document(), indent=2) + "\n",
+        "policies/raven-policies-2026-09.json": lambda: (
+            json.dumps(raven.policy_document(raven.PREVIOUS_POLICY_REVISION), indent=2) + "\n"
+        ),
+        "policies/raven-fw-export.csv": raven.firewall_csv,
     }
     try:
         from raf.data import raven_extra

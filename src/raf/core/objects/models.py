@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from raf.core.ids import object_id, relationship_id
 from raf.core.objects.types import (
@@ -28,9 +28,22 @@ from raf.core.objects.types import (
 
 
 class RafModel(BaseModel):
-    """Base model: strict about unknown fields, JSON friendly."""
+    """Base model: strict about unknown fields, JSON friendly.
+
+    Computed fields (e.g. ``confidence_level``) are part of the serialized form; when such a
+    document is validated again (bundles, backups, API round trips) they are ignored rather than
+    rejected as unknown fields.
+    """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_computed_fields(cls, data: Any) -> Any:
+        computed = cls.model_computed_fields
+        if computed and isinstance(data, dict) and any(name in data for name in computed):
+            return {k: v for k, v in data.items() if k not in computed}
+        return data
 
     def to_json_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")

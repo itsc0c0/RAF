@@ -49,9 +49,9 @@ class TestGraph:
     def test_temporal_view(self, raven: RafContext) -> None:
         before = StoreGraphSource(raven.store, at=datetime(2026, 10, 6, 23, 26, tzinfo=UTC))
         after = StoreGraphSource(raven.store, at=datetime(2026, 10, 6, 23, 28, tzinfo=UTC))
-        types_before = {r.relationship_type for r in before.edges(["identity:svc-deploy"], "out")}
-        types_after = {r.relationship_type for r in after.edges(["identity:svc-deploy"], "out")}
-        assert "MEMBER_OF" in types_before and "MEMBER_OF" not in types_after
+        groups_before = {r.target_object for r in before.edges(["user:bob"], "out", ["MEMBER_OF"])}
+        groups_after = {r.target_object for r in after.edges(["user:bob"], "out", ["MEMBER_OF"])}
+        assert "group:vpn-users" in groups_before and "group:vpn-users" not in groups_after
 
     def test_incident_view_has_virtual_involves_edges(self, raven: RafContext) -> None:
         graph = GraphService(raven).view(resolve_scope(raven, ["INC-001"]))

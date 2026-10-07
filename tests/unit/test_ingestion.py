@@ -171,8 +171,8 @@ class TestPipeline:
         # derived relationship provenance points at the event and record
         prov = ctx.store.provenance.for_subject(logins[0].id)
         assert prov and prov[0].event_id and prov[0].record and prov[0].parser == "jsonl/1.0"
-        # temporal end: svc-deploy removed from deployers during containment
-        member = ctx.store.relationships.list(source="identity:svc-deploy", types=["MEMBER_OF"])[0]
+        # temporal end: bob removed from vpn-users during containment
+        member = ctx.store.relationships.list(source="user:bob", target="group:vpn-users", types=["MEMBER_OF"])[0]
         assert member.valid_to is not None
 
     def test_evidence_directory_and_syslog_semantics(self, ctx: RafContext) -> None:

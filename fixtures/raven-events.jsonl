@@ -98,6 +98,9 @@
 {"kind": "object", "name": "operations", "tags": ["raven"], "type": "group"}
 {"confidence": 0.95, "kind": "relationship", "source": "user:sarah", "target": "group:operations", "type": "MEMBER_OF"}
 {"confidence": 0.95, "kind": "relationship", "source": "user:frank", "target": "group:operations", "type": "MEMBER_OF"}
+{"confidence": 0.95, "kind": "relationship", "source": "group:oncall-support", "target": "group:operations", "type": "MEMBER_OF"}
+{"kind": "object", "name": "oncall-support", "tags": ["raven"], "type": "group"}
+{"confidence": 0.95, "kind": "relationship", "source": "user:dave", "target": "group:oncall-support", "type": "MEMBER_OF"}
 {"kind": "object", "name": "hr", "tags": ["raven"], "type": "group"}
 {"confidence": 0.95, "kind": "relationship", "source": "user:carol", "target": "group:hr", "type": "MEMBER_OF"}
 {"kind": "object", "name": "deployers", "tags": ["raven"], "type": "group"}
@@ -112,6 +115,10 @@
 {"confidence": 0.95, "kind": "relationship", "source": "user:carol", "target": "group:all-staff", "type": "MEMBER_OF"}
 {"confidence": 0.95, "kind": "relationship", "source": "user:dave", "target": "group:all-staff", "type": "MEMBER_OF"}
 {"confidence": 0.95, "kind": "relationship", "source": "user:frank", "target": "group:all-staff", "type": "MEMBER_OF"}
+{"kind": "object", "name": "vpn-users", "tags": ["raven"], "type": "group"}
+{"confidence": 0.95, "kind": "relationship", "source": "user:bob", "target": "group:vpn-users", "type": "MEMBER_OF"}
+{"confidence": 0.95, "kind": "relationship", "source": "user:sarah", "target": "group:vpn-users", "type": "MEMBER_OF"}
+{"confidence": 0.95, "kind": "relationship", "source": "user:frank", "target": "group:vpn-users", "type": "MEMBER_OF"}
 {"kind": "object", "metadata": {"wildcard": false}, "name": "developer", "privileged": false, "type": "role"}
 {"confidence": 0.95, "kind": "relationship", "source": "group:engineering", "target": "role:developer", "type": "HAS_ROLE"}
 {"confidence": 0.95, "kind": "relationship", "metadata": {"access": "write"}, "source": "role:developer", "target": "service:git", "type": "CAN_ACCESS"}
@@ -134,6 +141,9 @@
 {"kind": "object", "metadata": {"wildcard": true}, "name": "break-glass", "privileged": true, "type": "role"}
 {"confidence": 0.95, "kind": "relationship", "source": "group:operations", "target": "role:break-glass", "type": "HAS_ROLE"}
 {"confidence": 0.95, "kind": "relationship", "metadata": {"actions": ["*"], "resources": ["*"]}, "source": "role:break-glass", "target": "cloud_resource:production", "type": "ADMIN_OF"}
+{"kind": "object", "metadata": {"wildcard": false}, "name": "remote-access", "privileged": false, "type": "role"}
+{"confidence": 0.95, "kind": "relationship", "source": "group:vpn-users", "target": "role:remote-access", "type": "HAS_ROLE"}
+{"confidence": 0.95, "kind": "relationship", "metadata": {"access": "vpn-login"}, "source": "role:remote-access", "target": "service:vpn", "type": "CAN_ACCESS"}
 {"kind": "object", "metadata": {"wildcard": false}, "name": "backup-operator", "privileged": false, "type": "role"}
 {"confidence": 0.95, "kind": "relationship", "source": "identity:svc-backup", "target": "role:backup-operator", "type": "HAS_ROLE"}
 {"confidence": 0.95, "kind": "relationship", "metadata": {"access": "write"}, "source": "role:backup-operator", "target": "cloud_resource:backup-vault", "type": "CAN_ACCESS"}
@@ -757,7 +767,7 @@
 {"actor": "APP-01", "attributes": {"bytes_in": 41000, "bytes_out": 48213000, "dst_ip": "198.51.100.23", "dst_port": 443, "duration_s": 74, "protocol": "tcp", "src_ip": "10.30.0.5"}, "event_type": "network.connection", "incident": "INC-001", "severity": "high", "target": "198.51.100.23", "timestamp": "2026-10-06T23:16:30Z"}
 {"actor": "APP-01", "attributes": {"bytes_out": 48213000, "destination": "files.exfil-test.example", "detector": "raven-ids", "rule": "raven-ids/egress-volume-anomaly"}, "confidence": 0.7, "event_type": "alert", "incident": "INC-001", "message": "Unusual outbound data volume from APP-01 to a first-seen domain", "severity": "high", "target": "APP-01", "timestamp": "2026-10-06T23:20:00Z"}
 {"actor": "dev-admin", "attributes": {"ticket": "SOC-7731"}, "event_type": "iam.user.disable", "incident": "INC-001", "message": "Containment: bob's account disabled by the SOC", "outcome": "success", "severity": "medium", "target": "bob", "timestamp": "2026-10-06T23:25:12Z"}
-{"actor": "dev-admin", "attributes": {"group": "deployers", "ticket": "SOC-7731"}, "event_type": "iam.group.remove", "incident": "INC-001", "outcome": "success", "target": "identity:svc-deploy", "timestamp": "2026-10-06T23:27:00Z"}
+{"actor": "dev-admin", "attributes": {"group": "vpn-users", "ticket": "SOC-7731"}, "event_type": "iam.group.remove", "incident": "INC-001", "message": "Containment: bob removed from vpn-users (deploy token NOT rotated yet)", "outcome": "success", "target": "bob", "timestamp": "2026-10-06T23:27:00Z"}
 {"actor": "svc-backup", "attributes": {"command_line": "pg_dump raven", "image": "/usr/bin/pg_dump", "parent_image": "/usr/sbin/cron", "pid": 7711}, "event_type": "process.start", "host": "DB-01", "timestamp": "2026-10-07T01:00:00Z"}
 {"attributes": {"process": "pg_dump", "size": 182000000}, "event_type": "file.create", "host": "DB-01", "target": "/var/backups/raven-20261006.dump", "timestamp": "2026-10-07T01:04:00Z"}
 {"actor": "DB-01", "attributes": {"answers": ["203.0.113.200"], "src_ip": "10.30.0.10"}, "event_type": "dns.query", "target": "backup.storage.example", "timestamp": "2026-10-07T01:05:00Z"}

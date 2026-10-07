@@ -20,15 +20,22 @@ def demo_load() -> None:
     def render() -> None:
         rt.header("R$F DEMO  Raven Industries", "Synthetic organization; all data is fictional.")
         c = rt.console()
+        width = max((len(step["name"]) for step in result.steps), default=30) + 2
         for step in result.steps:
             mark = Text("✓ ", style="green") if step["status"] == "ok" else Text("- ", style="dim")
             detail = step["detail"]
             if isinstance(detail, dict):
-                detail = ", ".join(f"{k} {v}" for k, v in detail.items() if v not in (None, "") and k != "job")
-            c.print(mark + Text(f"{step['name']:<34}") + Text(str(detail), style="dim"))
+                detail = ", ".join(f"{k} {_fmt(v)}" for k, v in detail.items() if v not in (None, "") and k != "job")
+            c.print(mark + Text(f"{step['name']:<{width}}") + Text(str(detail), style="dim"))
         rt.next_steps(result.suggestions, title="Explore")
 
     rt.output("raf.demo/v1", result.to_dict(), render)
+
+
+def _fmt(value: object) -> str:
+    if isinstance(value, dict):
+        return "(" + ", ".join(f"{k} {v}" for k, v in value.items()) + ")"
+    return str(value)
 
 
 def register(app: typer.Typer) -> None:

@@ -95,7 +95,7 @@ KEYS: tuple[ConfigKey, ...] = (
     # graph / analysis
     ConfigKey("graph.default_depth", int, 2, "Default neighborhood depth for graph views.", minimum=1),
     ConfigKey("graph.max_nodes", int, 1500, "Maximum nodes returned by a single graph view.", minimum=10),
-    ConfigKey("blast.max_depth", int, 6, "Maximum traversal depth for blast radius.", minimum=1),
+    ConfigKey("blast.max_depth", int, 8, "Maximum traversal depth for blast radius.", minimum=1),
     ConfigKey("blast.min_confidence", float, 0.2, "Minimum path confidence for blast propagation.", minimum=0),
     ConfigKey(
         "trace.correlation_window_minutes", int, 720, "Window for session-context correlation in trace.", minimum=1
