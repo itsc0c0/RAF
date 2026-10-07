@@ -1,18 +1,20 @@
 """A small, safe filter language for events.
 
-    type:auth.* actor:alice severity>=medium time>=2026-10-06T22:00:00Z "exfil"
+    type:auth.* actor:alice severity>=medium confidence>=0.6 time>=2026-10-06T22:00:00Z "exfil"
 
 A filter is a list of terms separated by spaces and quoted like a shell command line. A term is
-``key:value`` (``key=value`` means the same) or, for the ordered keys ``severity`` and ``time``, a
-comparison such as ``time>=T``. A token that starts with a quote is always free text, whatever it
-contains; an unquoted ``word:...`` or ``word=...`` whose word is not a key is an error.
+``key:value`` (``key=value`` means the same) or, for the ordered keys ``severity``, ``confidence``
+and ``time``, a comparison such as ``time>=T`` (``severity:`` and ``confidence:`` are minimums). A
+token that starts with a quote is always free text, whatever it contains; an unquoted ``word:...``
+or ``word=...`` whose word is not a key is an error.
 
 Terms combine with AND and **narrow** what the command already selected - its scope (an object,
 an incident, an analysis or a job) and its options (``--from``/``--to``, ``--type``, ``--source``
-...). They never widen it: when the event store cannot express a combination (events that involve
-two different objects, for example), the filter is rejected with an explanation instead of being
-approximated. Repeated ``type:``, ``category:``, ``object:`` and ``job:`` terms are alternatives
-(any of them); a filter holds at most one free-text term (a word or a quoted phrase).
+...). They never widen it: an ``object:`` term on an object scope selects the events that involve
+both, and when the event store cannot express a combination (two incidents, two different source
+texts) the filter is rejected with an explanation instead of being approximated. Repeated
+``type:``, ``category:``, ``object:`` and ``job:`` terms are alternatives (any of them); free-text
+terms (words or quoted phrases) must all match.
 
 Values become bound parameters in SQLAlchemy expressions - nothing is ever interpolated into SQL.
 """
@@ -25,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from raf.core.errors import InvalidInputError
-from raf.core.objects.types import Severity
+from raf.core.objects.types import Severity, parse_confidence
 from raf.core.query.resolve import Resolver
 from raf.core.storage.repos.events import EventQuery
 from raf.core.timeutil import parse_timestamp
@@ -37,6 +39,7 @@ KEYS = (
     "target",
     "object",
     "severity",
+    "confidence",
     "outcome",
     "source",
     "time",
@@ -53,6 +56,8 @@ _TRUE = ("1", "true", "yes")
 _FALSE = ("0", "false", "no")
 #: Stored timestamps have microsecond precision: ``time>T`` is ``time>=T+1µs``.
 _TICK = timedelta(microseconds=1)
+#: Confidences are stored with 4 decimals: ``confidence>0.6`` is ``confidence>=0.6+ε``.
+_EPSILON = 1e-6
 
 
 @dataclass(slots=True)
@@ -74,6 +79,9 @@ def parse_filter(text: str, *, resolver: Resolver | None = None, base: EventQuer
     sources: list[str] = []
     equal: dict[str, list[str | bool]] = {"actor": [], "target": [], "outcome": [], "synthetic": []}
     severities: list[Severity] = []
+    max_severities: list[Severity] = []
+    min_confidences: list[float] = []
+    max_confidences: list[float] = []
     starts: list[datetime] = []
     ends: list[datetime] = []
     nothing = False  # a term no event can satisfy (severity>critical, two different outcomes, ...)
@@ -119,6 +127,13 @@ def parse_filter(text: str, *, resolver: Resolver | None = None, base: EventQuer
             sources.append(value)
         elif key == "severity":
             level = Severity.parse(value)
+            if op in ("<", "<="):
+                allowed = [s for s in Severity if s.rank < level.rank or (op == "<=" and s.rank == level.rank)]
+                if not allowed:
+                    nothing = True
+                    continue
+                max_severities.append(allowed[-1])
+                continue
             if op == ">":
                 above = [s for s in Severity if s.rank > level.rank]
                 if not above:
@@ -126,6 +141,12 @@ def parse_filter(text: str, *, resolver: Resolver | None = None, base: EventQuer
                     continue
                 level = above[0]
             severities.append(level)
+        elif key == "confidence":
+            bound = parse_confidence(value)
+            if op in ("<", "<="):
+                max_confidences.append(bound - _EPSILON if op == "<" else bound)
+            else:
+                min_confidences.append(bound + _EPSILON if op == ">" else bound)
         elif key in ("time", "after", "before"):
             moment = parse_timestamp(value)
             if key == "after" or op == ">=":
@@ -140,13 +161,6 @@ def parse_filter(text: str, *, resolver: Resolver | None = None, base: EventQuer
             incidents.append(resolve(key, value, ["incident"]))
         elif key == "job":
             jobs.append(_job_id(value, resolver))
-    if len(texts) > 1:
-        raise InvalidInputError(
-            "A filter holds one free-text term.",
-            reason="Free text found: " + ", ".join(f"'{t}'" for t in texts) + ".",
-            hint='Quote the words to search for them as one phrase: "' + " ".join(texts) + '".',
-        )
-
     query = base.with_()
     if types:
         query.event_types = _types_in_both(base.event_types, types)
@@ -158,7 +172,12 @@ def parse_filter(text: str, *, resolver: Resolver | None = None, base: EventQuer
         if wanted and not getattr(query, name):
             nothing = True  # none of the filter's alternatives is inside the scope and options
     if objects:
-        query.object_ids = _objects_in_both(base.object_ids, objects)
+        unique = list(dict.fromkeys(objects))
+        scope = set(base.object_ids or ())
+        if not scope or set(unique) <= scope:
+            query.object_ids = unique
+        elif not scope <= set(unique):  # events of the scope that also involve one of these objects
+            query.object_groups = [*(base.object_groups or []), unique]
     for name, values in equal.items():
         current = getattr(base, name)
         distinct = list(dict.fromkeys([*([current] if current is not None else []), *values]))
@@ -171,17 +190,22 @@ def parse_filter(text: str, *, resolver: Resolver | None = None, base: EventQuer
     if sources:
         query.source = contains_all("source", [base.source, *sources])
     if texts:
-        query.text = contains_all("text", [base.text, *texts])
+        query.texts = list(dict.fromkeys([*(base.texts or []), *texts]))
     if severities:
         query.min_severity = max([*severities, *_present(base.min_severity)], key=lambda s: s.rank)
+    if max_severities:
+        query.max_severity = min([*max_severities, *_present(base.max_severity)], key=lambda s: s.rank)
+    if min_confidences:
+        query.min_confidence = max([*min_confidences, *_present(base.min_confidence)])
+    if max_confidences:
+        query.max_confidence = min([*max_confidences, *_present(base.max_confidence)])
     if starts:
         query.start = max([*starts, *_present(base.start)])
     if ends:
         query.end = min([*ends, *_present(base.end)])
     if nothing:
         query.event_ids = []
-    if texts:
-        terms.append(f'"{texts[0]}"')
+    terms += [f'"{t}"' for t in texts]
     return ParsedFilter(query=query, terms=terms)
 
 
@@ -246,12 +270,6 @@ def contains_all(name: str, values: Iterable[str | None]) -> str:
         if all(other.lower() in candidate.lower() for other in unique):
             return candidate
     shown = " and ".join(f"'{v}'" for v in unique)
-    if name == "text":
-        raise InvalidInputError(
-            f"Cannot search for {shown} at once.",
-            reason="Events are searched for one text (a word or a phrase) at a time.",
-            hint="Search for one phrase, and narrow further with keys such as type:, actor: or source:.",
-        )
     raise InvalidInputError(
         f"Cannot select events whose {name} contains both {shown}.",
         reason=f"Events are matched against one {name} text at a time.",
@@ -268,16 +286,11 @@ def _check_operator(key: str, op: str) -> None:
         return
     if op in (":", "="):
         return
-    if key == "severity":
-        if op in (">=", ">"):
-            return
-        raise InvalidInputError(
-            f"severity{op} is not supported: events are selected by a minimum severity.",
-            hint="Use severity>=LEVEL or severity>LEVEL.",
-        )
+    if key in ("severity", "confidence"):
+        return
     raise InvalidInputError(
         f"'{key}{op}' compares, but {key} is not an ordered value.",
-        hint=f"Use {key}:VALUE (or {key}=VALUE); comparisons apply to severity (>=, >) and time (>=, >, <=, <).",
+        hint=f"Use {key}:VALUE (or {key}=VALUE); comparisons (>=, >, <=, <) apply to severity, confidence and time.",
     )
 
 
@@ -335,23 +348,6 @@ def _types_in_both(current: Sequence[str] | None, wanted: list[str]) -> list[str
         return unique
     both = (_type_overlap(have, want) for have in current for want in unique)
     return list(dict.fromkeys(t for t in both if t is not None))
-
-
-def _objects_in_both(current: Sequence[str] | None, wanted: list[str]) -> list[str]:
-    unique = list(dict.fromkeys(wanted))
-    if not current:
-        return unique
-    scope, chosen = set(current), set(unique)
-    if scope <= chosen:  # every event of the scope already involves one of the filter's objects
-        return list(current)
-    if chosen <= scope:
-        return unique
-    raise InvalidInputError(
-        "object: cannot narrow a scope that is already an object.",
-        reason=f"The events would have to involve both {', '.join(current)} and {' or '.join(unique)}; "
-        "R$F selects events by one object at a time.",
-        hint="Narrow with actor: or target: instead (for example target:DEV-01), or use the other object as the scope.",
-    )
 
 
 def _one_incident(current: str | None, wanted: list[str]) -> str:

@@ -56,25 +56,29 @@ R$F FILTER LANGUAGE (raf lens --filter, raf timeline --filter, API parameter fil
   object:host:ws-01        involves this object in any role
   outcome:failure          outcome (success, failure, unknown, or as imported)
   source:auth.log          source name contains this text
-  severity>=medium         at or above (severity:/severity= too; severity>high is critical)
+  severity>=medium         at or above (severity: too); severity>high is critical
+  severity<=low            at or below; severity<medium is below
+  confidence>=0.6          also >, <=, < (confidence: is a minimum): 0..1, a
+                           percentage (60) or low/medium/high (0.3/0.6/0.9)
   time>=2026-10-07T09:00Z  time bounds: time>=, time>, time<=, time< (full timestamps)
   after:T  before:T        same as time>=T and time<=T
   incident:INC-001         linked to this incident
   job:job-4                imported by this job
   synthetic:true           synthetic data (true/false)
-  failed  "failed login"   free text: one word or one quoted phrase, searched
+  failed  "failed login"   free text: words and quoted phrases, each searched
                            (case-insensitive) in messages, event types, actor and
-                           target IDs and raw records
+                           target IDs and raw records; an event must contain all
 
 Terms combine with AND and narrow the command's scope (object, incident,
 analysis, job) and options (--from/--to, --type, --source ...); they never widen
-them. The stricter time bound wins. A combination the event store cannot select
-is rejected with an explanation (for example object: on a scope that is already
-another object: use actor: or target: there).
+them. The stricter bound wins (time, severity, confidence). object: on an object
+scope selects the events that involve both objects. A combination the event
+store cannot select is rejected with an explanation (two different incidents,
+two source: texts of which neither contains the other).
 Repeated type:, category:, object: and job: terms are alternatives (OR).
 key:value and key=value are the same; an unknown key is an error. A quoted token
 is always free text: quote text that contains ':' or '='.
-Only severity and time compare (severity takes >= and >).
+Only severity, confidence and time compare.
 Values are bound as parameters - never interpolated into SQL.
 """
 

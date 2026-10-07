@@ -6,7 +6,7 @@ import { inputFromIso, isoFromInput } from '../../lib/format';
 import { EMPTY_FILTERS, GROUP_FIELDS, type GroupField, type TimelineFilterState } from './filters';
 
 export const FILTER_HELP =
-  'Keys: type, category, actor, target, object, severity (>=), outcome, source, after, before, incident, job, synthetic. Free text matches messages. Example: type:auth.* actor:bob severity>=medium after:2026-10-06T22:00Z';
+  'Keys: type, category, actor, target, object, severity, confidence, outcome, source, time, after, before, incident, job, synthetic. severity, confidence and time compare (>=, >, <=, <). Free text: every word or quoted phrase must match (messages, types, actor and target IDs, raw records). Terms only narrow the scope. Example: type:auth.* actor:bob severity>=medium confidence>=0.6 after:2026-10-06T22:00Z "vpn"';
 
 /**
  * Timeline filter form. Edits are local until "Apply" (or Enter), so typing never triggers a

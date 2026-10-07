@@ -215,7 +215,7 @@ place a time of day on the current UTC date and reject offsets. Values must lie 
 `raf help filters`):
 
 ```text
-type:auth.* outcome:failure actor:bob severity>=medium time>=2026-10-06T22:00:00Z "vpn"
+type:auth.* outcome:failure actor:bob severity>=medium confidence>=0.6 time>=2026-10-06T22:00:00Z "vpn"
 ```
 
 | Term | Selects events ... |
@@ -224,8 +224,9 @@ type:auth.* outcome:failure actor:bob severity>=medium time>=2026-10-06T22:00:00
 | `category:network` | of this category |
 | `actor:alice` | whose actor is this object (name, ID, alias or `@` reference) |
 | `target:WS-01` | whose target is this object |
-| `object:host:dev-01` | that involve this object in any role |
-| `severity>=medium`, `severity>medium` | at or above / above this severity (`severity:` and `severity=` also mean "at or above") |
+| `object:host:dev-01` | that involve this object in any role (on an object scope: that involve both) |
+| `severity>=medium`, `severity>medium`, `severity<=low`, `severity<high` | at or above / above / at or below / below this severity (`severity:` and `severity=` mean "at or above") |
+| `confidence>=0.6`, `confidence<0.8`, `confidence:high` | whose confidence is in range: a number in 0..1, a percentage (`60`) or LOW/MEDIUM/HIGH (0.3/0.6/0.9); `confidence:` means "at least" |
 | `outcome:failure` | with this outcome (`success`, `failure`, `unknown`, or as imported) |
 | `source:auth.log` | whose source name contains this text |
 | `time>=T`, `time>T`, `time<=T`, `time<T` | at or after, after, at or before, before a full timestamp |
@@ -233,7 +234,7 @@ type:auth.* outcome:failure actor:bob severity>=medium time>=2026-10-06T22:00:00
 | `incident:INC-001` | linked to this incident |
 | `job:job-4` | imported by this job (a job ID or `@job`) |
 | `synthetic:true` | marked synthetic (`true`, `1`, `yes`) or not (`false`, `0`, `no`) |
-| one word or one `"quoted phrase"` | containing the text (case-insensitive) in the message, event type, actor ID, target ID or raw record |
+| words and `"quoted phrases"` | containing every one of them (case-insensitive) in the message, event type, actor ID, target ID or raw record |
 
 Rules:
 
@@ -243,12 +244,10 @@ Rules:
   (`Unknown filter key 'foo'`, exit 4), except URLs (`https://...`). Keys are lower case.
 * A token that starts with a quote is always free text, so quote text that contains `:` or `=`:
   `'"error: disk full"'`, `'"user=alice"'`.
-* Only `severity` (`>=`, `>`) and `time` (`>=`, `>`, `<=`, `<`) compare; a comparison on any other
-  key is an error, as are `severity<=` and `severity<` (events are selected by a minimum severity)
-  and `time:` (use a comparison).
-* A filter holds **one** free-text term: `exfil upload` is an error that suggests the phrase
-  `"exfil upload"`. A free text and the API's `q` parameter must be the same text or contain one
-  another.
+* Only `severity`, `confidence` and `time` compare (`>=`, `>`, `<=`, `<`); a comparison on any
+  other key is an error, and so is `time:` (use a comparison).
+* Free-text terms must all match: `exfil upload` selects events containing both words, `"exfil
+  upload"` the phrase. They also combine with the API's `q` parameter (AND).
 * Terms combine with AND. Repeated `type:`, `category:`, `object:` and `job:` terms are alternatives
   (OR). Repeated `severity` and time terms keep the strictest bound. Repeating `actor:`, `target:`,
   `outcome:` or `synthetic:` with different values selects nothing (an event has one actor, one
@@ -257,10 +256,10 @@ Rules:
   options (`--from`/`--to`, `--type`, `--category`, `--severity`, Lens `--source`, the API's `q`) -
   and never widen it: `raf timeline job-1 --filter job:job-2` selects nothing, `type:auth.login`
   with `--type auth` selects logins, and for times the stricter bound wins (`--from 22:00` with
-  `after:` an earlier moment keeps 22:00). A combination the event store cannot select is rejected
-  with an explanation (exit 4) instead of being approximated: `object:` on a scope that is another
-  object (`raf timeline user alice --filter object:DEV-01`; use `target:DEV-01` or `actor:`), two
-  different incidents, and two `source:` (or free) texts of which neither contains the other.
+  `after:` an earlier moment keeps 22:00); `object:` on a scope that is another object selects the
+  events that involve both (`raf timeline user alice --filter object:DEV-01`). A combination the
+  event store cannot select is rejected with an explanation (exit 4) instead of being approximated:
+  two different incidents, and two `source:` texts of which neither contains the other.
 * References in `actor:`, `target:`, `object:` and `incident:` are resolved like any reference; an
   unknown name is an error (exit 3), and so is an event, finding or snapshot ID (exit 4).
 * Values are bound as query parameters; nothing is ever interpolated into SQL.

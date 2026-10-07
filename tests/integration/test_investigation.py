@@ -162,7 +162,7 @@ class TestTimeline:
         with pytest.raises(InvalidInputError):
             parse_filter("colour:blue", resolver=raven.resolver)
         parsed = parse_filter('severity>=high "export"', resolver=raven.resolver)
-        assert parsed.query.min_severity is not None and parsed.query.text == "export"
+        assert parsed.query.min_severity is not None and parsed.query.texts == ["export"]
 
     def test_exports_csv_json_raf(self, raven: RafContext, tmp_path: Path) -> None:
         service = TimelineService(raven)

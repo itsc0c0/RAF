@@ -25,10 +25,10 @@ capture (`--source raven-inc001.pcap`). Filters use the shared filter language
 
 `--filter`, `--source`, `--from` and `--to` only ever narrow the scope; they never widen it
 ([filter language](../cli.md#filter-language)). `raf lens ev-0004 --filter object:APP-01` shows the
-proxy-log events that involve APP-01. A combination that cannot be selected is an error (exit 4)
-instead of a wider result: `object:` on a scope that is already another object (use `actor:` or
-`target:`), or a `--source` text and a source (`source:` term, analysis or evidence item) of which
-neither contains the other.
+proxy-log events that involve APP-01, and on an object scope `object:` selects the events that
+involve both objects (`raf lens alice --filter object:DEV-01`). A combination that cannot be
+selected is an error (exit 4) instead of a wider result: two different incidents, or a `--source`
+text and a source (`source:` term, analysis or evidence item) of which neither contains the other.
 
 ## Output
 

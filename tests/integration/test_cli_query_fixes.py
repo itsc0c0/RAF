@@ -319,9 +319,12 @@ class TestFiltersNarrowTheScope:
     def test_object_terms(self, raven: RafContext) -> None:
         alice = raven.store.events.count(resolve_scope(raven, ["user", "alice"]).event_query())
         assert _count(raven, ["user", "alice"], "object:alice") == alice
-        with pytest.raises(InvalidInputError, match="cannot narrow"):
-            _count(raven, ["user", "alice"], "object:DEV-01")
-        assert 0 < _count(raven, ["user", "alice"], "target:DEV-01") < alice  # the expressible narrowing
+        # on an object scope, object: selects the events that involve both objects
+        scope = resolve_scope(raven, ["user", "alice"]).event_query()
+        both = list(raven.store.events.iter(parse_filter("object:DEV-01", resolver=raven.resolver, base=scope).query))
+        assert 0 < len(both) < alice
+        assert all({"user:alice", "host:dev-01"} <= {o.object_id for o in e.objects} for e in both)
+        assert 0 < _count(raven, ["user", "alice"], "target:DEV-01") <= len(both)
         incident = resolve_scope(raven, ["INC-001"]).event_query()
         query = parse_filter("object:bob", resolver=raven.resolver, base=incident).query
         events = list(raven.store.events.iter(query))
@@ -371,9 +374,8 @@ class TestFiltersNarrowTheScope:
         assert parse_filter("source:proxy", base=EventQuery(source="proxy.csv")).query.source == "proxy.csv"
         with pytest.raises(InvalidInputError, match="source contains both"):
             parse_filter("source:auth", base=EventQuery(source="proxy.csv"))
-        assert parse_filter("export", base=EventQuery(text="data export")).query.text == "data export"
-        with pytest.raises(InvalidInputError, match="at once"):
-            parse_filter("vpn", base=EventQuery(text="export"))
+        both = parse_filter("vpn", base=EventQuery(text="export")).query  # every text must match
+        assert both.text == "export" and both.texts == ["vpn"]
 
     def test_contradictions_select_nothing(self, raven: RafContext) -> None:
         for text in (
@@ -399,8 +401,9 @@ class TestFiltersNarrowTheScope:
             service.query(scope, source="auth.log")
 
     def test_cli(self, raven_home: Path, cli: Any) -> None:
-        widened = cli("--json", "timeline", "user", "alice", "--filter", "object:DEV-01")
-        assert widened.exit_code == 4 and "cannot narrow" in widened.json()["error"]["message"]
+        alice = cli("--json", "timeline", "user", "alice").json()["total"]
+        narrowed = cli("--json", "timeline", "user", "alice", "--filter", "object:DEV-01")
+        assert narrowed.exit_code == 0 and 0 < narrowed.json()["total"] < alice
         assert cli("--json", "timeline", "job-1", "--filter", "job:job-2").json()["total"] == 0
         window = cli("--json", "timeline", "--from", "2026-10-06T22:00:00Z", "--filter", "after:2026-10-01T00:00:00Z")
         assert window.json()["total"] == cli("--json", "timeline", "--from", "2026-10-06T22:00:00Z").json()["total"]
@@ -418,9 +421,9 @@ class TestFilterSyntax:
             assert "Keys: type, category" in (info.value.hint or "")
 
     def test_quoted_tokens_and_urls_are_free_text(self) -> None:
-        assert parse_filter('"user=alice"').query.text == "user=alice"
-        assert parse_filter("'error: disk full'").query.text == "error: disk full"
-        assert parse_filter("https://portal.raven.example/x").query.text == "https://portal.raven.example/x"
+        assert parse_filter('"user=alice"').query.texts == ["user=alice"]
+        assert parse_filter("'error: disk full'").query.texts == ["error: disk full"]
+        assert parse_filter("https://portal.raven.example/x").query.texts == ["https://portal.raven.example/x"]
         assert parse_filter('actor:"John Smith"').query.actor == "John Smith"
         assert parse_filter("type:auth.login").terms == ["type:auth.login"]
 
@@ -431,9 +434,14 @@ class TestFilterSyntax:
     def test_operators(self) -> None:
         assert parse_filter("severity>medium").query.min_severity == Severity.HIGH
         assert parse_filter("severity>=medium").query.min_severity == Severity.MEDIUM
+        assert parse_filter("severity<=high").query.max_severity == Severity.HIGH
+        assert parse_filter("severity<high").query.max_severity == Severity.MEDIUM
+        assert parse_filter("severity<info").query.event_ids == []  # nothing is below INFO
+        assert parse_filter("confidence>=0.6").query.min_confidence == 0.6
+        assert parse_filter("confidence:high").query.min_confidence == 0.9  # a level name, as a minimum
+        assert parse_filter("confidence<=60").query.max_confidence == 0.6  # a percentage
+        assert parse_filter("confidence>0.5").query.min_confidence > 0.5
         for text, message in (
-            ("severity<=high", "not supported"),
-            ("severity<high", "not supported"),
             ("type>=auth", "not an ordered value"),
             ("after>=2026-10-06T00:00:00Z", "not an ordered value"),
             ("job>job-1", "not an ordered value"),
@@ -442,12 +450,22 @@ class TestFilterSyntax:
             with pytest.raises(InvalidInputError, match=message):
                 parse_filter(text)
 
-    def test_one_free_text_term(self) -> None:
-        with pytest.raises(InvalidInputError, match="one free-text term") as info:
-            parse_filter("exfil upload")
-        assert '"exfil upload"' in (info.value.hint or "")
+    def test_free_text_terms_all_match(self, raven: RafContext) -> None:
+        assert parse_filter("exfil upload").query.texts == ["exfil", "upload"]
         parsed = parse_filter('type:http "exfil upload"')
-        assert parsed.query.text == "exfil upload" and parsed.terms == ["type:http", '"exfil upload"']
+        assert parsed.query.texts == ["exfil upload"] and parsed.terms == ["type:http", '"exfil upload"']
+        both = raven.store.events.count(parse_filter("files.exfil-test.example upload").query)
+        either = raven.store.events.count(parse_filter("files.exfil-test.example").query)
+        assert 0 < both < either
+
+    def test_severity_and_confidence_ranges_on_events(self, raven: RafContext) -> None:
+        low = list(raven.store.events.iter(parse_filter("severity<=low").query))
+        assert low and all(e.severity.rank <= Severity.LOW.rank for e in low)
+        doubtful = list(raven.store.events.iter(parse_filter("confidence<0.8").query))
+        assert doubtful and all(e.confidence < 0.8 for e in doubtful)
+        assert raven.store.events.count(parse_filter("confidence>=0.8").query) == raven.store.events.count(
+            EventQuery()
+        ) - len(doubtful)
 
     def test_values_are_checked(self) -> None:
         for text in ("synthetic:maybe", "job:5", "type:", '"open'):

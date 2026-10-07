@@ -27,15 +27,20 @@ class EventQuery:
     event_types: Sequence[str] | None = None  # exact or prefix ("auth.*" / "auth")
     categories: Sequence[str] | None = None
     object_ids: Sequence[str] | None = None  # involved in any role
+    object_groups: Sequence[Sequence[str]] | None = None  # and, for every group, one of its objects is involved
     actor: str | None = None
     target: str | None = None
     incident_id: str | None = None
     job_ids: Sequence[str] | None = None
     event_ids: Sequence[str] | None = None
     min_severity: Severity | None = None
+    max_severity: Severity | None = None
+    min_confidence: float | None = None
+    max_confidence: float | None = None
     outcome: str | None = None
     source: str | None = None
     text: str | None = None
+    texts: Sequence[str] | None = None  # further texts that must all match, like ``text``
     synthetic: bool | None = None
 
     def with_(self, **changes: Any) -> EventQuery:
@@ -215,8 +220,8 @@ class EventRepository:
             stmt = stmt.where(or_(*clauses))
         if q.categories:
             stmt = stmt.where(c.category.in_(list(q.categories)))
-        if q.object_ids:
-            sub = select(s.event_objects.c.event_id).where(s.event_objects.c.object_id.in_(list(q.object_ids)))
+        for group in [*([q.object_ids] if q.object_ids else []), *(q.object_groups or [])]:
+            sub = select(s.event_objects.c.event_id).where(s.event_objects.c.object_id.in_(list(group)))
             stmt = stmt.where(c.id.in_(sub))
         if q.actor:
             stmt = stmt.where(c.actor_id == q.actor)
@@ -232,14 +237,21 @@ class EventRepository:
         if q.min_severity is not None:
             allowed = [sev.value for sev in Severity if sev.rank >= q.min_severity.rank]
             stmt = stmt.where(c.severity.in_(allowed))
+        if q.max_severity is not None:
+            allowed = [sev.value for sev in Severity if sev.rank <= q.max_severity.rank]
+            stmt = stmt.where(c.severity.in_(allowed))
+        if q.min_confidence is not None:
+            stmt = stmt.where(c.confidence >= q.min_confidence)
+        if q.max_confidence is not None:
+            stmt = stmt.where(c.confidence <= q.max_confidence)
         if q.outcome:
             stmt = stmt.where(c.outcome == q.outcome)
         if q.source:
             stmt = stmt.where(c.source.like(f"%{escape_like(q.source)}%", escape="\\"))
         if q.synthetic is not None:
             stmt = stmt.where(c.synthetic == q.synthetic)
-        if q.text:
-            pattern = f"%{escape_like(q.text.lower())}%"
+        for wanted in [*([q.text] if q.text else []), *(q.texts or [])]:
+            pattern = f"%{escape_like(wanted.lower())}%"
             stmt = stmt.where(
                 or_(
                     func.lower(c.message).like(pattern, escape="\\"),
