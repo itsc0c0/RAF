@@ -146,7 +146,8 @@ def _mount_products(app: FastAPI, registry: ProductRegistry) -> None:
             else:
                 module_name, attr = manifest.api.split(":", 1)
                 router = getattr(importlib.import_module(module_name), attr)
-        except RafError as exc:
+        except (RafError, ImportError, AttributeError) as exc:
+            # one broken product (or plugin) must not take the whole API down
             log.warning("product %s API not mounted: %s", manifest.name, exc)
             continue
         app.include_router(router, prefix=f"{API_PREFIX}/{manifest.name}", tags=[manifest.display_name])

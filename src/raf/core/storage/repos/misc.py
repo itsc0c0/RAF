@@ -89,6 +89,32 @@ class ProvenanceRepository:
         with self.engine.connect() as c:
             return {r[0] for r in c.execute(stmt)}
 
+    def jobs_for_subjects(self, subject_ids: Iterable[str]) -> dict[str, set[str | None]]:
+        """Which jobs contributed provenance to each subject (``None`` = written outside a job)."""
+        ids = sorted(set(subject_ids))
+        result: dict[str, set[str | None]] = {}
+        with self.engine.connect() as c:
+            for start in range(0, len(ids), 500):
+                stmt = (
+                    select(s.provenance.c.subject_id, s.provenance.c.job_id)
+                    .where(s.provenance.c.subject_id.in_(ids[start : start + 500]))
+                    .distinct()
+                )
+                for subject, job in c.execute(stmt):
+                    result.setdefault(subject, set()).add(job)
+        return result
+
+    def delete_for_jobs(self, job_ids: Iterable[str], conn: Connection | None = None) -> int:
+        jobs = sorted(set(job_ids))
+        removed = 0
+        with transaction(self.engine, conn) as c:
+            for start in range(0, len(jobs), 500):
+                removed += (
+                    c.execute(delete(s.provenance).where(s.provenance.c.job_id.in_(jobs[start : start + 500]))).rowcount
+                    or 0
+                )
+        return removed
+
     def delete_for_subjects(self, subject_ids: Iterable[str], conn: Connection | None = None) -> None:
         ids = sorted(set(subject_ids))
         with transaction(self.engine, conn) as c:

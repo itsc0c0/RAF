@@ -135,13 +135,26 @@ interactive docs at `/api/docs`.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/ghost/models` | `{items: [{name, base_snapshot, parent, ops: n, created_at}]}` |
-| POST | `/ghost/models` `{name, base: "current"|"<snapshot>"}` | create a model |
+| GET | `/ghost/models` | `{items: [{name, base_snapshot, base, parent, ops: n, created_at, updated_at, description}]}` |
+| POST | `/ghost/models` `{name, base: "current"|"<snapshot>", description?}` | create a model (a frozen base snapshot) |
 | POST | `/ghost/models/{name}/clone` `{name}` | clone |
-| GET | `/ghost/models/{name}` | model with operations log |
-| POST | `/ghost/models/{name}/ops` `{op, params}` | apply a what-if operation |
-| GET | `/ghost/compare?a=&b=` | `{a: Metrics, b: Metrics, delta: Metrics}`; Metrics = `{attack_paths, critical_paths, reachable_assets, entry_points, exposed_critical_assets}` |
-| GET | `/range/ranges`, POST `/range/ranges` `{name, preset?, seed?}`, POST `/range/ranges/{name}/start|stop|reset`, DELETE `/range/ranges/{name}` | synthetic organizations |
+| GET | `/ghost/models/{name}` | model with operations log (each op: `{op, arg, summary, explanation, effects, applied_at}`) |
+| POST | `/ghost/models/{name}/ops` `{op, arg}` | apply a what-if operation -> `{model, applied}` |
+| POST | `/ghost/models/{name}/undo` | remove the last operation |
+| GET | `/ghost/models/{name}/simulate?limit=` | `{summary: {label, metrics, levels, user_control}, items: [AssetExposure]}` |
+| DELETE | `/ghost/models/{name}` | delete (and its base snapshot when unused) |
+| GET | `/ghost/operations` | supported operations |
+| GET | `/ghost/compare?a=&b=` | `{a, b, delta, assets: [{id, name, before, after}], users: [{id, before, after, lost, gained}], a_metrics, b_metrics}`; Metrics = `{attack_paths, critical_paths, reachable_assets, entry_points, exposed_critical_assets}` |
+| GET | `/range/presets` | presets with their configuration |
+| GET | `/range/ranges` | `{items: [RangeState]}`; RangeState = `{name, preset, seed, config, status, start, clock, periods, jobs, counts}` |
+| POST | `/range/ranges` `{name, preset?, seed?, config?, start?}` | create (inventory ingested) -> `{state, job, report}` |
+| GET | `/range/ranges/{name}` | `{state, live: {objects, relationships, events}, organization}` |
+| POST | `/range/ranges/{name}/start|tick` `{hours}` | generate activity for the next period -> `{state, job, report, window}` |
+| POST | `/range/ranges/{name}/stop|reset` | lifecycle |
+| DELETE | `/range/ranges/{name}` | destroy (removes only what the range wrote) |
+| GET | `/forge/catalog` | generators and scenarios |
+| POST | `/forge/generate` `{kind, count<=100000, seed, start?, hours, noise, population}` | `{kind, seed, population, window, records, job, report, sample}` |
+| POST | `/forge/scenario` `{name, seed, start?, population}` | same + `incident`, `subject` |
 | GET | `/lab/status` | `{backend, available, reason}` |
 | GET | `/lab/labs`, POST `/lab/labs`, POST `/lab/labs/{name}/start|stop`, DELETE `/lab/labs/{name}` | isolated labs |
 

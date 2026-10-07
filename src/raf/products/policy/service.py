@@ -20,6 +20,7 @@ from raf.core.ids import object_id
 from raf.core.ingestion.pipeline import IngestionPipeline, IngestOptions, IngestReport
 from raf.core.jobs.manager import JobContext
 from raf.core.objects.models import RafModel
+from raf.core.ports import ANY, PortSet
 from raf.core.snapshots.service import resolve_state
 from raf.products.policy.engine import (
     RULES,
@@ -34,7 +35,7 @@ from raf.products.policy.engine import (
     policies_of,
 )
 from raf.products.policy.formats import load_policy_path
-from raf.products.policy.model import ANY, Policy, PolicySet, PortSet
+from raf.products.policy.model import Policy, PolicySet
 from raf.products.policy.parser import policy_object_record
 
 log = logging.getLogger("raf.products.policy")

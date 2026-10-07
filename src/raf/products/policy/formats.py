@@ -22,8 +22,8 @@ import yaml
 
 from raf.core.errors import InvalidInputError
 from raf.core.ids import slugify
+from raf.core.ports import ANY, normalize_ports
 from raf.products.policy.model import (
-    ANY,
     MAX_RULES_PER_POLICY,
     Policy,
     PolicyRule,
@@ -31,7 +31,6 @@ from raf.products.policy.model import (
     default_evaluation,
     normalize_action,
     normalize_address,
-    normalize_ports,
     normalize_principal,
     normalize_resource,
 )

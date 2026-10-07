@@ -30,8 +30,9 @@ from pydantic import Field
 from raf.core.ids import finding_id
 from raf.core.objects.models import EvidenceRef, Finding, RafModel, Relationship, SecurityObject
 from raf.core.objects.types import Criticality, Severity
+from raf.core.ports import ANY, PortSet
 from raf.core.timeutil import utcnow
-from raf.products.policy.model import ANY, Policy, PolicyRule, PolicySet, PortSet, action_covers, action_matches
+from raf.products.policy.model import Policy, PolicyRule, PolicySet, action_covers, action_matches
 
 IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address

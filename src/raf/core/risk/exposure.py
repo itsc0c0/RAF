@@ -84,7 +84,15 @@ class AssetExposure(RafModel):
 
 
 class ExposureMetrics(RafModel):
-    """Aggregate numbers used by Ghost comparisons and dashboards."""
+    """Aggregate numbers used by Ghost comparisons and dashboards.
+
+    * ``entry_points`` - external zones, user workstations and users (phishable principals)
+    * ``reachable_assets`` - assets any entry point can reach (network) or control (users)
+    * ``attack_paths`` - (entry point, high/critical asset) pairs that are connected
+    * ``critical_paths`` - pairs where a *critical* asset can be controlled: a user's control path,
+      or network reach upgraded through an exploitable vulnerability
+    * ``exposed_critical_assets`` - high/critical assets whose exposure level is HIGH or CRITICAL
+    """
 
     entry_points: int
     reachable_assets: int
@@ -147,6 +155,7 @@ class ExposureModel:
         self._out, self._in = out, inc
         self._entry_cache: dict[str, dict[str, Reached]] | None = None
         self._control_cache: dict[str, dict[str, Reached]] | None = None
+        self._exploit_cache: dict[str, dict[str, Reached]] | None = None
 
     # ------------------------------------------------------------------ inputs
     def assets(self) -> list[SecurityObject]:
@@ -544,22 +553,63 @@ class ExposureModel:
             results, key=lambda r: (-r.score, -_CRIT_RANK.get(r.object["criticality"] or "", -1), r.object["id"])
         )
 
+    def exploit_reach(self) -> dict[str, dict[str, Reached]]:
+        """Network entry points with vulnerability upgrades enabled (reach can become control)."""
+        if self._exploit_cache is None:
+            cache = {}
+            for entry in self.entry_reach():
+                cache[entry] = Propagator(
+                    self.graph, max_depth=self.max_depth, min_confidence=0.05, upgrade_vulnerabilities=True
+                ).run([entry], start_mode=REACH)
+            self._exploit_cache = cache
+        return self._exploit_cache
+
+    def attack_pairs(self) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
+        """(entry, asset) pairs: all high/critical assets an entry point can reach or control, and
+        the subset where a *critical* asset can be controlled (user control paths, or network reach
+        upgraded through an exploitable vulnerability)."""
+        objects = self.objects
+        high = {a.id for a in self.assets() if _crit(a) in ("high", "critical")}
+        critical = {a.id for a in self.assets() if _crit(a) == "critical"}
+        pairs: set[tuple[str, str]] = set()
+        critical_pairs: set[tuple[str, str]] = set()
+        for entry, reached in self.entry_reach().items():
+            pairs |= {(entry, node) for node in reached if node in high}
+        for entry, reached in self.exploit_reach().items():
+            critical_pairs |= {
+                (entry, node) for node, r in reached.items() if node in critical and r.mode in (CONTROL, TRUST)
+            }
+        for principal, reached in self.control_reach().items():
+            obj = objects.get(principal)
+            if obj is None or obj.type != ObjectType.USER:
+                continue
+            pairs |= {(principal, node) for node in reached if node in high}
+            critical_pairs |= {(principal, node) for node in reached if node in critical}
+        return pairs, critical_pairs
+
+    def user_control(self) -> dict[str, list[str]]:
+        """High/critical assets each user can obtain control of."""
+        high = {a.id for a in self.assets() if _crit(a) in ("high", "critical")}
+        out = {}
+        for principal, reached in self.control_reach().items():
+            if principal.startswith("user:"):
+                out[principal] = sorted(node for node in reached if node in high)
+        return out
+
     def metrics(self, results: list[AssetExposure] | None = None) -> ExposureMetrics:
         results = results if results is not None else self.assess_all()
-        entry_map = self.entry_reach()
-        reachable = {node for reached in entry_map.values() for node in reached}
         assets = {a.id for a in self.assets()}
-        critical_assets = {a.id for a in self.assets() if _crit(a) in ("high", "critical")}
-        attack_paths = sum(1 for reached in entry_map.values() for node in reached if node in critical_assets)
-        critical_only = {a.id for a in self.assets() if _crit(a) == "critical"}
-        critical_paths = sum(1 for reached in entry_map.values() for node in reached if node in critical_only)
+        reachable = {node for reached in self.entry_reach().values() for node in reached}
+        users = [p for p in self.control_reach() if p.startswith("user:")]
+        reachable |= {node for p in users for node in self.control_reach()[p]}
+        pairs, critical_pairs = self.attack_pairs()
         exposed = sum(
             1 for r in results if r.object["criticality"] in ("high", "critical") and r.level in ("HIGH", "CRITICAL")
         )
         return ExposureMetrics(
-            entry_points=len(entry_map),
+            entry_points=len(self.entry_reach()) + len(users),
             reachable_assets=len(reachable & assets),
             exposed_critical_assets=exposed,
-            attack_paths=attack_paths,
-            critical_paths=critical_paths,
+            attack_paths=len(pairs),
+            critical_paths=len(critical_pairs),
         )

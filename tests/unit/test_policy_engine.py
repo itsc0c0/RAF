@@ -9,6 +9,7 @@ import pytest
 
 from raf.core.errors import InvalidInputError
 from raf.core.objects.models import Relationship, SecurityObject
+from raf.core.ports import PortSet, normalize_ports
 from raf.data import raven
 from raf.products.policy.engine import (
     PolicyWorld,
@@ -21,7 +22,7 @@ from raf.products.policy.engine import (
     set_covers,
 )
 from raf.products.policy.formats import parse_native, parse_policy_text, sniff_policy
-from raf.products.policy.model import PortSet, normalize_address, normalize_ports
+from raf.products.policy.model import normalize_address
 
 NOW = datetime(2026, 10, 7, tzinfo=UTC)
 

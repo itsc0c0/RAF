@@ -69,11 +69,15 @@ def load_product_command(command: str) -> Any:
     if not info.available:
         return _disabled_stub(command, product, info.unavailable_reason)
     assert import_path is not None
-    if info.source == "plugin":
-        typer_app = registry.load_plugin_attr(product, import_path)
-    else:
-        module_name, attr = import_path.split(":", 1)
-        typer_app = getattr(importlib.import_module(module_name), attr)
+    try:
+        if info.source == "plugin":
+            typer_app = registry.load_plugin_attr(product, import_path)
+        else:
+            module_name, attr = import_path.split(":", 1)
+            typer_app = getattr(importlib.import_module(module_name), attr)
+    except (ImportError, AttributeError) as exc:
+        # a broken product must not break `raf --help` or other commands
+        return _disabled_stub(command, product, f"failed to load: {exc}")
     click_cmd = typer.main.get_command(typer_app) if isinstance(typer_app, typer.Typer) else typer_app
     click_cmd.name = command
     panel = CATEGORY_PANELS.get(info.manifest.category if info.source == "builtin" else "plugin", "Products")
