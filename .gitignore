@@ -1,0 +1,30 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Web
+web/node_modules/
+web/dist/
+web/coverage/
+
+# Local data (never commit workspaces or databases)
+*.db
+*.db-wal
+*.db-shm
+.raf/
+src/raf/apps/web_dist/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
