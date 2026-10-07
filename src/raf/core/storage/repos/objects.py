@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import Connection, Engine, delete, func, or_, select
 
 from raf.core.errors import NotFoundError
-from raf.core.objects.models import ObjectDraft, SecurityObject
+from raf.core.objects.models import ObjectDraft, SecurityObject, build_object
 from raf.core.storage import schema as s
 from raf.core.storage.database import chunks, transaction, upsert
 from raf.core.timeutil import utcnow
@@ -30,7 +30,7 @@ class UpsertStats:
 
 def object_from_row(row: Any) -> SecurityObject:
     m = row._mapping
-    return SecurityObject.model_construct(
+    return build_object(
         id=m["id"],
         type=m["type"],
         name=m["name"],

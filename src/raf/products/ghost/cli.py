@@ -268,8 +268,7 @@ def modify_cmd(
 def simulate_cmd(name: str = typer.Argument(...), limit: int = typer.Option(10, "--limit", min=1)) -> None:
     ctx = rt.ctx()
     service = GhostService(ctx)
-    state = service.state_for(name)
-    summary, items, _control = service.summarize(state)
+    summary, items, _control = service.summarize(service.state_for(name, lean=True))
 
     def render() -> None:
         rt.header(f"R$F GHOST SIMULATE  {summary.label}")

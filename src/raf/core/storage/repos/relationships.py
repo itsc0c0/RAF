@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from sqlalchemy import Connection, Engine, and_, delete, func, or_, select, update
 
-from raf.core.objects.models import Relationship, RelationshipDraft
+from raf.core.objects.models import Relationship, RelationshipDraft, build_relationship
 from raf.core.storage import schema as s
 from raf.core.storage.database import chunks, transaction, upsert
 from raf.core.storage.repos.objects import UpsertStats, escape_like
@@ -20,7 +20,7 @@ Direction = Literal["out", "in", "both"]
 
 def relationship_from_row(row: Any) -> Relationship:
     m = row._mapping
-    return Relationship.model_construct(
+    return build_relationship(
         id=m["id"],
         relationship_type=m["type"],
         source_object=m["source_id"],
@@ -177,6 +177,20 @@ class RelationshipRepository:
         with self.engine.connect() as c:
             for row in c.execute(stmt.order_by(s.relationships.c.id)).yield_per(batch):
                 yield relationship_from_row(row)
+
+    def ids(
+        self, *, types: Sequence[str] | None = None, exclude_endpoint_types: Sequence[str] | None = None
+    ) -> set[str]:
+        """IDs of all relationships (filtered like :meth:`iter_all`), without loading them."""
+        c_ = s.relationships.c
+        stmt = select(c_.id)
+        if types:
+            stmt = stmt.where(c_.type.in_(list(types)))
+        for excluded in exclude_endpoint_types or ():
+            prefix = escape_like(f"{excluded}:") + "%"
+            stmt = stmt.where(~c_.source_id.like(prefix, escape="\\"), ~c_.target_id.like(prefix, escape="\\"))
+        with self.engine.connect() as c:
+            return {row[0] for row in c.execute(stmt)}
 
     def upsert_drafts(
         self, drafts: Iterable[RelationshipDraft], conn: Connection | None = None, now: datetime | None = None

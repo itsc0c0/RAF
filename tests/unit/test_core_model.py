@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
 from raf.core.errors import InvalidInputError
 from raf.core.ids import event_id, normalize_key, object_id, relationship_id, split_id
-from raf.core.objects.models import ObjectDraft, RelationshipDraft, merge_metadata
+from raf.core.objects.models import (
+    ObjectDraft,
+    Relationship,
+    RelationshipDraft,
+    SecurityObject,
+    build_object,
+    build_relationship,
+    merge_metadata,
+)
 from raf.core.objects.types import (
     ConfidenceLevel,
     Criticality,
@@ -161,3 +170,48 @@ class TestTime:
         window = (datetime(2026, 10, 7, 23, 0, tzinfo=UTC), datetime(2026, 10, 8, 1, 0, tzinfo=UTC))
         assert resolve_time_spec("00:30", anchor=window[0], window=window).day == 8
         assert parse_duration("2h") == timedelta(hours=2)
+
+
+class TestTrustedBuilder:
+    NOW = datetime(2026, 10, 6, 22, 52, 11, tzinfo=UTC)
+
+    def test_matches_validated_models(self) -> None:
+        values: dict[str, Any] = {
+            "id": "host:dev-01",
+            "type": "host",
+            "name": "DEV-01",
+            "created_at": self.NOW,
+            "updated_at": self.NOW,
+            "metadata": {"criticality": "high"},
+            "tags": ["raven"],
+        }
+        built = build_object(**values)
+        assert built == SecurityObject(**values) == SecurityObject.model_construct(**values)
+        assert built.model_dump(mode="json") == SecurityObject(**values).model_dump(mode="json")
+        assert built.confidence_level == SecurityObject(**values).confidence_level
+        assert built.model_fields_set == set(values)
+        rel: dict[str, Any] = {
+            "id": "rel:x",
+            "relationship_type": "LOGGED_INTO",
+            "source_object": "user:bob",
+            "target_object": "host:dev-01",
+            "created_at": self.NOW,
+            "updated_at": self.NOW,
+        }
+        assert build_relationship(**rel) == Relationship(**rel)
+        assert build_relationship(**rel).model_dump(mode="json") == Relationship(**rel).model_dump(mode="json")
+
+    def test_defaults_are_not_shared_and_copies_work(self) -> None:
+        a = build_object(id="user:a", type="user", name="a", created_at=self.NOW, updated_at=self.NOW)
+        b = build_object(id="user:b", type="user", name="b", created_at=self.NOW, updated_at=self.NOW)
+        a.tags.append("x")
+        a.metadata["k"] = 1
+        assert b.tags == [] and b.metadata == {}
+        copy = a.model_copy(update={"name": "A"})
+        assert copy.name == "A" and copy.tags == ["x"] and a.name == "a"
+
+    def test_rejects_unknown_and_missing_fields(self) -> None:
+        with pytest.raises(TypeError, match="unknown"):
+            build_object(id="user:a", type="user", name="a", created_at=self.NOW, updated_at=self.NOW, colour="red")
+        with pytest.raises(TypeError, match="missing required field 'name'"):
+            build_object(id="user:a", type="user", created_at=self.NOW, updated_at=self.NOW)

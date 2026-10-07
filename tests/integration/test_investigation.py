@@ -19,7 +19,7 @@ from raf.core.ingestion.pipeline import IngestionPipeline
 from raf.core.objects.models import ObjectDraft, RelationshipDraft
 from raf.core.query.language import parse_filter
 from raf.core.query.scope import resolve_scope
-from raf.core.snapshots.service import SnapshotService
+from raf.core.snapshots.service import SnapshotService, StateView
 from raf.products.diff.service import DiffService
 from raf.products.graph.service import GraphService
 from raf.products.replay.service import ReplayService
@@ -109,8 +109,40 @@ class TestSnapshotsAndDiff:
         objects, rels = service.materialize("base")
         assert len(objects) == raven.store.objects.count()
         assert len(rels) == raven.store.relationships.count()
+        stored_objects = {o.id: o for o in raven.store.objects.iter_all()}
+        stored_rels = {r.id: r for r in raven.store.relationships.iter_all()}
+        for obj in objects:
+            original = stored_objects[obj.id]
+            assert (obj.type, obj.name, sorted(obj.tags), obj.synthetic) == (
+                original.type,
+                original.name,
+                sorted(original.tags),
+                original.synthetic,
+            )
+        assert all(stored_rels[r.id].source_object == r.source_object for r in rels)
         deleted = service.delete("base")
         assert deleted["items"] > 0
+
+    def test_table_contents_hash_like_models(self, raven: RafContext) -> None:
+        """Snapshots and "current" read content straight from the tables; it must hash exactly like
+        the content of the corresponding models (Ghost states and older snapshots use those)."""
+        raven.store.relationships.end(
+            [RelationshipDraft.make("host:dev-01", "USES", "identity:svc-deploy").id], datetime(2026, 10, 7, tzinfo=UTC)
+        )
+        current = SnapshotService(raven.store).current_state()
+        from_models = StateView.from_items(
+            "models",
+            raven.store.objects.iter_all(),
+            raven.store.relationships.iter_all(),
+            raven.store.findings.list(limit=1_000_000),
+        )
+        assert current.hashes == from_models.hashes
+        assert any(not body["active"] for body in current.bodies.values() if "source" in body)
+        snapshot = SnapshotService(raven.store).create("tables")
+        assert (
+            snapshot.content_hash
+            == SnapshotService(raven.store).create_from_state("models", from_models, source="t").content_hash
+        )
 
 
 class TestTimeline:

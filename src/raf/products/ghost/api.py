@@ -100,7 +100,7 @@ def undo(name: str, ctx: Ctx) -> dict[str, Any]:
 @router.get("/models/{name}/simulate")
 def simulate(name: str, ctx: Ctx, limit: int = 20) -> dict[str, Any]:
     service = GhostService(ctx)
-    summary, items, _control = service.summarize(service.state_for(name))
+    summary, items, _control = service.summarize(service.state_for(name, lean=True))
     return {"summary": summary.to_json_dict(), "items": [i.to_json_dict() for i in items[: max(1, min(limit, 200))]]}
 
 

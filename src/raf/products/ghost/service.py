@@ -164,8 +164,10 @@ class GhostService:
         return {"model": model.name, "base_snapshot_removed": removed_snapshot}
 
     # ------------------------------------------------------------------ materialization
-    def materialize(self, model: GhostModel) -> ModelState:
-        objects, relationships = self.snapshots.materialize(model.base_snapshot)
+    def materialize(self, model: GhostModel, *, lean: bool = False) -> ModelState:
+        """The model's state: its base snapshot with every operation applied. ``lean`` keeps only
+        what propagation uses (see :meth:`propagation_state`): enough for summaries and compares."""
+        objects, relationships = self.snapshots.materialize(model.base_snapshot, propagation_only=lean)
         state = ModelState(f"ghost:{model.name}", objects, relationships)
         for op in model.ops:
             state.apply(op.effects, model=model.name, when=op.applied_at)
@@ -189,23 +191,47 @@ class GhostService:
             store.relationships.iter_all(types=sorted(PROPAGATION_RELATIONSHIPS), exclude_endpoint_types=excluded),
         )
 
-    def state_for(self, ref: str) -> ModelState:
+    def _locate(self, ref: str) -> tuple[str, str]:
+        """``("current" | "ghost" | "snapshot", name)`` for a state reference."""
         text = ref.strip()
         lowered = text.lower()
         if lowered in RESERVED:
-            return self.current_state()
+            return "current", "current"
         if lowered.startswith("ghost:"):
             lowered = lowered.split(":", 1)[1]
         if self.kv.get(NAMESPACE, lowered) is not None:
-            return self.materialize(self.get(lowered))
+            return "ghost", lowered
         snapshot = self.snapshots.get(text)
         if snapshot is not None:
-            objects, relationships = self.snapshots.materialize(snapshot.name)
-            return ModelState(f"snapshot:{snapshot.name}", objects, relationships)
+            return "snapshot", snapshot.name
         raise NotFoundError(
             f"'{ref}' is not a Ghost model, 'current' or a snapshot.",
             suggestions=["raf ghost list", "raf snapshot list"],
         )
+
+    def state_for(self, ref: str, *, lean: bool = False) -> ModelState:
+        """A model, ``current`` or a snapshot as a state; ``lean`` as in :meth:`materialize`."""
+        kind, name = self._locate(ref)
+        if kind == "current":
+            return self.propagation_state() if lean else self.current_state()
+        if kind == "ghost":
+            return self.materialize(self.get(name), lean=lean)
+        objects, relationships = self.snapshots.materialize(name, propagation_only=lean)
+        return ModelState(f"snapshot:{name}", objects, relationships)
+
+    def relationship_ids(self, ref: str) -> set[str]:
+        """``set(state_for(ref).relationships)`` without loading the relationships."""
+        kind, name = self._locate(ref)
+        if kind == "current":
+            return self.ctx.store.relationships.ids()
+        if kind == "snapshot":
+            return self.snapshots.item_ids(name)
+        model = self.get(name)
+        ids = self.snapshots.item_ids(model.base_snapshot)
+        for op in model.ops:
+            ids.difference_update(op.effects.removed_relationships)
+            ids.update(added.id for added in op.effects.added_relationships)
+        return ids
 
     # ------------------------------------------------------------------ operations
     def modify(self, name: str, operations: list[tuple[str, str]]) -> tuple[GhostModel, list[GhostOp]]:
@@ -266,7 +292,8 @@ class GhostService:
         return summary, items, control
 
     def compare(self, a_ref: str, b_ref: str) -> Comparison:
-        state_a, state_b = self.state_for(a_ref), self.state_for(b_ref)
+        # summaries only look at the propagation graph: lean states give the same numbers
+        state_a, state_b = self.state_for(a_ref, lean=True), self.state_for(b_ref, lean=True)
         sa, items_a, control_a = self.summarize(state_a)
         sb, items_b, control_b = self.summarize(state_b)
         ma, mb = sa.metrics.model_dump(), sb.metrics.model_dump()
@@ -302,7 +329,7 @@ class GhostService:
                         "gained": sorted(after - before),
                     }
                 )
-        rel_a, rel_b = set(state_a.relationships), set(state_b.relationships)
+        rel_a, rel_b = self.relationship_ids(a_ref), self.relationship_ids(b_ref)
         return Comparison(
             a=sa,
             b=sb,

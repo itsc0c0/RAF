@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -47,6 +48,53 @@ class RafModel(BaseModel):
 
     def to_json_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
+
+
+def trusted_builder[M: BaseModel](cls: type[M]) -> Callable[..., M]:
+    """A constructor for trusted, already validated data (database rows, snapshot bodies).
+
+    Equivalent to ``cls.model_construct(**values)`` (no validation; omitted fields get their
+    defaults) but resolves the defaults once instead of on every call: loading hundreds of
+    thousands of rows spends most of its time there otherwise. Unknown or missing required fields
+    raise ``TypeError``. ``tests/unit/test_core_model.py`` pins the equivalence.
+    """
+    if cls.__pydantic_post_init__ is not None or cls.__private_attributes__:
+        raise TypeError(f"{cls.__name__} needs model_construct (post-init hook or private attributes)")
+    names = tuple(cls.model_fields)
+    known = frozenset(names)
+    defaults: dict[str, Any] = {}
+    factories: dict[str, Callable[[], Any]] = {}
+    required: set[str] = set()
+    for name, info in cls.model_fields.items():
+        if info.default_factory is not None:
+            factories[name] = info.default_factory  # type: ignore[assignment]
+        elif info.is_required():
+            required.add(name)
+        else:
+            defaults[name] = info.default
+    set_attr = object.__setattr__
+
+    def build(**values: Any) -> M:
+        if not values.keys() <= known:
+            raise TypeError(f"{cls.__name__}: unknown fields {sorted(values.keys() - known)}")
+        data: dict[str, Any] = {}
+        for name in names:
+            if name in values:
+                data[name] = values[name]
+            elif name in factories:
+                data[name] = factories[name]()
+            elif name in required:
+                raise TypeError(f"{cls.__name__}: missing required field '{name}'")
+            else:
+                data[name] = defaults[name]
+        obj = cls.__new__(cls)
+        set_attr(obj, "__dict__", data)
+        set_attr(obj, "__pydantic_fields_set__", set(values))
+        set_attr(obj, "__pydantic_extra__", None)
+        set_attr(obj, "__pydantic_private__", None)
+        return obj
+
+    return build
 
 
 # --------------------------------------------------------------------------- helpers
@@ -428,3 +476,8 @@ class ProvenanceRecord(RafModel):
     job_id: str | None = None
     note: str | None = None
     recorded_at: datetime | None = None
+
+
+#: Fast constructors for rows and snapshot bodies written by R$F itself (see :func:`trusted_builder`).
+build_object = trusted_builder(SecurityObject)
+build_relationship = trusted_builder(Relationship)

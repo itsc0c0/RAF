@@ -81,6 +81,29 @@ def test_propagation_state_matches_the_full_state(raven: RafContext) -> None:
     )
 
 
+def test_lean_states_compare_like_full_states(raven: RafContext) -> None:
+    from raf.core.snapshots.service import SnapshotService
+    from raf.products.ghost.service import GhostService
+
+    service = GhostService(raven)
+    service.create("lean")
+    service.modify("lean", [("remove-access", "bob:production"), ("patch-vuln", "SIM-2026-0002")])
+    SnapshotService(raven.store).create("lean-snap")
+    # the workspace changes after the snapshot: a relationship disappears, so the snapshot holds
+    # an ID that no longer exists (decoded from its body by the lean materialization)
+    gone = next(r for r in raven.store.relationships.iter_all(types=["MEMBER_OF"]))
+    raven.store.relationships.delete([gone.id])
+    for ref in ("current", "lean", "ghost:lean", "lean-snap"):
+        full, lean = service.state_for(ref), service.state_for(ref, lean=True)
+        assert service.relationship_ids(ref) == set(full.relationships), ref
+        a, b = service.summarize(full), service.summarize(lean)
+        assert a[0] == b[0] and a[2] == b[2], ref
+        assert [(i.object["id"], i.score) for i in a[1]] == [(i.object["id"], i.score) for i in b[1]], ref
+    assert gone.id in service.state_for("lean-snap", lean=True).relationships
+    comparison = service.compare("current", "lean")
+    assert comparison.relationships_removed >= 1 and comparison.delta
+
+
 def test_model_lifecycle_clone_undo_delete(raven: RafContext) -> None:
     from raf.products.ghost.service import GhostService
 
