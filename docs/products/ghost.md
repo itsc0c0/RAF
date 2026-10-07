@@ -53,6 +53,13 @@ References are resolved against the **model** (names, aliases, typed IDs such as
 Operations validate their preconditions and fail with a clear message, e.g. removing a role that is
 only inherited, or cutting access where no path exists.
 
+Operations run on the model's propagation-only state: activity records that propagation never
+enters (processes and their relationships) are left out, which gives the same effects and keeps
+workspaces full of activity fast. A reference without a type therefore never names a process.
+`isolate` also loads every network relationship of the model with the objects at their ends, so a
+connection made by a process is removed too; `remove-relationship` loads the full state and can
+name any relationship.
+
 Example on the Raven demo:
 
 ```text
@@ -94,4 +101,5 @@ can control before and after (`lost` / `gained`).
 * Network reachability is modeled at zone level (`CAN_REACH` between networks); per-port effects are
   reflected in the policy model and in trimmed `ports` metadata, not in propagation.
 * Large workspaces: compare runs one propagation per entry point and principal (bounded, see the
-  exposure model).
+  exposure model). `remove-relationship` builds the model's full state, which takes seconds when the
+  workspace holds hundreds of thousands of activity relationships.

@@ -545,6 +545,16 @@ OPERATIONS: dict[str, tuple[OpFunction, str, str]] = {
 }
 
 
+#: Operations give the same effects on the propagation-only state of a model (``lean`` in
+#: :meth:`GhostService.materialize`; references without a type resolve there among the objects
+#: propagation can enter), except those that edit relationships propagation never traverses:
+#: ``remove-relationship`` may name any relationship and needs the full state; ``isolate`` removes a
+#: host's network relationships whatever is at their other end (a process's connections included)
+#: and needs every relationship of those types, with the objects at their ends.
+FULL_STATE_OPERATIONS = frozenset({"remove-relationship"})
+OPERATION_RELATIONSHIP_TYPES: dict[str, tuple[str, ...]] = {"isolate": NETWORK_RELS}
+
+
 def run_operation(state: ModelState, op: str, arg: str, model: str) -> OpResult:
     if op not in OPERATIONS:
         raise InvalidInputError(f"Unknown Ghost operation '{op}'.", details={"operations": sorted(OPERATIONS)})
@@ -553,4 +563,11 @@ def run_operation(state: ModelState, op: str, arg: str, model: str) -> OpResult:
     return OPERATIONS[op][0](state, arg, model)
 
 
-__all__ = ["OPERATIONS", "OpResult", "min_cut", "run_operation"]
+__all__ = [
+    "FULL_STATE_OPERATIONS",
+    "OPERATIONS",
+    "OPERATION_RELATIONSHIP_TYPES",
+    "OpResult",
+    "min_cut",
+    "run_operation",
+]

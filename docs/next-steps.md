@@ -14,13 +14,13 @@ Known gaps and the planned order of work after 0.1.0. Nothing here is implemente
    [web-ui.md](web-ui.md)); add browser end-to-end tests of the signature workflow.
 5. **Performance budgets.** Benchmarks for million-event imports, timeline queries and propagation on
    large graphs, with regression thresholds in CI (`slow` marker). Measured today on a workspace
-   with 150,000 events, 51,000 objects and 200,000 relationships (mostly process activity): Blast,
-   Trace, Oracle and every R$F OS page take about a second or less, `raf ghost compare` 2.6 s, but
-   `raf snapshot create`, `raf diff SNAPSHOT current`, `raf ghost create` and `raf ghost modify`
-   take 9-12 s because they hash or load every object and relationship. Next: keep content hashes
-   on the rows when they are written (snapshots become `INSERT … SELECT`), and let Ghost operations
-   run on propagation-only states with the few operations that need activity records loading them
-   on demand.
+   with 150,000 events, 51,000 objects and 200,000 relationships (mostly process activity), command
+   wall time including about 0.8 s of start-up: Blast, Trace, Oracle and every R$F OS page take
+   about a second or less; `raf snapshot create` and `raf ghost create` 3 s, `raf diff SNAPSHOT
+   current` 2.5 s, `raf diff` between two snapshots 3 s, `raf ghost modify` 1.7-1.9 s,
+   `raf ghost compare` 3 s, `raf snapshot delete` 2.6 s. Still slow there: the first snapshot of a
+   workspace created before content hashes were stored computes them once (13 s), and
+   `raf ghost modify --remove-relationship` builds the model's full state (12 s).
 
 ## Product depth
 

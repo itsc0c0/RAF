@@ -123,7 +123,8 @@ those that no longer apply. Severity and confidence are separate.
 
 **Snapshots.** A snapshot freezes objects and relationships (content-addressed blobs). Sources:
 the current workspace, another snapshot, or a state provider (`ghost:<model>`). Diff compares any
-two states.
+two states. Object and relationship rows carry their content hash (written with the row), so a
+snapshot of the workspace is an `INSERT … SELECT` of hashes plus the bodies no snapshot holds yet.
 
 **Jobs, audit, config.** Long operations are persisted jobs with progress and cancellation. Every
 state-changing operation is recorded in a hash-chained audit log (`raf audit verify`). Configuration

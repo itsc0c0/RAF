@@ -104,6 +104,84 @@ def test_lean_states_compare_like_full_states(raven: RafContext) -> None:
     assert comparison.relationships_removed >= 1 and comparison.delta
 
 
+def test_operations_on_lean_states_match_full_states(raven: RafContext) -> None:
+    """modify runs on the propagation-only state (plus the relationship types an operation edits)
+    unless an operation needs every relationship; the effects are those of the full state."""
+    from raf.core.objects.models import ObjectDraft, RelationshipDraft
+    from raf.products.ghost.ops import (
+        FULL_STATE_OPERATIONS,
+        OPERATION_RELATIONSHIP_TYPES,
+        OPERATIONS,
+        run_operation,
+    )
+    from raf.products.ghost.service import GhostService
+
+    # a connection made by a process: isolate must remove it although propagation never enters processes
+    raven.store.objects.upsert_drafts([ObjectDraft.make("process", "sync-agent", key="dev-01/4242")])
+    connection = RelationshipDraft.make("process:dev-01/4242", "CONNECTED_TO", "host:dev-01")
+    raven.store.relationships.upsert_drafts([connection])
+    service = GhostService(raven)
+    model = service.create("m")
+    full = service.materialize(model)
+    cases = [
+        ("remove-access", "bob:production"),
+        ("disable-identity", "old-admin"),
+        ("change-role", "group:operations:break-glass:helpdesk"),
+        ("add-role", "bob:db-admin"),
+        ("remove-role", "group:operations:break-glass"),
+        ("remove-exposure", "VPN-01"),
+        ("patch-vuln", "SIM-2026-0002"),
+        ("add-segmentation", "CORP:DEV"),
+        ("disable-rule", "raven-fw:r40-dev-to-prod"),
+        ("deny-flow", "CORP:DEV:tcp/443"),
+        ("isolate", "DEV-01"),
+    ]
+    assert {op for op, _arg in cases} == set(OPERATIONS) - FULL_STATE_OPERATIONS
+    for op, arg in cases:
+        lean = service.materialize(model, lean=True, with_types=OPERATION_RELATIONSHIP_TYPES.get(op, ()))
+        assert len(lean.relationships) < len(full.relationships), op
+        a, b = run_operation(full, op, arg, "m"), run_operation(lean, op, arg, "m")
+        assert (a.effects, a.summary, a.explanation) == (b.effects, b.summary, b.explanation), op
+        if op == "isolate":
+            assert connection.id in b.effects.removed_relationships
+    # references without a type never resolve to a process on a lean state, even one that is present
+    lean = service.materialize(model, lean=True, with_types=OPERATION_RELATIONSHIP_TYPES["isolate"])
+    assert "process:dev-01/4242" in lean.objects
+    with pytest.raises(NotFoundError):
+        lean.resolve("sync-agent")
+    assert full.resolve("sync-agent") == "process:dev-01/4242"
+    _model, applied = service.modify("m", [("isolate", "DEV-01")])
+    assert applied[0].effects == run_operation(full, "isolate", "DEV-01", "m").effects
+
+
+def test_state_view_replays_effects_like_materialization(raven: RafContext) -> None:
+    """A model's comparable state is its base snapshot plus the operations' effects, exactly as the
+    materialized model hashes."""
+    from raf.core.snapshots.service import StateView
+    from raf.products.ghost.service import GhostService
+
+    service = GhostService(raven)
+    service.create("m")
+    service.modify(
+        "m",
+        [
+            ("change-role", "group:operations:break-glass:helpdesk"),
+            ("remove-exposure", "VPN-01"),
+            ("disable-rule", "raven-fw:r40-dev-to-prod"),
+            ("deny-flow", "CORP:DEV:tcp/443"),
+        ],
+    )
+    service.modify("m", [("disable-identity", "old-admin"), ("patch-vuln", "SIM-2026-0002")])
+    service.modify("m", [("isolate", "DEV-01"), ("deny-flow", "CORP:DEV:tcp/22")])
+    state = service.materialize(service.get("m"))
+    expected = StateView.from_items("m", state.objects.values(), state.relationships.values())
+    view = service.state_view("m")
+    for kind in ("object", "relationship"):
+        assert view.hashes[kind] == expected.hashes[kind], kind
+    every = [*view.hashes["object"].values(), *view.hashes["relationship"].values()]
+    assert view.body(every) == {digest: expected.bodies[digest] for digest in every}
+
+
 def test_model_lifecycle_clone_undo_delete(raven: RafContext) -> None:
     from raf.products.ghost.service import GhostService
 

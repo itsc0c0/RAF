@@ -145,13 +145,22 @@ class DiffService:
     def compare(self, a: StateView, b: StateView) -> DiffResult:
         changes: list[Change] = []
         obj_a, obj_b = a.hashes.get("object", {}), b.hashes.get("object", {})
-        # Object bodies needed for labels/criticality of both endpoints of relationship changes.
-        bodies_a = a.body(obj_a.values())
-        bodies_b = b.body(obj_b.values())
-        objects_a = {i: bodies_a.get(h) for i, h in obj_a.items()}
-        objects_b = {i: bodies_b.get(h) for i, h in obj_b.items()}
+        # Bodies only of what changed: the objects that differ, and the endpoints of relationship
+        # changes (for labels and criticality; described as they are in b when they exist there).
+        rel_changes = self._relationship_changes(a, b)
+        rel_bodies = self._relationship_bodies(a, b, rel_changes)
+        endpoints: set[str] = set()
+        for body in rel_bodies.values():
+            endpoints.update((body["source"], body["target"]))
+        differ = {i for i in obj_a.keys() & obj_b.keys() if obj_a[i] != obj_b[i]}
+        from_b = (obj_b.keys() - obj_a.keys()) | differ | (endpoints & obj_b.keys())
+        from_a = (obj_a.keys() - obj_b.keys()) | differ | ((endpoints & obj_a.keys()) - obj_b.keys())
+        bodies_a = a.body([obj_a[i] for i in from_a])
+        bodies_b = b.body([obj_b[i] for i in from_b])
+        objects_a = {i: bodies_a.get(obj_a[i]) for i in from_a}
+        objects_b = {i: bodies_b.get(obj_b[i]) for i in from_b}
         changes += self._objects(objects_a, objects_b, obj_a, obj_b)
-        changes += self._relationships(a, b, {**objects_a, **objects_b})
+        changes += self._relationships(a, b, rel_changes, rel_bodies, {**objects_a, **objects_b})
         changes += self._findings(a, b)
         changes.sort(key=lambda c: (_IMPORTANCE_RANK[c.importance], c.category, c.item_id))
         summary: dict[str, dict[str, int]] = {}
@@ -321,12 +330,34 @@ class DiffService:
         )
 
     # ------------------------------------------------------------------ relationships
-    def _relationships(self, a: StateView, b: StateView, objects: dict[str, Any]) -> list[Change]:
+    @staticmethod
+    def _relationship_changes(a: StateView, b: StateView) -> tuple[list[str], list[str], list[str]]:
+        """IDs of the relationships added, removed and changed from a to b."""
         ra, rb = a.hashes.get("relationship", {}), b.hashes.get("relationship", {})
-        added = sorted(set(rb) - set(ra))
-        removed = sorted(set(ra) - set(rb))
-        changed = sorted(i for i in set(ra) & set(rb) if ra[i] != rb[i])
-        bodies = {**a.body([ra[i] for i in removed + changed]), **b.body([rb[i] for i in added + changed])}
+        added = sorted(rb.keys() - ra.keys())
+        removed = sorted(ra.keys() - rb.keys())
+        changed = sorted(i for i in ra.keys() & rb.keys() if ra[i] != rb[i])
+        return added, removed, changed
+
+    @staticmethod
+    def _relationship_bodies(
+        a: StateView, b: StateView, rel_changes: tuple[list[str], list[str], list[str]]
+    ) -> dict[str, dict[str, Any]]:
+        """Bodies of the relationship changes by content hash: before (a) and after (b)."""
+        ra, rb = a.hashes.get("relationship", {}), b.hashes.get("relationship", {})
+        added, removed, changed = rel_changes
+        return {**a.body([ra[i] for i in removed + changed]), **b.body([rb[i] for i in added + changed])}
+
+    def _relationships(
+        self,
+        a: StateView,
+        b: StateView,
+        rel_changes: tuple[list[str], list[str], list[str]],
+        bodies: dict[str, dict[str, Any]],
+        objects: dict[str, Any],
+    ) -> list[Change]:
+        ra, rb = a.hashes.get("relationship", {}), b.hashes.get("relationship", {})
+        added, removed, changed = rel_changes
         changes: list[Change] = []
         for rid in added:
             changes.append(self._rel_change(rid, bodies[rb[rid]], "added", objects))

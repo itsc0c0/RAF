@@ -364,7 +364,8 @@ expected to record provenance too ([plugin-development.md](plugin-development.md
 
 A snapshot freezes the objects, relationships and findings of a state as content hashes, with
 bodies shared between snapshots; sources are the workspace (`current`) or a Ghost model
-(`ghost:<model>`). What counts as content, the state hash and the comparison rules are described in
+(`ghost:<model>`). Objects and relationships store the hash of their canonical content with the row
+(`content_hash`), so snapshots do not recompute it. What counts as content, the state hash and the comparison rules are described in
 [Diff](products/diff.md#snapshots).
 
 ## Temporal model

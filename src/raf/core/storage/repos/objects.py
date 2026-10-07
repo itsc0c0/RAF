@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import Connection, Engine, delete, func, or_, select
 
 from raf.core.errors import NotFoundError
+from raf.core.objects.content import content_hash, json_value, object_body
 from raf.core.objects.models import ObjectDraft, SecurityObject, build_object
 from raf.core.storage import schema as s
 from raf.core.storage.database import chunks, transaction, upsert
@@ -271,6 +272,9 @@ class ObjectRepository:
             "meta": d.metadata,
             "observations": d.observations,
             "synthetic": d.synthetic,
+            "content_hash": content_hash(
+                object_body(d.type, d.name, d.tags, json_value(d.metadata), d.valid_to is None, d.synthetic)
+            ),
         }
 
     def update_metadata(self, object_id: str, patch: dict[str, Any], conn: Connection | None = None) -> None:

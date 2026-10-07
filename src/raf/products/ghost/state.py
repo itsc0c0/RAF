@@ -13,6 +13,7 @@ from raf.core.errors import AmbiguousReferenceError, NotFoundError
 from raf.core.graph.source import MemoryGraphSource, propagation_source
 from raf.core.ids import object_id, relationship_id, try_split_id
 from raf.core.objects.models import RafModel, Relationship, SecurityObject
+from raf.core.objects.semantics import NON_PROPAGATING_TYPES
 
 
 class AddedRelationship(RafModel):
@@ -49,17 +50,27 @@ class OpEffects(RafModel):
 
 
 class ModelState:
-    def __init__(self, label: str, objects: Iterable[SecurityObject], relationships: Iterable[Relationship]) -> None:
+    def __init__(
+        self,
+        label: str,
+        objects: Iterable[SecurityObject],
+        relationships: Iterable[Relationship],
+        *,
+        lean: bool = False,
+    ) -> None:
         self.label = label
         self.objects: dict[str, SecurityObject] = {o.id: o for o in objects}
         # ended relationships are kept (the state stays faithful to its base) but never traversed
         self.relationships: dict[str, Relationship] = {r.id: r for r in relationships}
+        #: propagation-only: references without a type resolve among the objects propagation can enter,
+        #: even when a few others are present (the ends of relationships an operation edits)
+        self.lean = lean
         self._names: dict[str, list[str]] | None = None
 
     def copy(self, label: str) -> ModelState:
         """An independent state with the same content (cheap: :meth:`apply` replaces objects and
         relationships instead of mutating them, so they can be shared)."""
-        return ModelState(label, self.objects.values(), self.relationships.values())
+        return ModelState(label, self.objects.values(), self.relationships.values(), lean=self.lean)
 
     # ------------------------------------------------------------------ views
     def graph(self) -> MemoryGraphSource:
@@ -121,11 +132,9 @@ class ModelState:
                 candidate = object_id(split[0], split[1])
             except Exception:  # noqa: BLE001 - invalid keys fall through to name search
                 candidate = text
-            if candidate in self.objects and (types is None or split[0] in types):
+            if candidate in self.objects and self._eligible(candidate, types):
                 return candidate
-        matches = sorted(set(self._name_index().get(text.lower(), [])))
-        if types is not None:
-            matches = [m for m in matches if m.split(":", 1)[0] in types]
+        matches = [m for m in sorted(set(self._name_index().get(text.lower(), []))) if self._eligible(m, types)]
         if len(matches) == 1:
             return matches[0]
         if len(matches) > 1:
@@ -135,6 +144,12 @@ class ModelState:
             f"'{text}'{kinds} is not in model {self.label}.",
             hint="Use a name or ID of an object that exists in the model's base state.",
         )
+
+    def _eligible(self, oid: str, types: Sequence[str] | None) -> bool:
+        kind = oid.split(":", 1)[0]
+        if types is not None:
+            return kind in types
+        return not self.lean or kind not in NON_PROPAGATING_TYPES
 
     def resolve_pair(
         self, text: str, first: Sequence[str] | None = None, second: Sequence[str] | None = None

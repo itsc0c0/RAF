@@ -11,15 +11,25 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy import func, select, update
 
 from raf.core.context.app import RafContext
 from raf.core.errors import ConflictError, IntegrityError, InvalidInputError, ResourceLimitExceeded, SecurityViolation
 from raf.core.graph.source import MemoryGraphSource, StoreGraphSource
 from raf.core.ingestion.pipeline import IngestionPipeline
+from raf.core.objects.content import content_hash
 from raf.core.objects.models import ObjectDraft, RelationshipDraft
 from raf.core.query.language import parse_filter
 from raf.core.query.scope import resolve_scope
-from raf.core.snapshots.service import SnapshotService, StateView
+from raf.core.snapshots.service import (
+    SnapshotService,
+    StateView,
+    object_content,
+    relationship_content,
+    resolve_state,
+)
+from raf.core.storage import schema as s
+from raf.core.storage.store import Store
 from raf.products.diff.service import DiffService
 from raf.products.graph.service import GraphService
 from raf.products.replay.service import ReplayService
@@ -143,6 +153,93 @@ class TestSnapshotsAndDiff:
             snapshot.content_hash
             == SnapshotService(raven.store).create_from_state("models", from_models, source="t").content_hash
         )
+
+    def test_rows_carry_their_content_hash(self, raven: RafContext) -> None:
+        """Every write stores the hash of the row's content with the row; relationships ended in bulk
+        lose theirs until the next snapshot computes it again."""
+        store = raven.store
+        assert set(_hash_mismatches(store).values()) <= {None}  # the demo load: only ended relationships
+        store.objects.upsert_drafts(
+            [ObjectDraft.make("host", "NEW-01", metadata={"ports": (22, 443), "by_port": {22: "ssh"}})]
+        )
+        store.objects.upsert_drafts([ObjectDraft.make("host", "NEW-01", metadata={"criticality": "high"})])
+        store.objects.update_metadata("host:new-01", {"owner": "ops", "scanned_at": "2026-10-07"})
+        store.relationships.upsert_drafts(
+            [RelationshipDraft.make("user:bob", "HAS_ROLE", "role:db-admin", metadata={"via": "x", "ttl": 5})]
+        )
+        ended = RelationshipDraft.make("host:dev-01", "USES", "identity:svc-deploy").id
+        store.relationships.end([ended], datetime(2026, 10, 7, tzinfo=UTC))
+        mismatches = _hash_mismatches(store)
+        assert ended in mismatches and set(mismatches.values()) == {None}
+        SnapshotService(store).create("s")
+        assert _hash_mismatches(store) == {}
+
+    def test_snapshots_compute_missing_hashes_and_repair_stale_ones(self, raven: RafContext) -> None:
+        service = SnapshotService(raven.store)
+        reference = service.create("reference")
+        some_rel = next(iter(raven.store.relationships.ids()))
+        with raven.store.transaction() as conn:
+            conn.execute(update(s.objects).values(content_hash=None))  # rows written before hashes were kept
+            conn.execute(update(s.relationships).where(s.relationships.c.id == some_rel).values(content_hash="0" * 64))
+        again = service.create("again")
+        assert again.content_hash == reference.content_hash
+        assert again.stats["new_blobs"] == 0 and again.stats["objects"] == reference.stats["objects"]
+        assert _hash_mismatches(raven.store) == {}
+        assert service.current_state().hashes == service.snapshot_state("again").hashes
+
+    def test_current_state_bodies_match_the_models(self, raven: RafContext) -> None:
+        current = SnapshotService(raven.store).current_state()
+        assert not current.bodies.keys() - set(current.hashes["finding"].values())  # rows: bodies on demand
+        sample = {o.id: o for o in raven.store.objects.iter_all(types=["host", "user"])}
+        bodies = current.body([current.hashes["object"][i] for i in sample])
+        assert len(bodies) == len(sample)
+        for oid, obj in sample.items():
+            assert bodies[current.hashes["object"][oid]] == object_content(obj)
+
+    def test_delete_removes_only_the_blobs_no_other_snapshot_holds(self, raven: RafContext) -> None:
+        service = SnapshotService(raven.store)
+        service.create("one")
+        raven.store.objects.upsert_drafts([ObjectDraft.make("host", "ONLY-IN-TWO")])
+        two = service.create("two")
+        assert two.stats["new_blobs"] == 1
+        assert service.delete("two")["blobs_removed"] == 1
+        objects, _rels = service.materialize("one")
+        assert len(objects) == raven.store.objects.count() - 1
+        assert service.delete("one")["blobs_removed"] > 1000
+        with raven.store.engine.connect() as conn:
+            assert conn.execute(select(func.count()).select_from(s.blobs)).scalar_one() == 0
+
+    def test_diff_reads_only_the_bodies_of_changes(self, raven: RafContext) -> None:
+        SnapshotService(raven.store).create("before")
+        raven.store.relationships.upsert_drafts([RelationshipDraft.make("user:bob", "HAS_ROLE", "role:db-admin")])
+        a, b = resolve_state(raven, "before"), resolve_state(raven, "current")
+        requested: list[str] = []
+        for view in (a, b):
+            loader = view.loader
+            assert loader is not None
+
+            def counting(hashes: list[str], loader: Any = loader) -> dict[str, dict[str, Any]]:
+                requested.extend(hashes)
+                result: dict[str, dict[str, Any]] = loader(hashes)
+                return result
+
+            view.loader = counting
+        result = DiffService(raven).compare(a, b)
+        assert [c.label for c in result.changes] == ["bob -HAS_ROLE-> db-admin"]
+        object_hashes = set(a.hashes["object"].values()) | set(b.hashes["object"].values())
+        assert len(object_hashes & set(requested)) <= 2  # the endpoints, not every object
+
+
+def _hash_mismatches(store: Store) -> dict[str, str | None]:
+    """Rows whose stored content hash is not the hash of their content (as the models compute it)."""
+    stored: dict[str, str | None] = {}
+    with store.engine.connect() as conn:
+        for table in (s.objects, s.relationships):
+            stored.update((row.id, row.content_hash) for row in conn.execute(select(table.c.id, table.c.content_hash)))
+    expected = {o.id: content_hash(object_content(o)) for o in store.objects.iter_all()}
+    expected |= {r.id: content_hash(relationship_content(r)) for r in store.relationships.iter_all()}
+    assert stored.keys() == expected.keys()
+    return {item_id: stored[item_id] for item_id, digest in expected.items() if stored[item_id] != digest}
 
 
 class TestTimeline:

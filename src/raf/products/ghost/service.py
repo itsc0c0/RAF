@@ -8,6 +8,7 @@ memory on demand. Exposure/attack-path metrics are recomputed for every state co
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from datetime import datetime
 from typing import Any
 
@@ -16,12 +17,25 @@ from pydantic import Field
 from raf.core.context.app import RafContext
 from raf.core.context.refs import ContextRefs
 from raf.core.errors import ConflictError, InvalidInputError, NotFoundError
+from raf.core.objects.content import canonical, content_hash, json_value
 from raf.core.objects.models import RafModel
 from raf.core.objects.semantics import NON_PROPAGATING_TYPES, PROPAGATION_RELATIONSHIPS
 from raf.core.risk.exposure import AssetExposure, ExposureMetrics, ExposureModel
-from raf.core.snapshots.service import SnapshotService, StateView, resolve_state
+from raf.core.snapshots.service import (
+    KINDS,
+    SnapshotService,
+    StateView,
+    object_content,
+    relationship_content,
+    resolve_state,
+)
 from raf.core.timeutil import format_ts, utcnow
-from raf.products.ghost.ops import OPERATIONS, run_operation
+from raf.products.ghost.ops import (
+    FULL_STATE_OPERATIONS,
+    OPERATION_RELATIONSHIP_TYPES,
+    OPERATIONS,
+    run_operation,
+)
 from raf.products.ghost.state import ModelState, OpEffects
 
 NAMESPACE = "ghost"
@@ -178,11 +192,15 @@ class GhostService:
         return {"model": model.name, "base_snapshot_removed": removed_snapshot}
 
     # ------------------------------------------------------------------ materialization
-    def materialize(self, model: GhostModel, *, lean: bool = False) -> ModelState:
+    def materialize(self, model: GhostModel, *, lean: bool = False, with_types: Collection[str] = ()) -> ModelState:
         """The model's state: its base snapshot with every operation applied. ``lean`` keeps only
-        what propagation uses (see :meth:`propagation_state`): enough for summaries and compares."""
-        objects, relationships = self.snapshots.materialize(model.base_snapshot, propagation_only=lean)
-        state = ModelState(f"ghost:{model.name}", objects, relationships)
+        what propagation uses (see :meth:`propagation_state`): enough for summaries, compares and
+        most operations; ``with_types`` adds every relationship of those types (see
+        :meth:`SnapshotService.materialize`)."""
+        objects, relationships = self.snapshots.materialize(
+            model.base_snapshot, propagation_only=lean, with_types=with_types if lean else ()
+        )
+        state = ModelState(f"ghost:{model.name}", objects, relationships, lean=lean)
         for op in model.ops:
             state.apply(op.effects, model=model.name, when=op.applied_at)
         return state
@@ -203,6 +221,7 @@ class GhostService:
             label,
             store.objects.iter_all(exclude_types=excluded),
             store.relationships.iter_all(types=sorted(PROPAGATION_RELATIONSHIPS), exclude_endpoint_types=excluded),
+            lean=True,
         )
 
     def _locate(self, ref: str) -> tuple[str, str]:
@@ -234,7 +253,7 @@ class GhostService:
         if kind == "ghost":
             return self.materialize(self.get(name), lean=lean)
         objects, relationships = self.snapshots.materialize(name, propagation_only=lean)
-        return ModelState(f"snapshot:{name}", objects, relationships)
+        return ModelState(f"snapshot:{name}", objects, relationships, lean=lean)
 
     def relationship_ids(self, ref: str) -> set[str]:
         """``set(state_for(ref).relationships)`` without loading the relationships."""
@@ -255,7 +274,11 @@ class GhostService:
         model = self.get(name)
         if not operations:
             raise InvalidInputError("No operation given.", hint="See: raf ghost modify --help")
-        state = self.materialize(model)
+        # what-if operations act on access and reach: the propagation-only state is enough, and much
+        # faster on workspaces full of activity records, unless an operation edits those records
+        lean = not any(op in FULL_STATE_OPERATIONS for op, _arg in operations)
+        with_types = sorted({t for op, _arg in operations for t in OPERATION_RELATIONSHIP_TYPES.get(op, ())})
+        state = self.materialize(model, lean=lean, with_types=with_types)
         applied: list[GhostOp] = []
         for op, arg in operations:
             result = run_operation(state, op, arg, model.name)
@@ -360,14 +383,42 @@ class GhostService:
     def state_view(self, name: str) -> StateView:
         """The model as a comparable state (``raf diff``, ``raf snapshot create --source ghost:X``).
 
-        Findings are carried over from the base snapshot unchanged: analyzers are not re-run inside
-        models (use ``raf ghost compare`` for recomputed exposure)."""
+        The base snapshot's content hashes with every operation's effects replayed: only the items the
+        operations add, remove or patch are computed (like :meth:`ModelState.apply` would build them),
+        everything else is read from the snapshot when a body is needed. Findings are carried over
+        from the base snapshot unchanged: analyzers are not re-run inside models (use
+        ``raf ghost compare`` for recomputed exposure)."""
         model = self.get(name)
-        state = self.materialize(model)
-        view = StateView.from_items(f"ghost:{model.name}", state.objects.values(), state.relationships.values())
         base = resolve_state(self.ctx, model.base_snapshot)
-        view.hashes["finding"] = dict(base.hashes.get("finding", {}))
-        view.loader = base.loader
+        view = StateView(
+            f"ghost:{model.name}", {kind: dict(base.hashes.get(kind, {})) for kind in KINDS}, loader=base.loader
+        )
+        objects, relationships = view.hashes["object"], view.hashes["relationship"]
+
+        def put(kind: str, item_id: str, body: dict[str, Any]) -> None:
+            digest = content_hash(body)
+            view.hashes[kind][item_id] = digest
+            view.bodies[digest] = body
+
+        for op in model.ops:
+            effects, when = op.effects, op.applied_at
+            for rid in effects.removed_relationships:
+                relationships.pop(rid, None)
+            replayed = ModelState(view.label, (), ())
+            replayed.apply(
+                OpEffects(added_objects=effects.added_objects, added_relationships=effects.added_relationships),
+                model=model.name,
+                when=when,
+            )
+            for obj in replayed.objects.values():
+                put("object", obj.id, object_content(obj))
+            for rel in replayed.relationships.values():
+                put("relationship", rel.id, relationship_content(rel))
+            for oid, patch in effects.patched_objects.items():
+                if oid not in objects:
+                    continue
+                body = view.body([objects[oid]])[objects[oid]]
+                put("object", oid, {**body, "metadata": canonical({**body["metadata"], **json_value(patch)})})
         return view
 
 

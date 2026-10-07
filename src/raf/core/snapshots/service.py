@@ -1,11 +1,16 @@
 """Security-state snapshots with structural sharing.
 
 A snapshot records, for every object, relationship and finding, the hash of
-its *canonical content* (bookkeeping such as ``updated_at``/``last_seen``/
-observation counts is excluded so re-observing the same state does not look
-like change). Bodies live once in the content-addressed ``blobs`` table and are
-shared by every snapshot that contains the same content; an unchanged item
-costs one index row, not a copy.
+its *canonical content* (:mod:`raf.core.objects.content`: bookkeeping such as
+``updated_at``/``last_seen``/observation counts is excluded so re-observing the
+same state does not look like change). Bodies live once in the content-addressed
+``blobs`` table and are shared by every snapshot that contains the same content;
+an unchanged item costs one index row, not a copy.
+
+Objects and relationships carry their content hash in the ``content_hash``
+column (written with the row), so a snapshot of the workspace copies hashes with
+``INSERT ... SELECT`` and only computes bodies for content no snapshot holds yet
+and hashes of rows that lack one.
 
 States can come from the workspace ("current"), a stored snapshot, or a
 registered provider (Ghost registers ``ghost:<model>``).
@@ -17,16 +22,18 @@ import builtins
 import hashlib
 import json
 import re
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 from typing import Any
 
 from pydantic import Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import ColumnElement, Connection, Table, bindparam, delete, func, literal, select, update
 
 from raf.core.context.app import RafContext
 from raf.core.errors import ConflictError, InvalidInputError, NotFoundError
+from raf.core.objects.content import content_hash, finding_body, json_value, object_body, relationship_body
 from raf.core.objects.models import RafModel, Relationship, SecurityObject, build_object, build_relationship
 from raf.core.objects.semantics import NON_PROPAGATING_TYPES, PROPAGATION_RELATIONSHIPS
 from raf.core.storage import schema as s
@@ -36,49 +43,20 @@ from raf.core.timeutil import utcnow
 
 KINDS = ("object", "relationship", "finding")
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
-_VOLATILE_META = {"state_changed_at", "status_history", "last_scan", "scanned_at"}
-
-
-def _canonical(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: _canonical(v) for k, v in sorted(value.items()) if k not in _VOLATILE_META}
-    if isinstance(value, list):
-        return [_canonical(v) for v in value]
-    return value
 
 
 def object_content(obj: SecurityObject) -> dict[str, Any]:
-    return {
-        "type": obj.type,
-        "name": obj.name,
-        "tags": sorted(obj.tags),
-        "metadata": _canonical(obj.metadata),
-        "active": obj.valid_to is None,
-        "synthetic": obj.synthetic,
-    }
+    return object_body(obj.type, obj.name, obj.tags, json_value(obj.metadata), obj.valid_to is None, obj.synthetic)
 
 
 def relationship_content(rel: Relationship) -> dict[str, Any]:
-    meta = {k: v for k, v in rel.metadata.items() if k not in ("via",)}
-    return {
-        "type": rel.relationship_type,
-        "source": rel.source_object,
-        "target": rel.target_object,
-        "metadata": _canonical(meta),
-        "active": rel.valid_to is None,
-    }
+    return relationship_body(
+        rel.relationship_type, rel.source_object, rel.target_object, json_value(rel.metadata), rel.valid_to is None
+    )
 
 
 def finding_content(finding: Any) -> dict[str, Any]:
-    return {
-        "title": finding.title,
-        "severity": finding.severity.value,
-        "status": finding.status.value,
-        "product": finding.product,
-        "rule_id": finding.rule_id,
-        "affected": sorted(finding.affected_objects),
-        "confidence": round(float(finding.confidence), 2),
-    }
+    return finding_body(finding)
 
 
 def item_content(kind: str, item: Any) -> dict[str, Any]:
@@ -94,47 +72,52 @@ def _item_contents(kind: str, items: Iterable[Any]) -> Iterator[tuple[str, dict[
         yield item.id, item_content(kind, item)
 
 
-def _object_contents(store: Store) -> Iterator[tuple[str, dict[str, Any]]]:
-    """``(id, object_content)`` for every stored object, read straight from the table: no model
-    objects and no timestamp conversions (snapshots of large workspaces stay fast)."""
+@dataclass(frozen=True)
+class _ContentTable:
+    """How to read the canonical content of a stored object or relationship straight from its table:
+    no model objects and no timestamp conversions (large workspaces stay fast)."""
+
+    table: Table
+    columns: Callable[[], list[ColumnElement[Any]]]
+    body: Callable[[Any], dict[str, Any]]
+
+
+def _object_columns() -> list[ColumnElement[Any]]:
     c = s.objects.c
-    stmt = select(c.id, c.type, c.name, c.tags, c.meta, c.valid_to.is_(None).label("active"), c.synthetic)
-    with store.engine.connect() as conn:
-        for row in conn.execute(stmt.order_by(c.id)).yield_per(5000):
-            yield (
-                row.id,
-                {
-                    "type": row.type,
-                    "name": row.name,
-                    "tags": sorted(row.tags or []),
-                    "metadata": _canonical(dict(row.meta or {})),
-                    "active": bool(row.active),
-                    "synthetic": bool(row.synthetic),
-                },
-            )
+    return [c.id, c.type, c.name, c.tags, c.meta, c.valid_to.is_(None).label("active"), c.synthetic, c.content_hash]
 
 
-def _relationship_contents(store: Store) -> Iterator[tuple[str, dict[str, Any]]]:
-    """``(id, relationship_content)`` for every stored relationship (see :func:`_object_contents`)."""
+def _relationship_columns() -> list[ColumnElement[Any]]:
     c = s.relationships.c
-    stmt = select(c.id, c.type, c.source_id, c.target_id, c.meta, c.valid_to.is_(None).label("active"))
-    with store.engine.connect() as conn:
-        for row in conn.execute(stmt.order_by(c.id)).yield_per(5000):
-            meta = {k: v for k, v in (row.meta or {}).items() if k not in ("via",)}
-            yield (
-                row.id,
-                {
-                    "type": row.type,
-                    "source": row.source_id,
-                    "target": row.target_id,
-                    "metadata": _canonical(meta),
-                    "active": bool(row.active),
-                },
-            )
+    return [c.id, c.type, c.source_id, c.target_id, c.meta, c.valid_to.is_(None).label("active"), c.content_hash]
 
 
-def content_hash(body: dict[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+_CONTENT_TABLES = {
+    "object": _ContentTable(
+        s.objects,
+        _object_columns,
+        lambda row: object_body(
+            row.type, row.name, row.tags or [], dict(row.meta or {}), bool(row.active), bool(row.synthetic)
+        ),
+    ),
+    "relationship": _ContentTable(
+        s.relationships,
+        _relationship_columns,
+        lambda row: relationship_body(row.type, row.source_id, row.target_id, dict(row.meta or {}), bool(row.active)),
+    ),
+}
+
+
+def _row_contents(
+    conn: Connection, kind: str, where: ColumnElement[bool], *, joined: Any = None
+) -> Iterator[tuple[str, str | None, dict[str, Any]]]:
+    """``(id, stored content hash, canonical content)`` of the rows of ``kind`` matching ``where``."""
+    spec = _CONTENT_TABLES[kind]
+    stmt = select(*spec.columns())
+    if joined is not None:
+        stmt = stmt.select_from(joined)
+    for row in conn.execute(stmt.where(where)).yield_per(5000):
+        yield row.id, row.content_hash, spec.body(row)
 
 
 class Snapshot(RafModel):
@@ -157,6 +140,7 @@ class StateView:
     loader: Callable[[list[str]], dict[str, dict[str, Any]]] | None = None
 
     def body(self, hashes: Iterable[str]) -> dict[str, dict[str, Any]]:
+        hashes = list(hashes)
         wanted = [h for h in set(hashes) if h not in self.bodies]
         if wanted and self.loader is not None:
             self.bodies.update(self.loader(wanted))
@@ -208,93 +192,144 @@ class SnapshotService:
         relationships: Iterable[Relationship] | None = None,
         findings: Iterable[Any] | None = None,
     ) -> Snapshot:
-        validate_snapshot_name(name)
-        snapshot_id = f"snapshot:{name.lower()}"
-        if self.get(name) is not None:
-            raise ConflictError(f"Snapshot '{name}' already exists.", suggestions=[f"raf snapshot delete {name}"])
-        sources = {
-            "object": _item_contents("object", objects) if objects is not None else _object_contents(self.store),
-            "relationship": _item_contents("relationship", relationships)
-            if relationships is not None
-            else _relationship_contents(self.store),
-            "finding": _item_contents(
-                "finding", findings if findings is not None else self.store.findings.list(limit=1_000_000)
-            ),
-        }
-        counts = {"object": 0, "relationship": 0, "finding": 0}
-        pending: dict[str, dict[str, Any]] = {}
-        rows: list[tuple[str, str, str]] = []
-        for kind, contents in sources.items():
-            for item_id, body in contents:
-                digest = content_hash(body)
-                rows.append((kind, item_id, digest))
-                counts[kind] += 1
-                pending[digest] = body
-        return self._store(name, snapshot_id, rows, pending, counts, source, description)
+        """Snapshot the workspace (or the given items in place of its objects, relationships or findings)."""
+        snapshot_id = self._new_id(name)
+        given = {"object": objects, "relationship": relationships}
+        finding_items = findings if findings is not None else self.store.findings.list(limit=1_000_000)
+        with self.store.transaction() as conn:
+            new_blobs = 0
+            for kind, items in given.items():
+                if items is None:
+                    new_blobs += self._copy_table(conn, snapshot_id, kind)
+                else:
+                    new_blobs += self._insert_items(conn, snapshot_id, kind, _item_contents(kind, items))
+            new_blobs += self._insert_items(conn, snapshot_id, "finding", _item_contents("finding", finding_items))
+            self._finish(conn, name, snapshot_id, new_blobs, source, description)
+        return self._created(name)
 
     def create_from_state(self, name: str, state: StateView, *, source: str, description: str = "") -> Snapshot:
         """Persist an in-memory state (e.g. a Ghost model) as a snapshot."""
-        validate_snapshot_name(name)
-        snapshot_id = f"snapshot:{name.lower()}"
-        if self.get(name) is not None:
-            raise ConflictError(f"Snapshot '{name}' already exists.", suggestions=[f"raf snapshot delete {name}"])
+        snapshot_id = self._new_id(name)
         rows = [(kind, item_id, digest) for kind in KINDS for item_id, digest in state.hashes.get(kind, {}).items()]
-        pending = state.body([digest for _k, _i, digest in rows])
-        missing = {digest for _k, _i, digest in rows} - set(pending)
+        bodies = state.body([digest for _k, _i, digest in rows])
+        missing = {digest for _k, _i, digest in rows} - set(bodies)
         if missing:
             raise InvalidInputError(f"State '{state.label}' is missing {len(missing)} item bodies.")
-        counts = {kind: len(state.hashes.get(kind, {})) for kind in KINDS}
-        return self._store(name, snapshot_id, rows, pending, counts, source, description)
-
-    def _store(
-        self,
-        name: str,
-        snapshot_id: str,
-        rows: list[tuple[str, str, str]],
-        pending: dict[str, dict[str, Any]],
-        counts: dict[str, int],
-        source: str,
-        description: str,
-    ) -> Snapshot:
-        manifest = hashlib.sha256()
-        rows.sort()
-        for kind, item_id, digest in rows:
-            manifest.update(f"{kind}\x1f{item_id}\x1f{digest}\n".encode())
         with self.store.transaction() as conn:
-            hashes = sorted(pending)
-            existing: set[str] = set()
-            for batch in chunks(hashes, 500):
-                existing.update(r[0] for r in conn.execute(select(s.blobs.c.hash).where(s.blobs.c.hash.in_(batch))))
-            blob_rows = [
-                {"hash": h, "body": json.dumps(pending[h], sort_keys=True, default=str)}
-                for h in hashes
-                if h not in existing
-            ]
-            upsert(conn, s.blobs, blob_rows, ["hash"], update=False)
+            new_blobs = self._add_blobs(conn, bodies)
             item_rows = [{"snapshot_id": snapshot_id, "kind": k, "item_id": i, "content_hash": h} for k, i, h in rows]
             for start in range(0, len(item_rows), 2000):
                 conn.execute(s.snapshot_items.insert(), item_rows[start : start + 2000])
-            stats = {
-                "objects": counts.get("object", 0),
-                "relationships": counts.get("relationship", 0),
-                "findings": counts.get("finding", 0),
-                "new_blobs": len(blob_rows),
-                "shared_blobs": len(hashes) - len(blob_rows),
-            }
-            conn.execute(
-                s.snapshots.insert().values(
-                    id=snapshot_id,
-                    name=name,
-                    source=source,
-                    description=description,
-                    created_at=utcnow(),
-                    stats=stats,
-                    content_hash=manifest.hexdigest(),
-                )
-            )
+            self._finish(conn, name, snapshot_id, new_blobs, source, description)
+        return self._created(name)
+
+    def _new_id(self, name: str) -> str:
+        validate_snapshot_name(name)
+        if self.get(name) is not None:
+            raise ConflictError(f"Snapshot '{name}' already exists.", suggestions=[f"raf snapshot delete {name}"])
+        return f"snapshot:{name.lower()}"
+
+    def _created(self, name: str) -> Snapshot:
         snapshot = self.get(name)
         assert snapshot is not None
         return snapshot
+
+    def _insert_items(
+        self, conn: Connection, snapshot_id: str, kind: str, contents: Iterable[tuple[str, dict[str, Any]]]
+    ) -> int:
+        """Store items whose content was computed in memory; returns the number of new blobs."""
+        rows: list[dict[str, str]] = []
+        bodies: dict[str, dict[str, Any]] = {}
+        for item_id, body in contents:
+            digest = content_hash(body)
+            rows.append({"snapshot_id": snapshot_id, "kind": kind, "item_id": item_id, "content_hash": digest})
+            bodies[digest] = body
+        new_blobs = self._add_blobs(conn, bodies)
+        for start in range(0, len(rows), 2000):
+            conn.execute(s.snapshot_items.insert(), rows[start : start + 2000])
+        return new_blobs
+
+    def _copy_table(self, conn: Connection, snapshot_id: str, kind: str) -> int:
+        """Store every row of the objects or relationships table; returns the number of new blobs.
+
+        Rows without a content hash (written before hashes were kept, or ended in bulk) get one
+        first. Bodies are computed only for content that no snapshot holds yet; an item costs one
+        row copied by the database."""
+        table = _CONTENT_TABLES[kind].table
+        computed: list[tuple[str, str]] = []
+        bodies: dict[str, dict[str, Any]] = {}
+        for item_id, _h, body in _row_contents(conn, kind, table.c.content_hash.is_(None)):
+            digest = content_hash(body)
+            computed.append((item_id, digest))
+            bodies[digest] = body
+        self._store_hashes(conn, table, computed)
+        new_blobs = self._add_blobs(conn, bodies)
+        bodies, stale = {}, []
+        unseen = table.outerjoin(s.blobs, s.blobs.c.hash == table.c.content_hash)
+        for item_id, stored, body in _row_contents(conn, kind, s.blobs.c.hash.is_(None), joined=unseen):
+            digest = content_hash(body)
+            bodies[digest] = body
+            if digest != stored:  # a hash that no longer matches its row: repair it
+                stale.append((item_id, digest))
+        self._store_hashes(conn, table, stale)
+        new_blobs += self._add_blobs(conn, bodies)
+        columns = ["snapshot_id", "kind", "item_id", "content_hash"]
+        # in key order: the primary key index of snapshot_items grows at its end
+        rows = select(literal(snapshot_id), literal(kind), table.c.id, table.c.content_hash).order_by(table.c.id)
+        conn.execute(s.snapshot_items.insert().from_select(columns, rows))
+        return new_blobs
+
+    @staticmethod
+    def _store_hashes(conn: Connection, table: Table, hashes: list[tuple[str, str]]) -> None:
+        stmt = update(table).where(table.c.id == bindparam("item_id")).values(content_hash=bindparam("digest"))
+        for start in range(0, len(hashes), 2000):
+            conn.execute(stmt, [{"item_id": i, "digest": h} for i, h in hashes[start : start + 2000]])
+
+    @staticmethod
+    def _add_blobs(conn: Connection, bodies: dict[str, dict[str, Any]]) -> int:
+        """Store the bodies no snapshot holds yet; returns how many were new."""
+        hashes = sorted(bodies)
+        existing: set[str] = set()
+        for batch in chunks(hashes, 500):
+            existing.update(r[0] for r in conn.execute(select(s.blobs.c.hash).where(s.blobs.c.hash.in_(batch))))
+        blob_rows = [
+            {"hash": h, "body": json.dumps(bodies[h], sort_keys=True, default=str)} for h in hashes if h not in existing
+        ]
+        upsert(conn, s.blobs, blob_rows, ["hash"], update=False)
+        return len(blob_rows)
+
+    def _finish(
+        self, conn: Connection, name: str, snapshot_id: str, new_blobs: int, source: str, description: str
+    ) -> None:
+        """Record the snapshot: counts and the manifest hash over its sorted (kind, item, content) rows."""
+        c = s.snapshot_items.c
+        stmt = select(c.kind, c.item_id, c.content_hash).where(c.snapshot_id == snapshot_id)
+        rows = [tuple(row) for row in conn.execute(stmt.order_by(c.kind, c.item_id)).all()]
+        rows.sort()  # the order of Python strings, whatever the database's collation (already sorted: cheap)
+        manifest = hashlib.sha256()
+        counts = dict.fromkeys(KINDS, 0)
+        for kind, item_id, digest in rows:
+            manifest.update(f"{kind}\x1f{item_id}\x1f{digest}\n".encode())
+            counts[kind] += 1
+        distinct = len({digest for _k, _i, digest in rows})
+        stats = {
+            "objects": counts["object"],
+            "relationships": counts["relationship"],
+            "findings": counts["finding"],
+            "new_blobs": new_blobs,
+            "shared_blobs": distinct - new_blobs,
+        }
+        conn.execute(
+            s.snapshots.insert().values(
+                id=snapshot_id,
+                name=name,
+                source=source,
+                description=description,
+                created_at=utcnow(),
+                stats=stats,
+                content_hash=manifest.hexdigest(),
+            )
+        )
 
     # ------------------------------------------------------------------ read
     def get(self, name: str) -> Snapshot | None:
@@ -339,12 +374,15 @@ class SnapshotService:
         ]
 
     def delete(self, name: str) -> dict[str, int]:
+        """Delete a snapshot and the blobs that only it referenced."""
         snapshot = self.require(name)
+        items_c = s.snapshot_items.c
+        held = select(items_c.content_hash).where(items_c.snapshot_id == snapshot.id)
+        elsewhere = select(items_c.content_hash).where(items_c.snapshot_id != snapshot.id)
         with self.store.transaction() as conn:
-            items = conn.execute(delete(s.snapshot_items).where(s.snapshot_items.c.snapshot_id == snapshot.id)).rowcount
+            orphaned = conn.execute(delete(s.blobs).where(s.blobs.c.hash.in_(held.except_(elsewhere)))).rowcount
+            items = conn.execute(delete(s.snapshot_items).where(items_c.snapshot_id == snapshot.id)).rowcount
             conn.execute(delete(s.snapshots).where(s.snapshots.c.id == snapshot.id))
-            referenced = select(s.snapshot_items.c.content_hash).distinct()
-            orphaned = conn.execute(delete(s.blobs).where(s.blobs.c.hash.not_in(referenced))).rowcount
         return {"items": int(items or 0), "blobs_removed": int(orphaned or 0)}
 
     def item_hashes(self, snapshot_id: str) -> dict[str, dict[str, str]]:
@@ -353,7 +391,7 @@ class SnapshotService:
             stmt = select(s.snapshot_items.c.kind, s.snapshot_items.c.item_id, s.snapshot_items.c.content_hash).where(
                 s.snapshot_items.c.snapshot_id == snapshot_id
             )
-            for kind, item_id, digest in conn.execute(stmt).yield_per(5000):
+            for kind, item_id, digest in conn.execute(stmt).all():
                 result.setdefault(kind, {})[item_id] = digest
         return result
 
@@ -369,43 +407,85 @@ class SnapshotService:
 
     # ------------------------------------------------------------------ states
     def current_state(self) -> StateView:
+        """The workspace as a comparable state: stored content hashes; bodies computed from the rows when
+        asked for (a row that changes in between is described as it is then)."""
         view = StateView(label="current", hashes={k: {} for k in KINDS})
-        for kind, contents in (
-            ("object", _object_contents(self.store)),
-            ("relationship", _relationship_contents(self.store)),
-            ("finding", _item_contents("finding", self.store.findings.list(limit=1_000_000))),
-        ):
-            for item_id, body in contents:
-                digest = content_hash(body)
-                view.hashes[kind][item_id] = digest
-                view.bodies[digest] = body
+        with self.store.engine.connect() as conn:
+            for kind, spec in _CONTENT_TABLES.items():
+                hashes = view.hashes[kind]
+                for item_id, digest in conn.execute(select(spec.table.c.id, spec.table.c.content_hash)):
+                    if digest is not None:
+                        hashes[item_id] = digest
+                for item_id, _h, body in _row_contents(conn, kind, spec.table.c.content_hash.is_(None)):
+                    digest = content_hash(body)
+                    hashes[item_id] = digest
+                    view.bodies[digest] = body
+        for item_id, body in _item_contents("finding", self.store.findings.list(limit=1_000_000)):
+            digest = content_hash(body)
+            view.hashes["finding"][item_id] = digest
+            view.bodies[digest] = body
+        view.loader = partial(self._current_bodies, view)
         return view
+
+    def _current_bodies(self, view: StateView, wanted: builtins.list[str]) -> dict[str, dict[str, Any]]:
+        """Bodies of current rows by the content hash ``view`` recorded for them."""
+        remaining = set(wanted)
+        result: dict[str, dict[str, Any]] = {}
+        with self.store.engine.connect() as conn:
+            for kind, spec in _CONTENT_TABLES.items():
+                hashes = view.hashes[kind]
+                ids: builtins.list[str] = []
+                for item_id, digest in hashes.items():
+                    if digest in remaining:
+                        ids.append(item_id)
+                        remaining.discard(digest)
+                for batch in chunks(ids, 500):
+                    for item_id, _h, body in _row_contents(conn, kind, spec.table.c.id.in_(batch)):
+                        result[hashes[item_id]] = body
+        return result
 
     def snapshot_state(self, name: str) -> StateView:
         snapshot = self.require(name)
         return StateView(label=snapshot.name, hashes=self.item_hashes(snapshot.id), loader=self.load_bodies)
 
     def materialize(
-        self, name: str, *, propagation_only: bool = False
+        self, name: str, *, propagation_only: bool = False, with_types: Collection[str] = ()
     ) -> tuple[builtins.list[SecurityObject], builtins.list[Relationship]]:
         """Rebuild objects and relationships of a snapshot (for graph algorithms over past states).
 
         ``propagation_only`` keeps what propagation uses (like
         :func:`~raf.core.graph.source.propagation_source`) and decodes only those bodies: a
         relationship ID determines its type and endpoints, so IDs that still exist in the workspace
-        are classified there and only relationships that have since disappeared are decoded."""
+        are classified there and only relationships that have since disappeared are decoded.
+        ``with_types`` adds every relationship of those types whatever its endpoints, and the
+        objects at their ends (an operation that edits such relationships sees all of them)."""
         snapshot = self.require(name)
         hashes = self.item_hashes(snapshot.id)
         object_hashes, rel_hashes = hashes["object"], hashes["relationship"]
+        extra = frozenset(with_types)
         if propagation_only:
             excluded = sorted(NON_PROPAGATING_TYPES)
-            object_hashes = {i: h for i, h in object_hashes.items() if i.split(":", 1)[0] not in NON_PROPAGATING_TYPES}
+            all_objects = object_hashes
+            object_hashes = {i: h for i, h in all_objects.items() if i.split(":", 1)[0] not in NON_PROPAGATING_TYPES}
             relevant = self.store.relationships.ids(
                 types=sorted(PROPAGATION_RELATIONSHIPS), exclude_endpoint_types=excluded
             )
+            if extra:
+                relevant |= self.store.relationships.ids(types=sorted(extra))
             existing = self.store.relationships.ids()
             rel_hashes = {i: h for i, h in rel_hashes.items() if i in relevant or i not in existing}
-        bodies = self.load_bodies([*object_hashes.values(), *rel_hashes.values()])
+        rel_bodies = self.load_bodies(builtins.list(rel_hashes.values()))
+        kept = {
+            item_id: rel_bodies[digest]
+            for item_id, digest in rel_hashes.items()
+            if not propagation_only or rel_bodies[digest]["type"] in extra or _propagates(rel_bodies[digest])
+        }
+        if propagation_only:
+            for body in kept.values():
+                for end in (body["source"], body["target"]) if body["type"] in extra else ():
+                    if end in all_objects:
+                        object_hashes.setdefault(end, all_objects[end])
+        bodies = self.load_bodies(builtins.list(object_hashes.values()))
         when = snapshot.created_at
         # bodies were written by R$F from validated models: construct without re-validating
         objects = []
@@ -424,27 +504,19 @@ class SnapshotService:
                     valid_to=None if body.get("active", True) else when,
                 )
             )
-        relationships = []
-        for item_id, digest in rel_hashes.items():
-            body = bodies[digest]
-            if propagation_only and not (
-                body["type"] in PROPAGATION_RELATIONSHIPS
-                and body["source"].split(":", 1)[0] not in NON_PROPAGATING_TYPES
-                and body["target"].split(":", 1)[0] not in NON_PROPAGATING_TYPES
-            ):
-                continue
-            relationships.append(
-                build_relationship(
-                    id=item_id,
-                    relationship_type=body["type"],
-                    source_object=body["source"],
-                    target_object=body["target"],
-                    metadata=body["metadata"],
-                    created_at=when,
-                    updated_at=when,
-                    valid_to=None if body.get("active", True) else when,
-                )
+        relationships = [
+            build_relationship(
+                id=item_id,
+                relationship_type=body["type"],
+                source_object=body["source"],
+                target_object=body["target"],
+                metadata=body["metadata"],
+                created_at=when,
+                updated_at=when,
+                valid_to=None if body.get("active", True) else when,
             )
+            for item_id, body in kept.items()
+        ]
         return objects, relationships
 
     def item_ids(self, name: str, kind: str = "relationship") -> set[str]:
@@ -455,6 +527,15 @@ class SnapshotService:
                 s.snapshot_items.c.snapshot_id == snapshot.id, s.snapshot_items.c.kind == kind
             )
             return {row[0] for row in conn.execute(stmt)}
+
+
+def _propagates(body: dict[str, Any]) -> bool:
+    """Whether propagation can use a relationship (its type, and no endpoint it never enters)."""
+    return (
+        body["type"] in PROPAGATION_RELATIONSHIPS
+        and body["source"].split(":", 1)[0] not in NON_PROPAGATING_TYPES
+        and body["target"].split(":", 1)[0] not in NON_PROPAGATING_TYPES
+    )
 
 
 def resolve_state(ctx: RafContext, ref: str) -> StateView:

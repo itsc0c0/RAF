@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from sqlalchemy import Connection, Engine, and_, delete, func, or_, select, update
 
+from raf.core.objects.content import content_hash, json_value, relationship_body
 from raf.core.objects.models import Relationship, RelationshipDraft, build_relationship
 from raf.core.storage import schema as s
 from raf.core.storage.database import chunks, transaction, upsert
@@ -246,17 +247,23 @@ class RelationshipRepository:
             "meta": d.metadata,
             "observations": d.observations,
             "synthetic": d.synthetic,
+            "content_hash": content_hash(
+                relationship_body(d.type, d.source_id, d.target_id, json_value(d.metadata), d.valid_to is None)
+            ),
         }
 
     def end(self, rel_ids: Iterable[str], at: datetime, conn: Connection | None = None) -> int:
-        """Mark relationships as no longer valid from ``at`` (temporal end, not deletion)."""
+        """Mark relationships as no longer valid from ``at`` (temporal end, not deletion).
+
+        Their content changes (no longer active): the content hash is cleared and recomputed by the
+        next snapshot."""
         changed = 0
         with transaction(self.engine, conn) as c:
             for batch in chunks(sorted(set(rel_ids)), 500):
                 result = c.execute(
                     update(s.relationships)
                     .where(s.relationships.c.id.in_(batch))
-                    .values(valid_to=at, updated_at=utcnow())
+                    .values(valid_to=at, updated_at=utcnow(), content_hash=None)
                 )
                 changed += result.rowcount or 0
         return changed

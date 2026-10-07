@@ -59,6 +59,12 @@ item costs one index row. `raf snapshot create` reports the storage effect (`b` 
 blobs, 1,314 shared*) and a **state hash**, the SHA-256 over the sorted (kind, ID, content hash)
 rows: two snapshots with the same hash hold the same state.
 
+Every object and relationship row carries the hash of its content, written with the row, so a
+snapshot of the workspace copies hashes inside the database and computes bodies only for content no
+snapshot holds yet. Rows without a hash - written before R$F kept them, or relationships ended in
+bulk - get one at the next snapshot (the first snapshot of an older workspace computes them all
+once). `raf diff` reads the bodies of the items that changed only.
+
 * Names: letters, digits, `.`, `_`, `-` (at most 64 characters, starting with a letter or digit),
   not `current`, unique without regard to case; a duplicate is refused (exit 4).
 * `--source ghost:MODEL` stores the model's state (relationships and objects after its what-if

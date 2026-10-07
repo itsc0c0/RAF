@@ -9,7 +9,9 @@ Design notes
 * ``event_objects`` indexes every object involved in an event (with its role and
   timestamp) so per-object timelines are a single indexed range scan.
 * Snapshots use content-addressed ``blobs`` shared across snapshots (structural
-  sharing): unchanged items cost one ``snapshot_items`` row, not a copy.
+  sharing): unchanged items cost one ``snapshot_items`` row, not a copy. Objects and
+  relationships carry the hash of their canonical content (``content_hash``), so a
+  snapshot copies hashes with ``INSERT ... SELECT`` instead of recomputing them.
 * Custody and audit logs are hash chained (``prev_hash`` -> ``entry_hash``).
 """
 
@@ -60,6 +62,8 @@ objects = Table(
     Column("metadata", JSONType, nullable=False, key="meta"),
     Column("observations", Integer, nullable=False, default=1),
     Column("synthetic", Boolean, nullable=False, default=False),
+    # SHA-256 of the canonical content (raf.core.objects.content), written with the row; NULL until computed
+    Column("content_hash", String(64)),
     Index("ix_objects_type_name_lc", "type", "name_lc"),
     Index("ix_objects_name_lc", "name_lc"),
 )
@@ -90,6 +94,7 @@ relationships = Table(
     Column("metadata", JSONType, nullable=False, key="meta"),
     Column("observations", Integer, nullable=False, default=1),
     Column("synthetic", Boolean, nullable=False, default=False),
+    Column("content_hash", String(64)),  # as on objects
     Index("ix_relationships_source_type", "source_id", "type"),
     Index("ix_relationships_target_type", "target_id", "type"),
     Index("ix_relationships_type", "type"),
