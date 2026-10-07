@@ -41,9 +41,12 @@ class EvaluateRequest(BaseModel):
 
 
 class CheckRequest(BaseModel):
-    document: str = Field(..., description="Policy document text (raf-policy/1 JSON/YAML, AWS-style JSON or CSV).")
-    format: str = Field("json", pattern="^(json|yaml|yml|csv)$")
+    document: str = Field(
+        ..., description="Policy document text (raf-policy/1 JSON/YAML, AWS-style JSON, CSV or iptables-save)."
+    )
+    format: str = Field("json", pattern="^(json|yaml|yml|csv|iptables)$")
     principal: str | None = Field(None, max_length=300)
+    host: str | None = Field(None, max_length=200, description="iptables-save: the host the rules belong to.")
 
 
 @router.get("/policies")
@@ -94,8 +97,9 @@ def check(request: Annotated[CheckRequest, Body()], ctx: Ctx) -> dict[str, Any]:
     """Normalize and analyze a policy document without storing it."""
     if len(request.document.encode("utf-8", "replace")) > MAX_POLICY_FILE_BYTES:
         raise InvalidInputError("Policy document is too large.")
+    suffix = ".rules" if request.format == "iptables" else f".{request.format}"
     policy_set = parse_policy_text(
-        request.document, source="request", suffix=f".{request.format}", principal=request.principal
+        request.document, source="request", suffix=suffix, principal=request.principal, host=request.host
     )
     service = PolicyService(ctx)
     from raf.products.policy.engine import analyze_set

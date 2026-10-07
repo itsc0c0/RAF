@@ -39,7 +39,9 @@ import { routeTo } from '../../lib/routes';
 import { ComputedFindingDrawer } from '../findings/FindingDetail';
 import { FindingsTable } from '../findings/FindingsTable';
 import {
+  hostFromFileName,
   inferPolicyFormat,
+  IPTABLES_SUFFIXES,
   isEmptyPolicyDiff,
   MAX_POLICY_DOCUMENT_BYTES,
   POLICY_FORMATS,
@@ -615,6 +617,7 @@ const FORMAT_LABELS: Record<PolicyFormat, string> = {
   json: 'JSON (raf-policy/1, AWS-style)',
   yaml: 'YAML (raf-policy/1)',
   csv: 'CSV (firewall export)',
+  iptables: 'iptables-save (filter table)',
 };
 
 function PolicyCheckResultView({ result }: { result: PolicyCheckResult }) {
@@ -691,6 +694,7 @@ export function PolicyCheckView() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [format, setFormat] = useState<PolicyFormat>('json');
   const [principal, setPrincipal] = useState('');
+  const [host, setHost] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const fileId = useId();
 
@@ -704,9 +708,11 @@ export function PolicyCheckView() {
     // The browser reads the file; only its text reaches the API (the server never reads a path).
     void file.text().then(
       (content) => {
+        const inferred = inferPolicyFormat(file.name);
         setText(content);
         setFileName(file.name);
-        setFormat(inferPolicyFormat(file.name));
+        setFormat(inferred);
+        if (inferred === 'iptables') setHost(hostFromFileName(file.name));
       },
       () => setProblem(`${file.name} could not be read.`),
     );
@@ -726,7 +732,12 @@ export function PolicyCheckView() {
               return;
             }
             setProblem(null);
-            check.mutate({ document: text, format, principal: principal.trim() || undefined });
+            check.mutate({
+              document: text,
+              format,
+              principal: principal.trim() || undefined,
+              host: format === 'iptables' ? host.trim() || undefined : undefined,
+            });
           }}
         >
           <Callout title="Nothing is stored">
@@ -740,12 +751,12 @@ export function PolicyCheckView() {
               id={fileId}
               type="file"
               className="input input--file"
-              accept=".json,.yaml,.yml,.csv"
+              accept={['.json', '.yaml', '.yml', '.csv', ...IPTABLES_SUFFIXES].join(',')}
               onChange={(event) => pick(event.target.files?.[0])}
             />
             <p className="field__hint">
-              raf-policy/1 JSON or YAML, AWS-style JSON, or a CSV firewall export; at most 5 MB. The file is
-              loaded into the document below.
+              raf-policy/1 JSON or YAML, AWS-style JSON, a CSV firewall export or iptables-save output; at
+              most 5 MB. The file is loaded into the document below.
             </p>
             {fileName ? <p className="small muted break">Loaded {fileName}.</p> : null}
           </div>
@@ -787,6 +798,22 @@ export function PolicyCheckView() {
                 />
               )}
             </Field>
+            {format === 'iptables' ? (
+              <Field
+                label="Host (optional)"
+                className="grow"
+                hint="The host whose rules these are, e.g. VPN-01: its INPUT and OUTPUT rules apply to host:NAME"
+              >
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    value={host}
+                    maxLength={200}
+                    onChange={(event) => setHost(event.target.value)}
+                  />
+                )}
+              </Field>
+            ) : null}
           </div>
           {problem ? (
             <p className="field__error" role="alert">

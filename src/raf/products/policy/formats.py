@@ -2,9 +2,10 @@
 
 Supported (auto-detected):
 
-* ``raf-policy/1`` - R$F native JSON or YAML (network rules and identity statements)
-* ``aws-iam``      - AWS-IAM-style JSON documents (``Version``/``Statement``)
-* ``csv-firewall`` - firewall rule exports as CSV (id, action, source, destination, protocol, port, ...)
+* ``raf-policy/1``  - R$F native JSON or YAML (network rules and identity statements)
+* ``aws-iam``       - AWS-IAM-style JSON documents (``Version``/``Statement``)
+* ``csv-firewall``  - firewall rule exports as CSV (id, action, source, destination, protocol, port, ...)
+* ``iptables-save`` - Linux iptables/ip6tables rule sets (:mod:`raf.products.policy.iptables`)
 
 Policy files are untrusted input: parsed with safe loaders only, size- and count-limited, and
 every identifier is normalized; nothing is ever executed or interpolated into commands.
@@ -23,6 +24,7 @@ import yaml
 from raf.core.errors import InvalidInputError
 from raf.core.ids import slugify
 from raf.core.ports import ANY, normalize_ports
+from raf.products.policy.iptables import IPTABLES_SUFFIXES, looks_like_iptables, parse_iptables
 from raf.products.policy.model import (
     MAX_RULES_PER_POLICY,
     Policy,
@@ -36,7 +38,7 @@ from raf.products.policy.model import (
 )
 
 MAX_POLICY_FILE_BYTES = 5 * 1024 * 1024
-POLICY_SUFFIXES = (".json", ".yaml", ".yml", ".csv")
+POLICY_SUFFIXES = (".json", ".yaml", ".yml", ".csv", *IPTABLES_SUFFIXES)
 _CSV_ALIASES = {
     "id": ("id", "rule", "rule_id", "name", "rule_name"),
     "effect": ("action", "effect", "decision", "verdict"),
@@ -380,6 +382,8 @@ def sniff_policy(head: bytes, suffix: str) -> float:
     lowered = text.lower()
     if "raf-policy/" in lowered:
         return 0.98
+    if looks_like_iptables(text):
+        return 0.95
     if suffix in (".json", ".yaml", ".yml"):
         if '"statement"' in lowered and '"effect"' in lowered:
             return 0.93
@@ -402,11 +406,20 @@ def sniff_policy(head: bytes, suffix: str) -> float:
 
 
 def parse_policy_text(
-    text: str, *, source: str | None = None, suffix: str = ".json", principal: str | None = None
+    text: str,
+    *,
+    source: str | None = None,
+    suffix: str = ".json",
+    principal: str | None = None,
+    host: str | None = None,
 ) -> PolicySet:
+    """Parse a policy document. ``principal`` names the subject of AWS-style documents without one;
+    ``host`` the machine an iptables-save rule set belongs to (default: the document's name)."""
     if len(text.encode("utf-8", "replace")) > MAX_POLICY_FILE_BYTES:
         raise InvalidInputError(f"Policy document exceeds {MAX_POLICY_FILE_BYTES // (1024 * 1024)} MB.")
     suffix = suffix.lower()
+    if suffix in IPTABLES_SUFFIXES or looks_like_iptables(text):
+        return parse_iptables(text, source, host=host)
     if suffix == ".csv":
         return parse_csv(text, source)
     try:
@@ -424,7 +437,7 @@ def parse_policy_text(
     return parse_native(doc, source)
 
 
-def load_policy_file(path: Path, *, principal: str | None = None) -> PolicySet:
+def load_policy_file(path: Path, *, principal: str | None = None, host: str | None = None) -> PolicySet:
     if not path.is_file():
         raise InvalidInputError(f"{path} is not a file.")
     size = path.stat().st_size
@@ -433,14 +446,14 @@ def load_policy_file(path: Path, *, principal: str | None = None) -> PolicySet:
             f"{path.name} is {size:,} bytes; policy files are limited to {MAX_POLICY_FILE_BYTES // (1024 * 1024)} MB."
         )
     text = path.read_text(encoding="utf-8-sig", errors="replace")
-    return parse_policy_text(text, source=path.name, suffix=path.suffix or ".json", principal=principal)
+    return parse_policy_text(text, source=path.name, suffix=path.suffix or ".json", principal=principal, host=host)
 
 
-def load_policy_path(path: Path, *, principal: str | None = None) -> list[PolicySet]:
-    """A policy file, or every policy file (json/yaml/yml/csv) directly inside a directory."""
+def load_policy_path(path: Path, *, principal: str | None = None, host: str | None = None) -> list[PolicySet]:
+    """A policy file, or every policy file (see :data:`POLICY_SUFFIXES`) directly inside a directory."""
     if path.is_dir():
         files = sorted(p for p in path.iterdir() if p.is_file() and p.suffix.lower() in POLICY_SUFFIXES)
         if not files:
-            raise InvalidInputError(f"No policy files (.json, .yaml, .yml, .csv) in {path}.")
-        return [load_policy_file(f, principal=principal) for f in files]
-    return [load_policy_file(path, principal=principal)]
+            raise InvalidInputError(f"No policy files ({', '.join(POLICY_SUFFIXES)}) in {path}.")
+        return [load_policy_file(f, principal=principal, host=host) for f in files]
+    return [load_policy_file(path, principal=principal, host=host)]

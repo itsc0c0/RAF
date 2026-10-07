@@ -9,8 +9,8 @@ Status: **BETA** · category: exposure · command: `raf policy` · API: `/api/v1
 ## Commands
 
 ```text
-raf policy check FILE|DIR [--principal P]           normalize + analyze, nothing stored
-raf policy import FILE|DIR [--principal P]          store policies in the workspace graph
+raf policy check FILE|DIR [--principal P] [--host NAME]    normalize + analyze, nothing stored
+raf policy import FILE|DIR [--principal P] [--host NAME]   store policies in the workspace graph
 raf policy analyze [FILE|DIR] [--no-save]           analyze stored policies, record findings
 raf policy list | show POLICY
 raf policy can SUBJECT VERB TARGET [--port P] [--from HOST]
@@ -41,14 +41,40 @@ raf policy diff BEFORE [AFTER=current]              files, directories, current 
 * **CSV firewall exports**: headers such as `id, action, source, destination, protocol, port,
   description, enabled, policy`; bare zone names become `network:<name>`; the default action is
   assumed to be deny (stated as a warning).
+* **iptables-save / ip6tables-save** output (`.rules`, `.iptables`, `.v4`, `.v6`, or any file whose
+  content is recognized): only the `filter` table decides access (`nat`, `mangle`, `raw` and
+  `security` are reported and ignored). A rule set becomes up to two first-match network policies,
+  named after the file or `--host NAME`:
+
+  | iptables | R$F |
+  |---|---|
+  | `FORWARD` (traffic the host routes) | `<name>-forward`, scoped to the networks its rules name; default = the chain policy. Not imported when FORWARD has no rules for new flows (a host that does not route) or names no address (interface-only rules), so a server's `FORWARD DROP` never denies the rest of the workspace |
+  | `INPUT`, `OUTPUT` (traffic to and from the host) | `<name>-host`, scoped to `host:<name>`: INPUT rules without `-d` target the host, OUTPUT rules without `-s` come from it, and each chain policy closes its part as a final rule (`input-policy`, `output-policy`) |
+  | `-j ACCEPT`; `-j DROP`, `-j REJECT` | allow; deny |
+  | jump to a user chain | inlined with both rules' conditions combined (rule `forward-6.raven-deploy-1` is rule 1 of `RAVEN-DEPLOY` reached through FORWARD rule 6); after `RETURN` the calling chain continues, and in a built-in chain the chain policy decides |
+  | `LOG`, `NFLOG`, `MARK`, `SET` and other non-terminating targets | nothing: the packet continues |
+  | loopback rules (`-i lo`), `--ctstate ESTABLISHED,RELATED`, `INVALID` | left out: they decide nothing about new flows between hosts |
+
+  Rule descriptions come from `-m comment`; metadata keeps each rule's chain, line and target.
+  Conditions the model cannot express exactly - negation, interfaces other than loopback, source
+  ports, ICMP codes, connection states such as `DNAT`, match modules other than tcp, udp, icmp,
+  multiport, comment, conntrack/state and iprange, options it does not know, `--goto`, jump loops,
+  rules after a conditional `RETURN` - are never approximated away: such a rule is imported
+  **disabled** with the reasons in `metadata.unmodeled`, and the set's warnings count them.
+  `raf policy check fixtures/policies/raven-edge.rules` shows the Raven router's rules: the jump of
+  r40 to `RAVEN-DEPLOY` accepts every port from DEV to PROD, so r85, the database protection, can
+  never apply.
 
 Selectors: `any`, CIDRs (`10.20.0.0/16`), typed objects (`network:DEV`, `host:DB-01`,
 `service:postgres`, `group:engineering`, `role:developer`), `type:*` and glob patterns for
-resources; ports `any`, `tcp/443`, `tcp/1000-2000`, `udp/53`, `icmp` or service names (`ssh`,
-`https`, `postgres` ...); actions `*`, exact names, or prefix wildcards (`deploy:*`).
+resources; ports `any`, `tcp/443`, `tcp/1000-2000`, `udp/53`, `tcp/all` (a whole protocol), `icmp`,
+`icmp/8` or service names (`ssh`, `https`, `postgres` ...); actions `*`, exact names, or prefix
+wildcards (`deploy:*`).
 
 Policy files are untrusted input: safe loaders only (YAML anchors/aliases are refused), 5 MB and
-5,000-rule limits, scalar selectors only; nothing is executed.
+5,000-rule limits, scalar selectors only; nothing is executed. iptables rules are split into words
+like a shell command line but never run; flattening user chains is bounded (100,000 rule visits),
+and every resulting policy keeps the 5,000-rule limit.
 
 ## Semantics
 

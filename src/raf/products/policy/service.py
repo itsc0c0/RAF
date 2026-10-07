@@ -202,8 +202,8 @@ class PolicyService:
         warnings = [w for s in sets for w in s.warnings]
         return ImportResult(policies=summaries, job=job.id, report=report, warnings=warnings)
 
-    def import_path(self, path: Path, *, principal: str | None = None) -> ImportResult:
-        sets = load_policy_path(path, principal=principal)
+    def import_path(self, path: Path, *, principal: str | None = None, host: str | None = None) -> ImportResult:
+        sets = load_policy_path(path, principal=principal, host=host)
         return self.import_sets(sets, source_label=path.name)
 
     # ------------------------------------------------------------------ analysis
@@ -220,8 +220,10 @@ class PolicyService:
             )
         return analysis
 
-    def check(self, path: Path, *, principal: str | None = None) -> tuple[list[PolicySet], PolicyAnalysis]:
-        sets = load_policy_path(path, principal=principal)
+    def check(
+        self, path: Path, *, principal: str | None = None, host: str | None = None
+    ) -> tuple[list[PolicySet], PolicyAnalysis]:
+        sets = load_policy_path(path, principal=principal, host=host)
         analysis = analyze_set(self.world(), policies_of(sets))
         analysis.warnings += [w for s in sets for w in s.warnings]
         return sets, analysis

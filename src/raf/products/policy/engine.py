@@ -833,6 +833,12 @@ def _broad(world: PolicyWorld, policy: Policy, rule: PolicyRule) -> list[Finding
     ]
 
 
+def _closes_chain(rule: PolicyRule) -> bool:
+    """A rule standing for a chain's policy (iptables INPUT/OUTPUT, see :mod:`policy.iptables`): it
+    catches what the chain's own rules leave, so overlapping other rules is its purpose, not a conflict."""
+    return "chain_policy" in rule.metadata
+
+
 def _anomalies(world: PolicyWorld, policy: Policy, rule: PolicyRule, earlier: list[PolicyRule]) -> list[Finding]:
     domain = policy.domain
     if policy.evaluation == "first-match":
@@ -880,6 +886,8 @@ def _anomalies(world: PolicyWorld, policy: Policy, rule: PolicyRule, earlier: li
                 and rule_overlaps(world, domain, prior, rule)
                 and not rule_covers(world, domain, rule, prior)
                 and not _catch_all(rule)
+                and not _closes_chain(prior)
+                and not _closes_chain(rule)
             ):
                 return [
                     _finding(

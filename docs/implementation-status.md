@@ -46,7 +46,7 @@ integration, and documentation that describes the actual behavior.
 | Diff | BETA | snapshots, current state and Ghost models; categories, importance with reasons | — |
 | Blast | BETA | control/reach/trust propagation, vulnerability upgrades, explainable paths and risk | port-level policy is not part of propagation (see `raf policy can`) |
 | IAM | BETA | effective access, privilege paths, dormant/MFA/excessive/inherited/credential-exposure findings | no cloud-provider permission evaluation beyond imported statements |
-| Policy | BETA | firewall and access policy normalization (raf-policy/1, IAM JSON, CSV), anomaly analysis, flow decisions, revision diffs | vendor-specific firewall syntaxes are not parsed (CSV export path only) |
+| Policy | BETA | firewall and access policy normalization (raf-policy/1, IAM JSON, CSV exports, iptables-save with user chains inlined), anomaly analysis, flow decisions, revision diffs | other firewall syntaxes (nftables, vendor configurations) are not parsed; iptables conditions beyond addresses, protocols, destination ports and ICMP types are imported as disabled rules |
 | Exposure | BETA | per-asset explainable exposure, workspace metrics, findings | — |
 | Ghost | BETA | what-if models with 12 operations, undo, simulate, compare, min-cost cut suggestions, snapshot source | zone-level network modeling |
 | Range | BETA | presets (raven, acme, small-office, enterprise), seeded organizations, simulated activity periods, clean purge | no live services; periods are generated synchronously |

@@ -5,14 +5,28 @@ import { displayValue } from '../../lib/format';
 /** `POST /policy/check` refuses documents above 5 MB (`MAX_POLICY_FILE_BYTES`). */
 export const MAX_POLICY_DOCUMENT_BYTES = 5 * 1024 * 1024;
 
-export const POLICY_FORMATS: readonly PolicyFormat[] = ['json', 'yaml', 'csv'];
+export const POLICY_FORMATS: readonly PolicyFormat[] = ['json', 'yaml', 'csv', 'iptables'];
 
-/** The document format from a file name (`.yaml`, `.yml`, `.csv`; JSON otherwise, as `raf policy check` reads it). */
+/** iptables-save file suffixes, as `raf policy check` recognizes them (`IPTABLES_SUFFIXES`). */
+export const IPTABLES_SUFFIXES: readonly string[] = ['.rules', '.iptables', '.v4', '.v6'];
+
+/**
+ * The document format from a file name (`.yaml`, `.yml`, `.csv`, iptables-save suffixes; JSON
+ * otherwise, as `raf policy check` reads it). The server also recognizes iptables-save by content.
+ */
 export function inferPolicyFormat(filename: string): PolicyFormat {
   const name = filename.toLowerCase();
   if (name.endsWith('.yaml') || name.endsWith('.yml')) return 'yaml';
   if (name.endsWith('.csv')) return 'csv';
+  if (IPTABLES_SUFFIXES.some((suffix) => name.endsWith(suffix))) return 'iptables';
   return 'json';
+}
+
+/** The host an iptables-save file belongs to by default: its name without the suffix (`raf policy check` does the same). */
+export function hostFromFileName(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? '';
+  const dot = base.lastIndexOf('.');
+  return (dot > 0 ? base.slice(0, dot) : base).slice(0, 200);
 }
 
 /** True when the two revisions do not differ in any policy, default, rule or analysis finding. */

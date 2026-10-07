@@ -41,6 +41,7 @@ def outputs() -> dict[str, Callable[[], str | bytes]]:
             json.dumps(raven.policy_document(raven.PREVIOUS_POLICY_REVISION), indent=2) + "\n"
         ),
         "policies/raven-fw-export.csv": raven.firewall_csv,
+        "policies/raven-edge.rules": raven.firewall_iptables,
         "pcap/raven-inc001.pcap": lambda: raven_capture(seed=1),
         "surface/raven-surface.json": raven_surface_json,
     }

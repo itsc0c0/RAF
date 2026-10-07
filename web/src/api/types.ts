@@ -680,13 +680,15 @@ export interface PolicyEvaluateRequest {
 }
 
 /** Format of a policy document sent to `POST /policy/check` (raf-policy/1 and AWS-style JSON are `json`). */
-export type PolicyFormat = 'json' | 'yaml' | 'csv';
+export type PolicyFormat = 'json' | 'yaml' | 'csv' | 'iptables';
 
 export interface PolicyCheckRequest {
   document: string;
   format: PolicyFormat;
   /** Principal for AWS-style statements that name none. */
   principal?: string;
+  /** iptables-save: the host the rules belong to (names the policies and their `host:` scope). */
+  host?: string;
 }
 
 /** A normalized policy document: one file or revision. */

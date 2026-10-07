@@ -92,6 +92,15 @@ def test_port_set_arithmetic() -> None:
         PortSet.parse(["tcp/70000"])
 
 
+@pytest.mark.parametrize(
+    "ports", [["udp"], ["tcp", "udp/53"], ["icmp"], ["icmp/8", "tcp/all"], ["tcp/0-65535", "udp", "icmp"], ["any/all"]]
+)
+def test_port_labels_read_back_as_the_same_set(ports: list[str]) -> None:
+    # labels() names a whole protocol "udp/all": stored rules (normalize_ports) must parse again
+    labels = PortSet.parse(ports).labels()
+    assert PortSet.parse(labels) == PortSet.parse(ports) and normalize_ports(labels) == labels
+
+
 def test_selector_normalization() -> None:
     assert normalize_address("0.0.0.0/0") == "any"
     assert normalize_address("10.20.0.0/16") == "cidr:10.20.0.0/16"

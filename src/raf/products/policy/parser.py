@@ -12,7 +12,7 @@ from typing import IO, Any, ClassVar
 
 from raf.core.errors import InvalidInputError
 from raf.core.ingestion.base import ParseContext, Parser, RawRecord
-from raf.products.policy.formats import MAX_POLICY_FILE_BYTES, parse_policy_text, sniff_policy
+from raf.products.policy.formats import MAX_POLICY_FILE_BYTES, POLICY_SUFFIXES, parse_policy_text, sniff_policy
 from raf.products.policy.model import Policy
 
 
@@ -39,8 +39,10 @@ def policy_object_record(policy: Policy, source_label: str) -> dict[str, Any]:
 class PolicyFileParser(Parser):
     name: ClassVar[str] = "raf-policy"
     version: ClassVar[str] = "1.0"
-    description: ClassVar[str] = "Policy documents: raf-policy/1 (JSON/YAML), AWS-style IAM JSON, CSV firewall exports"
-    extensions: ClassVar[tuple[str, ...]] = (".json", ".yaml", ".yml", ".csv")
+    description: ClassVar[str] = (
+        "Policy documents: raf-policy/1 (JSON/YAML), AWS-style IAM JSON, CSV firewall exports, iptables-save"
+    )
+    extensions: ClassVar[tuple[str, ...]] = POLICY_SUFFIXES
     normalizer: ClassVar[str] = "raf-native"
 
     @classmethod

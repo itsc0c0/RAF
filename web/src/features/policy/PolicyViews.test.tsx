@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import ExposurePage from '../../pages/ExposurePage';
 import { mockFetch, renderWithApp } from '../../test/utils';
-import { inferPolicyFormat, ruleFieldText } from './policyModel';
+import { hostFromFileName, inferPolicyFormat, ruleFieldText } from './policyModel';
 import { CHECK_NOTICE } from './PolicyViews';
 
 const HOSTILE = '<img src=x onerror=alert(1)> widened for the migration';
@@ -273,12 +273,43 @@ describe('Policy: check a document', () => {
     expect(screen.queryByRole('region', { name: 'Check result' })).toBeNull();
   });
 
+  it('sends an iptables-save file with the host named after it, editable before the check', async () => {
+    const user = userEvent.setup();
+    const { calls } = mockFetch([{ method: 'POST', path: '/policy/check', body: CHECK_RESULT }]);
+    renderExposure('/exposure?view=policy-check');
+
+    const form = await screen.findByRole('form', { name: 'Check a policy document' });
+    expect(within(form).queryByLabelText('Host (optional)')).toBeNull(); // only for iptables-save
+    const rules =
+      '*filter\n:INPUT DROP [0:0]\n:FORWARD DROP [0:0]\n-A FORWARD -s 10.20.0.0/16 -j ACCEPT\nCOMMIT\n';
+    await user.upload(
+      within(form).getByLabelText('Policy file (optional)'),
+      new File([rules], 'raven-edge.rules', { type: 'text/plain' }),
+    );
+    await waitFor(() => expect(within(form).getByLabelText('Policy document')).toHaveValue(rules));
+    expect(within(form).getByLabelText('Format')).toHaveValue('iptables');
+    const host = within(form).getByLabelText('Host (optional)');
+    expect(host).toHaveValue('raven-edge');
+    await user.clear(host);
+    await user.type(host, 'VPN-01');
+    await user.click(within(form).getByRole('button', { name: 'Check' }));
+
+    await screen.findByRole('region', { name: 'Check result' });
+    const post = calls.find((call) => call.method === 'POST')!;
+    expect(post.body).toEqual({ document: rules, format: 'iptables', host: 'VPN-01' });
+  });
+
   it('infers the document format from the file name', () => {
     expect(inferPolicyFormat('rules.YML')).toBe('yaml');
     expect(inferPolicyFormat('rules.yaml')).toBe('yaml');
     expect(inferPolicyFormat('export.CSV')).toBe('csv');
     expect(inferPolicyFormat('iam-policy.json')).toBe('json');
     expect(inferPolicyFormat('policy')).toBe('json');
+    expect(inferPolicyFormat('edge.rules')).toBe('iptables');
+    expect(inferPolicyFormat('etc/iptables/RULES.V4')).toBe('iptables');
+    expect(hostFromFileName('C:\\exports\\raven-edge.rules')).toBe('raven-edge');
+    expect(hostFromFileName('fw.backup.v4')).toBe('fw.backup');
+    expect(hostFromFileName('.rules')).toBe('.rules');
     expect(ruleFieldText(['tcp/22', 'tcp/8443'])).toBe('tcp/22, tcp/8443');
     expect(ruleFieldText([])).toBe('(none)');
     expect(ruleFieldText(false)).toBe('false');

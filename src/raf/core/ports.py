@@ -71,9 +71,13 @@ class PortSet:
             text = value.strip().lower()
             if text in (ANY, "*", "all"):
                 return cls.everything()
-            if text in PROTOCOLS:
-                result.setdefault(text, []).append((0, _PROTO_MAX[text]))
+            head, slash, tail = (part.strip() for part in text.partition("/"))
+            if text in PROTOCOLS or (slash and head in PROTOCOLS and tail in (ANY, "*", "all")):
+                proto = head if slash else text  # "tcp" and "tcp/all" (what labels() writes) are the whole protocol
+                result.setdefault(proto, []).append((0, _PROTO_MAX[proto]))
                 continue
+            if slash and head == ANY and tail in (ANY, "*", "all"):
+                return cls.everything()
             text = _WELL_KNOWN.get(text, text)
             match = _PORT_RE.match(text)
             if not match:
