@@ -24,7 +24,7 @@ from typing import Any
 from raf.core.context.app import RafContext
 from raf.core.errors import InvalidInputError, NotFoundError
 from raf.core.objects.models import Event, SecurityObject
-from raf.core.objects.semantics import CONTROL, TRUST, is_privileged
+from raf.core.objects.semantics import CONTROL, NON_PROPAGATING_TYPES, TRUST, is_privileged
 from raf.core.objects.types import ASSET_TYPES, PRINCIPAL_TYPES, Severity, confidence_level
 from raf.core.query.scope import Scope, resolve_scope
 from raf.core.storage.repos.events import EventQuery
@@ -1226,7 +1226,12 @@ def graph(ctx: RafContext, ref: str | None) -> Screen:
     current = focus(ctx)
     subject = _resolve(ctx, ref, current.subject, "object")
     scope = resolve_scope(ctx, [subject.id])
-    sub = GraphService(ctx).view(scope, depth=2, max_nodes=60)
+    # process records (activity: every program a host ran) would crowd out the security structure;
+    # propagation never enters them either, so they are only drawn when one is the subject
+    present = ctx.store.objects.count_by_type()
+    hidden = sorted(t for t in present if t in NON_PROPAGATING_TYPES and t != subject.type)
+    node_types = [t for t in present if t not in hidden] if hidden else None
+    sub = GraphService(ctx).view(scope, depth=2, max_nodes=60, node_types=node_types)
     index = sub.node_index()
     path_nodes: list[str] = []
     story_path: Any = None
@@ -1242,12 +1247,16 @@ def graph(ctx: RafContext, ref: str | None) -> Screen:
     # spanning tree: the story path first, then breadth-first by relationship priority
     parent: dict[str, tuple[str, str, str] | None] = {subject.id: None}
     order = [subject.id]
+    # the whole story path is drawn, also beyond the 2-hop neighborhood (its hops say how)
+    hop_types = {h.target: h.relationship_type for h in story_path.hops} if story_path is not None else {}
     for prev, node in itertools.pairwise(path_nodes):
         if node in parent or prev not in parent:
             continue
         rel = next(((t, d) for n, t, d in adjacency.get(prev, []) if n == node), None)
         if rel is None:
-            break
+            if node not in hop_types:
+                break
+            rel = (hop_types[node], "out")
         parent[node] = (prev, rel[0], rel[1])
         order.append(node)
     queue = list(order)
@@ -1261,17 +1270,20 @@ def graph(ctx: RafContext, ref: str | None) -> Screen:
             parent[other] = (node, rel_type, direction)
             order.append(other)
             queue.append(other)
+    outside = ctx.store.objects.get_many([n for n in order if n not in index])
     nodes = []
     for node_id in order:
         gnode = index.get(node_id)
-        obj_name = gnode.name if gnode else node_id.split(":", 1)[-1]
+        stored = outside.get(node_id)
+        obj_name = gnode.name if gnode else (stored.name if stored else node_id.split(":", 1)[-1])
+        criticality = gnode.criticality if gnode else (stored.metadata.get("criticality") if stored else None)
         link = parent[node_id]
         nodes.append(
             {
                 "id": node_id,
                 "label": obj_name,
                 "type": gnode.type if gnode else node_id.split(":", 1)[0],
-                "criticality": gnode.criticality if gnode else None,
+                "criticality": str(criticality) if criticality else None,
                 "highlight": node_id in path_nodes,
                 "parent": link[0] if link else None,
                 "edge": link[1] if link else None,
@@ -1308,6 +1320,8 @@ def graph(ctx: RafContext, ref: str | None) -> Screen:
             },
         ]
     notes = [f"{len(sub.nodes)} objects within 2 hops; {len(nodes)} drawn"]
+    if hidden:
+        notes.append(f"{', '.join(hidden)} records are not drawn (raf graph {subject.name} shows everything)")
     if sub.truncated:
         notes.append("the neighborhood was truncated (graph.max_nodes)")
     return Screen(

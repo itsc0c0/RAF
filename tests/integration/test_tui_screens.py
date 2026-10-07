@@ -179,6 +179,11 @@ def test_story_pages_tell_the_incident(raven: RafContext) -> None:
     ids = {n["id"] for n in drawing["nodes"]}
     assert drawing["root"] == "user:bob" and all(n["parent"] in ids for n in drawing["nodes"] if n["parent"])
     assert any(n["highlight"] for n in drawing["nodes"] if n["id"] == "host:dev-01")
+    # the whole story path is drawn (beyond two hops too); process activity records are not
+    highlighted = {n["id"] for n in drawing["nodes"] if n["highlight"]}
+    assert {"identity:svc-deploy", "cloud_resource:production"} <= highlighted
+    assert not any(n["type"] == "process" for n in drawing["nodes"])
+    assert any("process records are not drawn" in note for note in graph["notes"])
 
 
 def test_ghost_page_simulates_without_saving(raven: RafContext) -> None:
