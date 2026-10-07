@@ -5,13 +5,19 @@ synthetic traffic, test parsers against hostile input, reproduce configurations 
 scenarios. A lab is a container with no network, no capabilities, a read-only root filesystem, an
 unprivileged user and resource limits. Host files enter a lab only as read-only mounts.
 
-Status: **EXPERIMENTAL** · category: synthetic environments · command: `raf lab` · API: `/api/v1/lab`
+Status: **BETA** · category: synthetic environments · command: `raf lab` · API: `/api/v1/lab`
 
 Lab needs Docker or Podman. Its tests cover the container arguments, every validation rule, the
 lifecycle and the CLI and API through an in-memory backend, and the Docker/Podman backends through
-a scripted command runner, but **Lab is not tested end-to-end against a live container daemon in
-CI**. That is why it is EXPERIMENTAL. Lab never changes the host's configuration: it does not
-install a runtime, start a daemon, add firewall rules or touch the network setup.
+a scripted command runner. `tests/products/test_lab_docker.py` runs labs on a real Docker daemon
+(the Lab CI job, or locally with `RAF_TEST_DOCKER=1`) and checks every guarantee from inside the
+running container: the runtime's configuration (no network, all capabilities dropped,
+no-new-privileges, read-only root, limits, user, read-only binds, no socket), what a process sees
+(uid, empty capability sets, `NoNewPrivs`, only the loopback interface), the file systems (read-only
+root and input, writable `/lab/work` and `/tmp`, no execution from `/tmp`), the process and time
+limits, emptying on stop, removal on destroy, a `--root` lab and `--allow-outbound`. Podman is
+supported but has not been validated the same way. Lab never changes the host's configuration: it
+does not install a runtime, start a daemon, add firewall rules or touch the network setup.
 
 ## Commands
 
@@ -80,7 +86,7 @@ docker create --name raf-lab-default-protocol-test
   --security-opt no-new-privileges
   --read-only
   --tmpfs /tmp:rw,noexec,nosuid,size=64m
-  --tmpfs /lab/work:rw,nosuid,size=256m
+  --tmpfs /lab/work:rw,nosuid,size=256m,mode=1777
   --pids-limit 256 --memory 512m --memory-swap 512m --cpus 1
   --user 1000:1000
   --workdir /lab/work --env HOME=/lab/work
@@ -95,7 +101,7 @@ docker create --name raf-lab-default-protocol-test
 | `--security-opt no-new-privileges` | setuid/setgid binaries and file capabilities cannot raise privileges. |
 | `--read-only` | The image filesystem cannot be modified. |
 | `--tmpfs /tmp:rw,noexec,nosuid,size=64m` | Scratch space; nothing executes from it. |
-| `--tmpfs /lab/work:rw,nosuid,size=256m` | The working directory (and `HOME`). Container runtimes usually also add `nodev` and, unless `exec` is requested, `noexec` to tmpfs mounts (Docker does), so run scripts through an interpreter (`sh script.sh`, `python3 script.py`) rather than executing files directly. |
+| `--tmpfs /lab/work:rw,nosuid,size=256m,mode=1777` | The working directory (and `HOME`), writable by the lab's user (`mode=1777`: the directory is not part of the image, and without a mode the runtime makes the mount point root-owned 0755). Container runtimes usually also add `nodev` and, unless `exec` is requested, `noexec` to tmpfs mounts (Docker does), so run scripts through an interpreter (`sh script.sh`, `python3 script.py`) rather than executing files directly. |
 | `--pids-limit`, `--memory`, `--memory-swap`, `--cpus` | Fork bombs and runaway parsers stay contained. Swap is not used beyond the memory limit. |
 | `--user 1000:1000` | Unprivileged user. `raf lab create --root` uses `--user 0:0` instead; capabilities stay dropped and no-new-privileges stays on. |
 | `--entrypoint /bin/sh ... sleep` | A fixed idle process (no input is ever placed in it) keeps the lab running for `shell`/`exec` and exits promptly when the lab is stopped, so no init binary is needed. Images therefore need `/bin/sh` and `sleep` (alpine, debian, ubuntu, python ... images do; distroless images do not). |
@@ -246,8 +252,8 @@ add a `warning` detail.
 
 ## Limitations
 
-* Requires Docker or Podman with a running daemon or service. Not tested end-to-end against a
-  live daemon in CI (see Status).
+* Requires Docker or Podman with a running daemon or service. CI validates Docker; Podman (and
+  rootless runtimes) have not been run against the isolation checks yet.
 * Linux and macOS hosts. Paths containing `,`, `:`, quotes or backslashes cannot be mounted, which
   also rules out Windows paths.
 * Inside the container the lab runs as uid/gid 1000 (or 0 with `--root`). Mounted files must be

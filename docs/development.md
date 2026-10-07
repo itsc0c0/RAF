@@ -29,11 +29,12 @@ cd web && npm run typecheck && npm run lint && npm run format:check && npm run t
 cd web && npm run test:e2e            # browser end-to-end suite (needs the build and .venv/bin/raf)
 ```
 
-`.github/workflows/ci.yml` runs five jobs on every push and pull request: Python (lint, format,
+`.github/workflows/ci.yml` runs six jobs on every push and pull request: Python (lint, format,
 mypy, pytest, demo smoke test), PostgreSQL (migrations and the SQLite/PostgreSQL equivalence
-workflow against a `postgres:16` service), web (typecheck, lint, format, tests, build), e2e (the
-Playwright suite in Chromium against `raf serve`) and the R$F OS terminal panel (fmt, clippy, tests,
-build, `raf tui --dump` of every page).
+workflow against a `postgres:16` service), Lab (isolation checks inside labs on the runner's Docker
+daemon), web (typecheck, lint, format, tests, build), e2e (the Playwright suite in Chromium against
+`raf serve`, and the wheel) and the R$F OS terminal panel (fmt, clippy, tests, build, `raf tui
+--dump` of every page).
 
 `tests/integration/test_postgres.py` is skipped unless `RAF_TEST_POSTGRES_URL` names a PostgreSQL
 server whose user may create databases (each test creates and drops its own):
@@ -63,8 +64,9 @@ Fixtures: `raven` is a session-cached copy of a workspace with the demo loaded (
 and stderr (`.json()` parses `--json` output). Tests never use the network or external services;
 the model provider is tested with an `httpx.MockTransport`, the container runtime with fakes.
 
-Mark long tests with `@pytest.mark.slow`; `docker` is reserved for tests that need a real daemon
-(none in the default suite).
+Mark long tests with `@pytest.mark.slow`; `docker` marks the tests that need a real container
+daemon (`tests/products/test_lab_docker.py`, skipped unless `RAF_TEST_DOCKER=1`; they pull
+`alpine:3.20`).
 
 ## Fixtures
 

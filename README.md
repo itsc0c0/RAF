@@ -169,7 +169,7 @@ nothing is changed in the workspace. `raf tui --dump PAGE` prints a page as plai
 | Ghost | `raf ghost` | BETA | Security digital twins: what-if models, simulated exposure, comparisons |
 | Range | `raf range` | BETA | Synthetic organizations with deterministic seeds and simulated activity |
 | Forge | `raf forge` | BETA | Synthetic telemetry and modeled scenarios |
-| Lab | `raf lab` | EXPERIMENTAL | Isolated Docker/Podman labs (no network, no capabilities, read-only by default) |
+| Lab | `raf lab` | BETA | Isolated Docker/Podman labs (no network, no capabilities, read-only by default) |
 | Protocol | `raf protocol` | BETA | Packet captures: explained fields, flows, DNS/HTTP/TLS metadata |
 | Vault | `raf vault` | BETA | Exposed credentials in files (always redacted, fingerprinted, allowlistable) |
 | Dependency | `raf dependency` | BETA | Dependency inventory, SBOM import/export, offline OSV advisory checks |
@@ -179,8 +179,9 @@ nothing is changed in the workspace. `raf tui --dump PAGE` prints a page as plai
 | Oracle | `raf oracle` | BETA | Grounded answers with validated citations (deterministic builtin reasoner or a model) |
 
 `raf products` shows the live registry (status, availability, enable/disable). Statuses are
-deliberately conservative: nothing is STABLE in 0.x. Lab is EXPERIMENTAL because it has not been run
-against a live container daemon in CI. Per-product documentation: [docs/products/](docs/products/).
+deliberately conservative: nothing is STABLE in 0.x. Lab's isolation is checked from inside running
+containers on a real Docker daemon in CI (Podman is not validated yet). Per-product documentation:
+[docs/products/](docs/products/).
 
 ## Architecture
 

@@ -70,6 +70,24 @@ jobs:
       - name: Migrations and the SQLite/PostgreSQL equivalence workflow
         run: uv run pytest -q -rs tests/integration/test_postgres.py
 
+  lab:
+    name: Lab on a real Docker daemon (isolation checked inside running labs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RAF_TEST_DOCKER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --frozen
+      - name: Pull the lab default image
+        run: docker pull alpine:3.20
+      - name: Lab isolation tests
+        run: uv run pytest -q -rs -m docker tests/products/test_lab_docker.py
+
   web:
     name: Web workbench (lint, types, tests, build)
     runs-on: ubuntu-latest

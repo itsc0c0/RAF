@@ -40,7 +40,9 @@ NETWORK_ISOLATED = "none"
 NETWORK_OUTBOUND = "bridge"
 NETWORK_MODES = (NETWORK_ISOLATED, NETWORK_OUTBOUND)
 TMPFS_TMP = "/tmp:rw,noexec,nosuid,size=64m"  # noqa: S108 - a path inside the container, not on the host
-TMPFS_WORK = f"{LAB_WORK_DIR}:rw,nosuid,size=256m"
+#: mode=1777: the directory is not in the image, and a runtime creates a tmpfs mount point it has to
+#: make as root 0755 - the lab's unprivileged user could not write to its own working directory.
+TMPFS_WORK = f"{LAB_WORK_DIR}:rw,nosuid,size=256m,mode=1777"
 SHELL = "/bin/sh"
 #: PID 1 of every lab container. A constant (never built from input): it idles until the
 #: container is stopped and exits promptly on SIGTERM, so no init binary is required.

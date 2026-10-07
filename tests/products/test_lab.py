@@ -1,8 +1,9 @@
 """R$F Lab: secure container arguments, input validation, lifecycle, CLI and API.
 
-No test needs Docker or Podman. Lifecycle tests install an in-memory backend through the
+No test here needs Docker or Podman. Lifecycle tests install an in-memory backend through the
 module-level backend factory; the real Docker/Podman backends run against a scripted runner;
-the bounded process runner is exercised with the Python interpreter.
+the bounded process runner is exercised with the Python interpreter. test_lab_docker.py checks the
+isolation inside running labs on a real daemon (opt-in).
 """
 
 from __future__ import annotations
@@ -234,7 +235,7 @@ def test_create_argv_has_every_secure_default() -> None:
         ("--cap-drop", "ALL"),
         ("--security-opt", "no-new-privileges"),
         ("--tmpfs", "/tmp:rw,noexec,nosuid,size=64m"),
-        ("--tmpfs", "/lab/work:rw,nosuid,size=256m"),
+        ("--tmpfs", "/lab/work:rw,nosuid,size=256m,mode=1777"),
         ("--pids-limit", "256"),
         ("--memory", "512m"),
         ("--cpus", "1"),
@@ -999,7 +1000,7 @@ def test_api_reports_an_unavailable_backend(raf_home: Path, monkeypatch: pytest.
 
 def test_manifest_and_help(cli: Any) -> None:
     info = cli("product", "info", "lab", "--json").json()
-    assert (info["status"], info["category"], info["commands"]) == ("EXPERIMENTAL", "synthetic", ["lab"])
+    assert (info["status"], info["category"], info["commands"]) == ("BETA", "synthetic", ["lab"])
     assert info["ui"] == {"route": "/lab", "nav": "Lab"}
     assert (REPO_ROOT / info["docs"]).is_file()
     help_text = cli("lab", "--help")

@@ -33,7 +33,7 @@ integration, and documentation that describes the actual behavior.
 | Plugins | done | manifests, install/trust (hash pinned)/verify/uninstall; see [plugin-development.md](plugin-development.md) |
 | Architecture rules | done | layering and declared product dependencies enforced by `tests/unit/test_architecture.py` |
 | Packaging | partial | `scripts/bootstrap` and `uv sync`; a wheel with the built web workbench (`uv build` after `npm run build`), installed and served from a clean environment in CI (`scripts/check-wheel`); not published yet, and R$F OS is built with Cargo |
-| CI | done | `.github/workflows/ci.yml` (Python lint/types/tests/smoke, web lint/types/tests/build, the web workbench end to end in Chromium, PostgreSQL migrations and SQLite/PostgreSQL equivalence, R$F OS fmt/clippy/tests/build and an end-to-end `raf tui --dump` of every page) |
+| CI | done | `.github/workflows/ci.yml` (Python lint/types/tests/smoke, web lint/types/tests/build, the web workbench end to end in Chromium, PostgreSQL migrations and SQLite/PostgreSQL equivalence, Lab on a real Docker daemon, R$F OS fmt/clippy/tests/build and an end-to-end `raf tui --dump` of every page) |
 
 ## Products
 
@@ -51,7 +51,7 @@ integration, and documentation that describes the actual behavior.
 | Ghost | BETA | what-if models with 12 operations, undo, simulate, compare, min-cost cut suggestions, snapshot source | zone-level network modeling |
 | Range | BETA | presets (raven, acme, small-office, enterprise), seeded organizations, simulated activity periods, clean purge | no live services; periods are generated synchronously |
 | Forge | BETA | 7 telemetry generators, 3 modeled scenarios, deterministic seeds, optional ingestion | — |
-| Lab | EXPERIMENTAL | definitions, secure container arguments, lifecycle, exec/shell via CLI, audit; fully tested with fakes | never run against a live Docker/Podman daemon in CI |
+| Lab | BETA | definitions, secure container arguments, lifecycle, exec/shell via CLI, audit; tested with fakes, and on a real Docker daemon in CI with every isolation guarantee checked inside running labs | Podman not validated against a live service |
 | Protocol | BETA | pcap/pcapng reader, explained fields, flows (Community ID), DNS/HTTP/TLS metadata, ingestion | no live capture, TCP reassembly or decryption (by design) |
 | Vault | BETA | rule-based secret detection with entropy, redaction, keyed fingerprints, allowlists, findings | — |
 | Dependency | BETA | manifests and lockfiles (Python, JavaScript, …), SBOM import/export, offline OSV matching with confidence | advisories must be imported (no online feed) |

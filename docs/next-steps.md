@@ -7,8 +7,8 @@ Known gaps and the planned order of work after 0.1.0. Each item names what remai
 1. **Packaging.** The wheel carries the built web workbench and is checked in a clean environment in
    CI (`scripts/check-wheel`); next: publish it with signed release artifacts, and ship R$F OS
    (`raf-os`) binaries per platform.
-2. **Lab validation.** Run Lab against real Docker and rootless Podman in CI (a `docker`-marked test
-   job), then decide whether it can leave EXPERIMENTAL.
+2. **Lab validation.** CI runs the isolation checks of `tests/products/test_lab_docker.py` on a real
+   Docker daemon; next: the same checks on rootless Podman.
 3. **PostgreSQL in CI.** CI checks the migrations and runs a demo workflow on SQLite and
    PostgreSQL with identical results; next, run the whole suite against PostgreSQL (fixtures that
    clone a template database instead of copying a SQLite file).
