@@ -493,14 +493,20 @@ def trace(ctx: RafContext, ref: str | None) -> Screen:
     target_ref = ref or (current.incident.name if current.incident else None)
     if target_ref is None:
         raise NotFoundError("Nothing to trace yet.", hint="raf demo load, or type a reference with /")
-    resolved = ctx.resolve(target_ref)
+    resolved = ctx.resolve(target_ref, accept=("object", "event"))
     obj = resolved.obj or ctx.store.objects.get(resolved.id)
     if obj is not None and obj.type == "incident" and _available(ctx, "oracle"):
         return _incident_trace(ctx, obj)
     from raf.products.trace.service import TraceService
 
-    subject = _resolve(ctx, target_ref, None, "object")
-    result = TraceService(ctx).trace(subject.id)
+    if resolved.kind == "event":  # traced from the event itself (Trace says through which object)
+        subject_id = resolved.id
+        event = ctx.store.events.get(subject_id)
+        subject_name = f"{event.event_type} {clock(event.timestamp)}" if event else subject_id
+    else:
+        subject = _resolve(ctx, target_ref, None, "object")
+        subject_id, subject_name = subject.id, subject.name
+    result = TraceService(ctx).trace(subject_id)
     links = result.chain
     blocks: list[Block] = []
     if links:
@@ -547,7 +553,8 @@ def trace(ctx: RafContext, ref: str | None) -> Screen:
         blocks.append(text("No causal chain leads to this object.", style="dim"))
     for note in result.notes:
         blocks.append(text(note, style="note"))
-    return Screen("trace", f"R$F TRACE — {subject.name}", blocks, subtitle="how did we get here?", param=subject.name)
+    param = subject_id if resolved.kind == "event" else subject_name
+    return Screen("trace", f"R$F TRACE — {subject_name}", blocks, subtitle="how did we get here?", param=param)
 
 
 def _incident_trace(ctx: RafContext, incident: SecurityObject) -> Screen:

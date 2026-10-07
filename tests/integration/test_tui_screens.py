@@ -213,6 +213,9 @@ def test_page_parameters_and_errors(raven: RafContext) -> None:
     assert inspected["title"] == "HOST DEV-01" and "RELATIONSHIPS" in _all_text(inspected)
     event_id = _blocks(screens.screen(raven, "timeline"), "event")[0]["ref"]
     assert screens.inspect(raven, event_id).to_dict()["subtitle"] == event_id
+    from_event = screens.screen(raven, "trace", event_id)  # an event is traced from itself
+    assert from_event["param"] == event_id and from_event["title"].startswith("R$F TRACE — auth.")
+    assert_protocol(from_event)
     with pytest.raises(NotFoundError):
         screens.screen(raven, "nonsense")
     with pytest.raises(NotFoundError):

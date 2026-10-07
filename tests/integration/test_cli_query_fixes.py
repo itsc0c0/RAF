@@ -181,6 +181,16 @@ def test_closed_pipe_in_a_real_process(raven_home: Path) -> None:
     assert stderr == b""  # no traceback, no "Exception ignored" at interpreter exit
 
 
+def test_streams_closed_at_start(raven_home: Path) -> None:
+    """`raf ... >&-`: Python starts without the stream; the command runs and its output goes nowhere."""
+    env = {**os.environ, "RAF_HOME": str(raven_home), "NO_COLOR": "1"}
+    code = "import os, sys; os.close(1); sys.stdout = None; from raf.apps.cli.main import run; run()"
+    done = subprocess.run([sys.executable, "-c", code, "status"], capture_output=False, stderr=subprocess.PIPE, env=env)
+    assert done.returncode == 0 and done.stderr == b""
+    missing = subprocess.run([sys.executable, "-c", code, "show", "nothing-here"], stderr=subprocess.PIPE, env=env)
+    assert missing.returncode == 3 and b"nothing-here" in missing.stderr  # the failure still reports
+
+
 # --------------------------------------------------------------------------- 17: suggested commands parse
 
 
@@ -562,3 +572,30 @@ def test_scope_type_words(raven: RafContext) -> None:
     assert resolve_scope(raven, ["x-asset", "tank-7"]).id == "x-asset:tank-7"
     with pytest.raises(InvalidInputError, match="'teapot' is not an object type"):
         resolve_scope(raven, ["teapot", "WS-02"])
+
+
+def test_commands_refuse_records_they_do_not_take(raven_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Event, finding and snapshot IDs only reach commands that handle them; the others say what to run."""
+    from raf.core.snapshots.service import SnapshotService
+    from tests.conftest import run_cli
+
+    monkeypatch.setenv("RAF_HOME", str(raven_home))
+    ctx = open_context()
+    event_id = ctx.store.events.query(EventQuery(), limit=1).items[0].id
+    finding_id = ctx.store.findings.list(limit=1)[0].id
+    SnapshotService(ctx.store).create("refs-check")
+    ctx.close()
+    for args, suggestion in (
+        (("blast", event_id), f"raf show {event_id}"),
+        (("iam", "show", finding_id), f"raf show {finding_id}"),
+        (("graph", "neighbors", event_id), f"raf show {event_id}"),
+        (("show", "snapshot:refs-check"), "raf snapshot show refs-check"),
+    ):
+        result = run_cli("--json", *args)
+        error = json.loads(result.stdout)["error"]
+        assert result.exit_code == 4, (args, result.stdout, result.stderr)
+        assert "does not accept" in error["message"] and suggestion in error["suggestions"], (args, error)
+    # the commands that handle records still take them
+    assert run_cli("show", event_id).exit_code == 0
+    assert run_cli("show", finding_id).exit_code == 0
+    assert run_cli("trace", event_id).exit_code == 0

@@ -134,7 +134,9 @@ def trace_cmd(
     if direction not in ("both", "back", "backward", "forward", "fwd"):
         raise InvalidInputError("--direction must be back, forward or both.")
     ctx = rt.ctx()
-    resolved = ctx.resolve(ref)
+    resolved = ctx.resolve(
+        ref, accept=("object", "event", "finding", "snapshot")
+    )  # the service explains which kinds it traces
     for message in resolved.notes:
         rt.note(message)
     result = TraceService(ctx).trace(resolved.id, direction=direction, depth=depth)

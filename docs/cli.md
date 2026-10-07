@@ -114,13 +114,14 @@ Without a terminal (scripts, pipes) or with `--json`, `raf` alone runs `raf stat
 | 2 | usage error (unknown command or option, missing argument, value out of range) | `raf.usage` |
 | 3 | not found | `raf.not_found` |
 | 4 | invalid input, conflict, ambiguous reference, unavailable product, confirmation required | `raf.invalid_input` (incl. `raf.invalid_timestamp`, `raf.record_rejected`), `raf.ambiguous_reference`, `raf.conflict`, `raf.config`, `raf.workspace`, `raf.product_disabled`, `raf.confirmation_required` |
-| 5 | security violation or failed integrity check | `raf.security_violation`, `raf.resource_limit`, `raf.permission_denied`, `raf.integrity`; also `raf evidence verify`, `raf audit verify` and `raf bundle verify` when verification fails |
+| 5 | security violation or failed integrity check | `raf.security_violation`, `raf.resource_limit`, `raf.permission_denied`, `raf.integrity`; also `raf evidence verify`, `raf audit verify`, `raf bundle verify` and `raf plugin verify` when verification fails, and the commands of a plugin whose files changed after trust |
 | 6 | a required external dependency is unavailable (Docker/Podman, OS keyring, AI provider) | `raf.dependency_unavailable`, Oracle provider errors |
 | 124 | `raf lab exec`: the command timed out | `raf.lab.command_failed` |
 | 130 | cancelled or interrupted (Ctrl+C, aborted prompt, cancelled job) | `raf.cancelled` |
 
-`raf lab exec` otherwise exits with the status of the command it ran. `raf plugin verify` exits 0
-even when a plugin was modified; check `unchanged` in its JSON output.
+`raf lab exec` otherwise exits with the status of the command it ran. `raf plugin verify` exits 5
+when the plugin's files changed after trust, 4 when it is not trusted and 3 when it is not
+installed.
 
 ## References
 
@@ -182,8 +183,9 @@ accept."*, exit 4) rather than a name looked up in the wrong place. Scopes (`gra
 `replay`, `lens`) accept objects, incidents, cases, analyses and jobs; object arguments (`show`,
 `trace`, `blast`, `iam show`, `graph path`, ...) accept objects, incidents and cases (a case stands
 for its incident); state arguments (`raf diff`) accept snapshots; lab commands accept labs and range
-commands (`raf range status @range`) ranges. No command takes `@ghost` yet: Ghost commands take model
-names. `@workspace` is the whole workspace for scopes and the current state for `raf diff`.
+commands (`raf range status @range`) ranges, and Ghost commands (`raf ghost show @ghost`,
+`raf ghost compare current @ghost`) Ghost models. `@workspace` is the whole workspace for scopes and
+the current state for `raf diff`.
 `@selection` exists only in the web UI.
 
 ## Time values
@@ -277,12 +279,12 @@ Commands are grouped as in `raf --help`. Product pages describe options and outp
 | `raf help [COMMAND...]` / `raf help TOPIC` | help for a command path, or a topic | `raf help replay`, `raf help query` |
 | `raf products` | every product with status (STABLE, BETA, ALPHA, EXPERIMENTAL, DISABLED, UNAVAILABLE) and description (`raf.products/v1`) | `raf products` |
 | `raf product info NAME` | manifest, status, maturity, source, commands, dependencies and dependents (`raf.product/v1`) | `raf product info lens` |
-| `raf product enable NAME` / `disable NAME` | enable or disable a product; disabling also makes its dependents unavailable (audited). A running `raf serve` keeps its routes until it is restarted | `raf product disable lab` |
+| `raf product enable NAME` / `disable NAME` | enable or disable a product; disabling also makes its dependents unavailable (audited). A running `raf serve` answers 503 on the product's routes from the next request, and serves them again once it is re-enabled | `raf product disable lab` |
 | `raf install PATH` | install a plugin from a local directory, disabled and untrusted (`raf.plugin/v1`) | `raf install ./asset-notes` |
 | `raf uninstall NAME` | remove an installed plugin (confirmation) | `raf --yes uninstall asset-notes` |
 | `raf plugin list` | installed plugins with version, trust, status and permissions (`raf.plugins/v1`) | `raf plugin list` |
 | `raf plugin trust NAME` | record the SHA-256 of the plugin's files and enable it (confirmation) | `raf --yes plugin trust asset-notes` |
-| `raf plugin verify NAME` | check that a trusted plugin's files still match (`raf.plugin.verify/v1`, `unchanged`) | `raf plugin verify asset-notes` |
+| `raf plugin verify NAME` | check that a trusted plugin's files still match (`raf.plugin.verify/v1`, `unchanged`); exit 5 when the files changed | `raf plugin verify asset-notes` |
 | `raf serve [--host H] [--port P] [--no-ui] [--allow-host NAME]...` | run the HTTP API (`/api/v1`) and the web workbench; loopback by default, a non-loopback address requires a bearer token (`RAF_API_TOKEN`, or one is generated and shown once); see [api.md](api.md) | `raf serve --port 8765` |
 | `raf tui [-p PAGE] [--param TEXT] [--dump PAGE [--width 100]] [--no-boot] [--no-mouse]` | R$F OS, a full-screen terminal panel: runs the `raf-os` binary (built from `tui/` with Rust; found via `RAF_OS_BIN`, `tui/target/release`, `tui/target/debug`, the virtualenv or `PATH`) against an API started for the session on a random loopback port with a one-time token. Pages: home, timeline, trace, iam, blast, exposure, policy, ghost, graph, oracle, findings, evidence; `--dump` prints one page as plain text. Needs an interactive terminal unless `--dump` is given (exit 4), has no `--json` output (exit 4), and exits 6 while the binary is not built | `raf tui --dump blast` |
 | `raf demo load` | load Raven Industries: inventory, a working day of events, INC-001, its evidence case, policies, IAM and exposure analysis, the Surface inventory (`raf.demo/v1`) | `raf demo load` |

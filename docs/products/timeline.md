@@ -36,13 +36,14 @@ The scope syntax is the one of Graph, Lens and Replay ([cli.md](../cli.md#refere
 | `--severity LEVEL` | minimum severity: INFO < LOW < MEDIUM < HIGH < CRITICAL (`warning` = MEDIUM, `error` = HIGH, ...) |
 | `--filter EXPR` | the R$F filter language, e.g. `'type:auth.* outcome:failure actor:bob "vpn"'` ([reference](../cli.md#filter-language), `raf help query`) |
 
-Options and filter terms combine with AND, with these exceptions that follow from how terms are
-merged into the scope's query: `type:` terms are added to the `--type` values (OR), `object:` terms
-are added to the scope's own object (an object-scoped timeline then shows events involving *either*
-object: `raf timeline user alice --filter object:DEV-01` returns 46 events, `raf timeline user alice`
-24), `incident:` and `job:` replace the scope's incident or jobs, and `after:` / `before:` replace
-`--from` / `--to`. Repeating `actor:`, `target:`, `outcome:`, `source:` or `severity` keeps the last
-value.
+Options and filter terms only narrow the scope: every term must hold. `type:` and `category:` terms
+intersect with `--type` / `--category` (a contradiction selects nothing), the stricter of a time
+term (`after:`, `before:`, `time>=…`) and `--from` / `--to` wins, and `job:` and `incident:` terms
+intersect with the scope. Combinations the event store cannot express are rejected with an
+explanation (exit 4) rather than widened: an `object:` term on a scope that is already another
+object (`raf timeline user alice --filter object:DEV-01`; use `target:DEV-01` or `actor:` instead),
+two different incidents, or two different `source:` or free-text terms. See the
+[filter language](../cli.md#filter-language).
 
 **Time values** (`--from`, `--to`): ISO 8601 (`2026-10-06T23:00:00Z`, offsets and a space separator
 are accepted), epoch seconds (or milliseconds, microseconds, nanoseconds), RFC 2822, `now`, a time of
@@ -178,6 +179,7 @@ Timeline has no configuration keys of its own. What an event carries is decided 
 
 ## Limitations
 
-* `object:` filter terms widen an object-scoped timeline instead of narrowing it (see above).
+* An object-scoped timeline cannot be narrowed to events that also involve a second object
+  (`object:` is rejected there; `actor:` and `target:` work).
 * `after:` / `before:` filter terms do not accept `HH:MM` or relative values; `--from` / `--to` do.
 * A `raf` export holds the selected events in memory while the bundle is written.

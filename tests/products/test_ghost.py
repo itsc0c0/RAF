@@ -199,6 +199,10 @@ def test_cli_ghost_flow(raven_home: Path, cli: Any) -> None:
     assert diff.json()["b"] == "ghost:hardened" and diff.json()["changes"]
     listing = cli("ghost", "list", "--json").json()
     assert listing["items"][0]["name"] == "hardened"
+    # Ghost commands take @ghost (and @last) for the model used last
+    assert cli("ghost", "show", "@ghost", "--json").json()["name"] == "hardened"
+    assert cli("ghost", "compare", "current", "@ghost").exit_code == 0
+    assert cli("ghost", "show", "@lab").exit_code == 4
     assert cli("ghost", "delete", "hardened").exit_code != 0  # needs confirmation
     assert cli("ghost", "delete", "hardened", "--yes").exit_code == 0
     bad = cli("ghost", "modify", "nope", "--isolate", "WS-01")

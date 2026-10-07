@@ -12,7 +12,8 @@ same-type ambiguity is an error listing the candidates.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+import shlex
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -58,6 +59,14 @@ TYPE_PRIORITY: tuple[str, ...] = (
     "evidence",
 )
 _HUMAN_ID_RE = re.compile(r"^(analysis|job)-\d+$")
+#: Records that are referenced like objects but are not graph objects; a command only receives them when
+#: it says so (``accept``). Each comes with the command that shows it.
+_RECORD_KINDS = (ObjectType.EVENT, ObjectType.FINDING, ObjectType.SNAPSHOT)
+_SHOW: dict[str, Callable[[str], str]] = {
+    ObjectType.EVENT: lambda ref: f"raf show {shlex.quote(ref)}",
+    ObjectType.FINDING: lambda ref: f"raf show {shlex.quote(ref)}",
+    ObjectType.SNAPSHOT: lambda ref: f"raf snapshot show {shlex.quote(ref.split(':', 1)[1])}",
+}
 _EVIDENCE_ITEM_RE = re.compile(r"^ev-\d+$", re.IGNORECASE)
 
 
@@ -110,6 +119,13 @@ class Resolver:
         split = try_split_id(text)
         if split is not None:
             otype, key = split
+            if otype in _RECORD_KINDS and otype not in accept:
+                raise InvalidInputError(
+                    f"'{text}' is {'an' if otype == ObjectType.EVENT else 'a'} {otype}, "
+                    "which this command does not accept.",
+                    hint="Give an object (a name, an alias or an ID such as host:dev-01).",
+                    suggestions=[_SHOW[otype](text)],
+                )
             if otype == ObjectType.EVENT:
                 event = self.store.events.get(text)
                 if event is None:

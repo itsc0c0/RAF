@@ -193,7 +193,7 @@ def object_relationships(
 
 @router.get("/objects/{object_id:path}/provenance", tags=["objects"])
 def object_provenance(object_id: str, ctx: Ctx, limit: Limit = 100) -> dict[str, Any]:
-    resolved = ctx.resolve(object_id)
+    resolved = ctx.resolve(object_id, accept=("object", "finding"))  # findings have provenance too
     items = ctx.store.provenance.for_subject(resolved.id, limit=limit)
     return {
         "object_id": resolved.id,
@@ -204,7 +204,7 @@ def object_provenance(object_id: str, ctx: Ctx, limit: Limit = 100) -> dict[str,
 
 @router.get("/objects/{object_id:path}/pivots", tags=["objects"])
 def object_pivots(object_id: str, ctx: Ctx) -> dict[str, Any]:
-    obj = _require_object(object_id, ctx.resolve(object_id))
+    obj = _require_object(object_id, ctx.resolve(object_id, accept=("object", "event", "finding", "snapshot")))
     return {
         "object_id": obj.id,
         "items": [p.to_dict() for p in pivots_for(obj.id, obj.type, _available(ctx))],
@@ -213,7 +213,7 @@ def object_pivots(object_id: str, ctx: Ctx) -> dict[str, Any]:
 
 @router.get("/objects/{object_id:path}", tags=["objects"])
 def get_object(object_id: str, ctx: Ctx) -> dict[str, Any]:
-    resolved = ctx.resolve(object_id)
+    resolved = ctx.resolve(object_id, accept=("object", "event", "finding", "snapshot"))
     obj = _require_object(object_id, resolved)
     activity = ctx.store.events.object_activity([obj.id]).get(obj.id)
     return {

@@ -99,7 +99,7 @@ later commands refer to it with @ tokens:
   @range      most recent range: raf range create, status, start, tick, stop,
               reset (range commands accept it)
   @ghost      most recent Ghost model: raf ghost create, clone, modify, show
-              (remembered only: Ghost commands take model names)
+              (Ghost commands accept it)
   @workspace  the current workspace name
 
 A command accepts only the kinds that make sense for it: raf show @lab is an

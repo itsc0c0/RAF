@@ -133,7 +133,7 @@ class PermissionDeniedError(RafError):
 class ProductDisabledError(RafError):
     code = "raf.product_disabled"
     exit_code = 4
-    http_status = 409
+    http_status = 503  # over HTTP an unavailable product is an unavailable dependency
 
 
 class DependencyUnavailableError(RafError):

@@ -9,6 +9,8 @@ interactive docs at `/api/docs`.
 * **Errors** — always `{"error": {"code", "message", "reason?", "hint?", "suggestions?", "details?"}}`
   with an HTTP status (404 not found, 409 conflict/ambiguous, 422 invalid input, 403 forbidden host,
   401 unauthorized, 503 dependency unavailable, 500 internal).
+  A product's routes answer 503 (`raf.product_disabled`) while the product is disabled or otherwise
+  unavailable, from the next request on, and serve again once it is enabled.
 * **Security** — `raf serve` binds to 127.0.0.1. Requests with a Host header other than loopback
   names are rejected (DNS-rebinding defense). Binding to another address requires a bearer token
   (`Authorization: Bearer <token>`), generated or taken from `RAF_API_TOKEN`.
@@ -78,10 +80,10 @@ interactive docs at `/api/docs`.
 |---|---|---|
 | GET | `/objects?type=&q=&tag=&limit=&offset=` | `{items, total, limit, offset}` |
 | GET | `/objects/types` | counts by object type and relationship type |
-| GET | `/objects/{ref}` | `{object, notes, activity, relationship_count, findings, pivots}` |
+| GET | `/objects/{ref}` | `{object, notes, activity, relationship_count, findings, pivots}`; 422 for event, finding and snapshot IDs (the error names the route that describes them) |
 | GET | `/objects/{ref}/relationships?direction=&at=` | `{object_id, items, total}` |
 | GET | `/objects/{ref}/provenance` | `{object_id, items, total}` |
-| GET | `/objects/{ref}/pivots` | `{items: [{key, product, label, command, view}]}` — `view` is a web route |
+| GET | `/objects/{ref}/pivots` | `{items: [{key, product, label, command, view}]}` — `view` is a web route; 422 for event, finding and snapshot IDs |
 | GET | `/relationships?type=&source=&target=` | relationships |
 | GET | `/search?q=` | `{objects, incidents, findings}` |
 | GET | `/events?start=&end=&type=&category=&object=&incident=&severity=&q=&actor=&job=&cursor=&limit=&descending=` | `{items, next_cursor, total}` |

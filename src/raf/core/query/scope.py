@@ -76,7 +76,8 @@ def resolve_scope(ctx: RafContext, parts: Sequence[str], *, default_workspace: b
                 "the types.",
                 details=exc.details,
             ) from None
-    resolved = ctx.resolve(ref, types=types, accept=("object", "analysis", "job"))
+    # event, finding and snapshot IDs are received here to be refused with a scope-specific message
+    resolved = ctx.resolve(ref, types=types, accept=("object", "analysis", "job", "event", "finding", "snapshot"))
     if resolved.kind not in ("object", "analysis", "job"):  # an event:, finding: or snapshot: ID
         if resolved.kind == "snapshot":
             show = f"raf snapshot show {shlex.quote(resolved.id.split(':', 1)[1])}"

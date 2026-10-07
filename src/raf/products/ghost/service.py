@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import Field
 
 from raf.core.context.app import RafContext
+from raf.core.context.refs import ContextRefs
 from raf.core.errors import ConflictError, InvalidInputError, NotFoundError
 from raf.core.objects.models import RafModel
 from raf.core.objects.semantics import NON_PROPAGATING_TYPES, PROPAGATION_RELATIONSHIPS
@@ -92,7 +93,20 @@ class GhostService:
     def models(self) -> list[GhostModel]:
         return sorted((GhostModel.model_validate(v) for v in self.kv.items(NAMESPACE).values()), key=lambda m: m.name)
 
+    def resolve_name(self, ref: str) -> str:
+        """A model name, or a context reference (``@ghost``, ``@last``) to the last model used."""
+        text = ref.strip()
+        if ContextRefs.is_reference(text):
+            kind, stored = self.ctx.refs.resolve(text, accept=("ghost",))
+            if kind != "ghost":
+                raise InvalidInputError(
+                    f"'{text}' does not refer to a Ghost model.", hint="Use a model name or @ghost."
+                )
+            return stored
+        return text
+
     def get(self, name: str) -> GhostModel:
+        name = self.resolve_name(name)
         raw = self.kv.get(NAMESPACE, name.strip().lower())
         if raw is None:
             raise NotFoundError(
@@ -194,6 +208,9 @@ class GhostService:
     def _locate(self, ref: str) -> tuple[str, str]:
         """``("current" | "ghost" | "snapshot", name)`` for a state reference."""
         text = ref.strip()
+        if ContextRefs.is_reference(text) and text.lower() not in RESERVED:
+            kind, stored = self.ctx.refs.resolve(text, accept=("ghost", "snapshot"))
+            text = stored.split(":", 1)[1] if kind == "snapshot" and stored.startswith("snapshot:") else stored
         lowered = text.lower()
         if lowered in RESERVED:
             return "current", "current"

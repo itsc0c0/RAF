@@ -318,18 +318,19 @@ def run(argv: Sequence[str] | None = None) -> None:
     home = RafHome.from_env()
     configure_logging(level, log_dir=home.logs_dir if write_log_file else None, debug=rt.STATE.debug)
     stdout, stderr = sys.stdout, sys.stderr
-    if stdout is not None:  # None when Python started without the stream (`raf ... >&-`)
-        sys.stdout = cast(TextIO, _PipeGuard(stdout, stop=True))
-    if stderr is not None:
-        sys.stderr = cast(TextIO, _PipeGuard(stderr, stop=False))
+    # A stream is None when Python started without it (`raf ... >&-`): its output goes nowhere.
+    sinks = [open(os.devnull, "w", encoding="utf-8") for stream in (stdout, stderr) if stream is None]  # noqa: SIM115
+    sys.stdout = cast(TextIO, _PipeGuard(stdout if stdout is not None else sinks[0], stop=True))
+    sys.stderr = cast(TextIO, _PipeGuard(stderr if stderr is not None else sinks[-1], stop=False))
     try:
         code = _command(rest)
-        if sys.stdout is not None:
-            sys.stdout.flush()  # a reader that went away shows up here, not at interpreter exit
+        sys.stdout.flush()  # a reader that went away shows up here, not at interpreter exit
     except OutputClosed:
         code = 0  # like ripgrep: `raf ... | head` is not a failure
     finally:
         sys.stdout, sys.stderr = stdout, stderr
+        for sink in sinks:
+            sink.close()
     sys.exit(code)
 
 

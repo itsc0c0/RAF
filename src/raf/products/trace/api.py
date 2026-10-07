@@ -17,5 +17,7 @@ router = APIRouter()
 def trace(ref: str, ctx: Ctx, direction: str = "both", depth: Annotated[int, Query(ge=1, le=6)] = 3) -> dict[str, Any]:
     if direction not in ("both", "back", "backward", "forward", "fwd"):
         raise InvalidInputError("direction must be back, forward or both")
-    resolved = ctx.resolve(ref)
+    resolved = ctx.resolve(
+        ref, accept=("object", "event", "finding", "snapshot")
+    )  # the service explains which kinds it traces
     return TraceService(ctx).trace(resolved.id, direction=direction, depth=depth).to_json_dict()

@@ -81,7 +81,7 @@ def parse_filter(text: str, *, resolver: Resolver | None = None, base: EventQuer
     def resolve(key: str, ref: str, types: list[str] | None = None) -> str:
         if resolver is None:
             return ref
-        resolved = resolver.resolve(ref, types=types)
+        resolved = resolver.resolve(ref, types=types, accept=("object", "event", "finding", "snapshot"))
         if resolved.kind != "object":  # an event:, finding: or snapshot: ID
             raise InvalidInputError(f"{key}: takes an object, and '{ref}' is not one ({resolved.kind}).")
         return resolved.id
