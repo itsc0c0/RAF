@@ -163,6 +163,17 @@ interactive docs at `/api/docs`.
 | POST | `/lab/labs/{name}/start`, `/lab/labs/{name}/stop` | Lab + `{changed, created}`; 503 when no container backend is available |
 | DELETE | `/lab/labs/{name}?forget=` | `{name, destroyed, container, container_removed, note?}` — there is deliberately no exec or shell route |
 
+## R$F OS screens
+
+Read-only routes behind `raf tui` (the `raf-os` terminal panel); see [tui.md](tui.md) for the block
+protocol. Ghost experiments shown here run in an unsaved in-memory model.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/tui/pages` | `{system, stats, focus: {incident, subject, subject_id, target, target_id}, pages: [{id, title, param: {name, label, default}\|null}]}` |
+| GET | `/tui/screen/{page}?ref=` (`?question=` for `oracle`) | a screen document `{page, title, subtitle, param, blocks, notes}`; 404 for an unknown page or reference, 503 when the page's product is disabled, 422 when a parameter exceeds 500 characters |
+| GET | `/tui/inspect?ref=` | an object, event (`event:…`) or finding (`finding:…`) as a screen document |
+
 ## Specialized analysis and AI
 
 | Method | Path | Description |

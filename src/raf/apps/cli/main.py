@@ -90,6 +90,7 @@ def _register_optional() -> None:
         "raf.apps.cli.commands.analyze",
         "raf.apps.cli.commands.serve",
         "raf.apps.cli.commands.bundle",
+        "raf.apps.cli.commands.tui",
     ):
         try:
             module = importlib.import_module(module_name)

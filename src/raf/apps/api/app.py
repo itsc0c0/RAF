@@ -125,7 +125,7 @@ def create_app(
         return JSONResponse({"error": {"code": "raf.internal", "message": "Internal error."}}, status_code=500)
 
     app.include_router(core.router, prefix=API_PREFIX)
-    for module_name in ("raf.apps.api.routers.snapshots", "raf.apps.api.routers.analysis"):
+    for module_name in ("raf.apps.api.routers.snapshots", "raf.apps.api.routers.analysis", "raf.apps.api.routers.tui"):
         try:
             module = importlib.import_module(module_name)
         except ModuleNotFoundError as exc:
