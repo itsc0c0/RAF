@@ -146,5 +146,6 @@ def load_demo(ctx: RafContext) -> DemoResult:
         "raf replay INC-001",
         "raf trace bob",
         "raf findings",
+        "raf tui",
     ]
     return result
