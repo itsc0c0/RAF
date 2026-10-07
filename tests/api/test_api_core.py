@@ -71,3 +71,13 @@ def test_workspace_scoping(client: Any) -> None:
     assert client.get("/api/v1/objects", headers={"X-RAF-Workspace": "lab"}).json()["total"] == 1
     assert client.get("/api/v1/objects").json()["total"] == 0
     assert client.get("/api/v1/objects", params={"workspace": "../x"}).status_code == 422
+
+
+def test_request_body_limit(raf_home: Path) -> None:
+    with TestClient(create_app(env={"RAF_HOME": str(raf_home)}, overrides={"api.max_upload_mb": 1})) as client:
+        big = b"x" * (1024 * 1024 + 10)
+        response = client.post("/api/v1/policy/check", content=big, headers={"content-type": "application/json"})
+        assert response.status_code == 413 and response.json()["error"]["code"] == "raf.request_too_large"
+        ok = client.post("/api/v1/policy/check", json={"document": "id,action,source,destination\nr1,deny,any,any\n",
+                                                       "format": "csv"})
+        assert ok.status_code == 200

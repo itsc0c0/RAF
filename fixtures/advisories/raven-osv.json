@@ -1,0 +1,74 @@
+[
+  {
+    "schema_version": "1.6.0",
+    "id": "RAFSIM-2026-0101",
+    "modified": "2026-09-30T12:00:00Z",
+    "published": "2026-09-28T09:00:00Z",
+    "aliases": ["RAVEN-SEC-0101"],
+    "summary": "(synthetic) Token validation bypass in raven-auth",
+    "details": "(synthetic) Fictional advisory for R$F demos and tests. raven-auth accepted session tokens whose signature was never checked when the token header named an unknown algorithm. No real package or vulnerability is described.",
+    "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+    "affected": [
+      {
+        "package": {"ecosystem": "PyPI", "name": "raven-auth", "purl": "pkg:pypi/raven-auth"},
+        "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "1.4.2"}]}]
+      }
+    ],
+    "references": [{"type": "ADVISORY", "url": "https://advisories.raven.example/RAFSIM-2026-0101"}]
+  },
+  {
+    "schema_version": "1.6.0",
+    "id": "RAFSIM-2026-0102",
+    "modified": "2026-09-30T12:00:00Z",
+    "published": "2026-09-29T09:00:00Z",
+    "aliases": ["RAVEN-SEC-0102"],
+    "summary": "(synthetic) Stored cross-site scripting in raven-ui-kit data tables",
+    "details": "(synthetic) Fictional advisory. Cell renderers of raven-ui-kit did not escape HTML in 1.x up to 1.9.4 and in 2.0.0 before 2.3.1.",
+    "affected": [
+      {
+        "package": {"ecosystem": "npm", "name": "raven-ui-kit"},
+        "ranges": [
+          {"type": "SEMVER", "events": [{"introduced": "1.0.0"}, {"last_affected": "1.9.4"}]},
+          {"type": "SEMVER", "events": [{"introduced": "2.0.0"}, {"fixed": "2.3.1"}]}
+        ]
+      }
+    ],
+    "database_specific": {"severity": "HIGH"},
+    "references": [{"type": "ADVISORY", "url": "https://advisories.raven.example/RAFSIM-2026-0102"}]
+  },
+  {
+    "schema_version": "1.6.0",
+    "id": "RAFSIM-2026-0103",
+    "modified": "2026-09-30T12:00:00Z",
+    "published": "2026-09-29T15:00:00Z",
+    "summary": "(synthetic) raven-telemetry sends hostnames in clear text",
+    "details": "(synthetic) Fictional advisory. Two releases of raven-telemetry disabled TLS for the metrics exporter.",
+    "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"}],
+    "affected": [
+      {
+        "package": {"ecosystem": "PyPI", "name": "raven_telemetry"},
+        "versions": ["0.9.0", "0.9.1"]
+      }
+    ],
+    "references": [{"type": "ADVISORY", "url": "https://advisories.raven.example/RAFSIM-2026-0103"}]
+  },
+  {
+    "schema_version": "1.6.0",
+    "id": "RAFSIM-2026-0104",
+    "modified": "2026-09-30T12:00:00Z",
+    "published": "2026-09-30T08:00:00Z",
+    "summary": "(synthetic) raven-logger writes debug output to a world-readable file",
+    "details": "(synthetic) Fictional advisory. Fixed in 3.0.0; the GIT range is ignored by R$F (commit ranges are not evaluated).",
+    "affected": [
+      {
+        "package": {"ecosystem": "npm", "name": "raven-logger"},
+        "ranges": [
+          {"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "3.0.0"}]},
+          {"type": "GIT", "repo": "https://git.raven.example/raven-logger", "events": [{"introduced": "0"}, {"fixed": "8d0c5ab"}]}
+        ]
+      }
+    ],
+    "database_specific": {"severity": "LOW"},
+    "references": [{"type": "ADVISORY", "url": "https://advisories.raven.example/RAFSIM-2026-0104"}]
+  }
+]

@@ -3,6 +3,8 @@
 * Loopback binding is the default. Remote binding requires a token.
 * Host-header validation defeats DNS rebinding against the local service.
 * Optional bearer token (``RAF_API_TOKEN`` / keyring) for every request when set.
+* Request bodies are limited before they are buffered (``api.max_upload_mb``): a declared
+  Content-Length above the limit is refused up front, and streamed bodies are counted.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from collections.abc import Awaitable, Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 LOOPBACK_NAMES = {"localhost", "127.0.0.1", "::1", "[::1]", "testserver"}
 
@@ -79,3 +81,61 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "script-src 'self'; connect-src 'self'; frame-ancestors 'none'",
             )
         return response
+
+
+class _BodyTooLarge(Exception):
+    pass
+
+
+class BodyLimitMiddleware:
+    """Pure ASGI middleware: 413 for request bodies larger than ``max_bytes`` (declared or streamed)."""
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def _reject(self, send: Send, status: int, message: str) -> None:
+        response = JSONResponse({"error": {"code": "raf.request_too_large" if status == 413 else "raf.bad_request",
+                                           "message": message}}, status_code=status)
+        await send({"type": "http.response.start", "status": response.status_code,
+                    "headers": response.raw_headers})
+        await send({"type": "http.response.body", "body": response.body})
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        limit_mb = self.max_bytes // (1024 * 1024)
+        for name, value in scope.get("headers") or []:
+            if name == b"content-length":
+                try:
+                    declared = int(value)
+                except ValueError:
+                    await self._reject(send, 400, "Invalid Content-Length header.")
+                    return
+                if declared > self.max_bytes:
+                    await self._reject(send, 413, f"Request body exceeds the {limit_mb} MB limit (api.max_upload_mb).")
+                    return
+        received = 0
+        started = False
+
+        async def limited_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise _BodyTooLarge
+            return message
+
+        async def tracking_send(message: Message) -> None:
+            nonlocal started
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracking_send)
+        except _BodyTooLarge:
+            if not started:
+                await self._reject(send, 413, f"Request body exceeds the {limit_mb} MB limit (api.max_upload_mb).")

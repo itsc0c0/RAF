@@ -169,4 +169,15 @@ interactive docs at `/api/docs`.
 | GET | `/lens/query?ref=&filter=&group_by=&buckets=&limit=` | `{scope, total, items, groups, histogram, involved: [{type, count}], top_objects: [...]}` |
 | POST | `/oracle/ask` `{question}` | `{answer, provider, mode, citations: [{id, label}], invalid_references: [ids], facts: [{key, text, refs}], suggestions: [commands]}` |
 | GET | `/oracle/status` | provider configuration (never the API key) |
-| GET | `/protocol/...`, `/vault/...`, `/dependency/...`, `/surface/...` | see the product documentation |
+| POST | `/protocol/inspect` (multipart `file`, `?protocol=&host=&port=&flow=&limit=`) | capture summary + `upload` id (uploads are size-checked, verified as captures and addressed only by id) |
+| GET | `/protocol/inspect?upload=&...` | re-inspect a stored upload with filters |
+| GET | `/protocol/packet?upload=&n=` | one packet: layered fields with explanations |
+| GET | `/protocol/flows?upload=&sort=id|bytes|packets|duration&limit=` | flow table with client/server inference and Community ID |
+| GET | `/vault/findings?status=&limit=` | secret findings (values always redacted) |
+| GET | `/vault/secrets` | discovered secret objects (redacted, fingerprinted) |
+| GET | `/vault/rules` | detection rules with severity and confidence |
+| GET | `/dependency/projects` | scanned projects |
+| GET | `/dependency/projects/{ref}/graph` | dependency tree of a project |
+| GET | `/dependency/vulnerable?include_unused=` | packages matched by advisories, with confidence |
+| GET | `/dependency/advisories` | imported (OSV) advisories |
+| GET | `/surface/...` | see the product documentation |

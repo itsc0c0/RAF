@@ -245,8 +245,10 @@ class IngestionPipeline:
         report.format = parser.name
         report.parser = parser.label
         with timed(log, "ingest.file", source=source.name), path.open("rb") as stream:
-            records = parser.records(stream, self._parse_context(source, options))
-            self._run(records, parser, source, options, report, stream=stream, total=info.st_size)
+            parse_ctx = self._parse_context(source, options)
+            records = parser.records(stream, parse_ctx)
+            # one context for parser and normalizers, so parser warnings reach the report
+            self._run(records, parser, source, options, report, stream=stream, total=info.st_size, ctx=parse_ctx)
         return report
 
     def ingest_records(
@@ -350,8 +352,9 @@ class IngestionPipeline:
         *,
         stream: IO[bytes] | None = None,
         total: int | None = None,
+        ctx: ParseContext | None = None,
     ) -> None:
-        ctx = self._parse_context(source, options)
+        ctx = ctx or self._parse_context(source, options)
         batch_size = int(self.settings.get("ingest.batch_size"))
         max_reported = int(self.settings.get("ingest.max_rejections_reported"))
         rejects_path = (

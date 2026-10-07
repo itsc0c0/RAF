@@ -20,14 +20,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from raf.data import raven  # noqa: E402
+from raf.products.protocol.synthetic import raven_inc001_capture as raven_capture  # noqa: E402
 
 
 def jsonl(records: Iterable[dict[str, Any]]) -> str:
     return "".join(json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n" for r in records)
 
 
-def outputs() -> dict[str, Callable[[], str]]:
-    files: dict[str, Callable[[], str]] = {
+def outputs() -> dict[str, Callable[[], str | bytes]]:
+    files: dict[str, Callable[[], str | bytes]] = {
         "raven-events.jsonl": lambda: jsonl(raven.raven_event_file_records()),
         "raven/inventory.jsonl": lambda: jsonl(raven.inventory_records()),
         "evidence/auth.log": raven.evidence_auth_log,
@@ -39,6 +40,7 @@ def outputs() -> dict[str, Callable[[], str]]:
             json.dumps(raven.policy_document(raven.PREVIOUS_POLICY_REVISION), indent=2) + "\n"
         ),
         "policies/raven-fw-export.csv": raven.firewall_csv,
+        "pcap/raven-inc001.pcap": lambda: raven_capture(seed=1),
     }
     try:
         from raf.data import raven_extra

@@ -66,11 +66,25 @@ class FindingRepository:
                     prior = existing.get(fid)
                     status = f.status.value
                     created_at = f.created_at
+                    meta = dict(f.metadata)
                     if prior is not None:
                         stats.updated += 1
                         created_at = prior["created_at"]
                         if prior["status"] in _STICKY:
                             status = prior["status"]
+                        # analyst decisions survive re-analysis: carry the status history forward
+                        history = list((prior["meta"] or {}).get("status_history", []))
+                        if prior["status"] == FindingStatus.RESOLVED.value and status == FindingStatus.OPEN.value:
+                            history.append(
+                                {
+                                    "from": prior["status"],
+                                    "to": status,
+                                    "at": now.isoformat(),
+                                    "note": "reappeared in a new analysis",
+                                }
+                            )
+                        if history and "status_history" not in meta:
+                            meta["status_history"] = history[-50:]
                     else:
                         stats.created += 1
                     rows.append(
@@ -89,7 +103,7 @@ class FindingRepository:
                             "evidence": [e.to_json_dict() for e in f.evidence],
                             "explanation": f.explanation,
                             "tags": sorted(set(f.tags)),
-                            "meta": f.metadata,
+                            "meta": meta,
                             "created_at": created_at,
                             "updated_at": now,
                         }
@@ -215,10 +229,20 @@ class FindingRepository:
         return self.require(finding_id)
 
     def resolve_absent(
-        self, product: str, rule_ids: Sequence[str], present_ids: Iterable[str], conn: Connection | None = None
+        self,
+        product: str,
+        rule_ids: Sequence[str],
+        present_ids: Iterable[str],
+        conn: Connection | None = None,
+        *,
+        candidates: Iterable[str] | None = None,
     ) -> int:
-        """Auto-resolve open findings of the given rules that a re-run no longer produced."""
+        """Auto-resolve open findings of the given rules that a re-run no longer produced.
+
+        ``candidates`` limits which findings may be resolved (e.g. only those of the scanned target),
+        so a partial re-run never resolves findings outside its scope."""
         present = set(present_ids)
+        allowed = set(candidates) if candidates is not None else None
         resolved = 0
         with transaction(self.engine, conn) as c:
             rows = c.execute(
@@ -228,7 +252,7 @@ class FindingRepository:
                     s.findings.c.status == FindingStatus.OPEN.value,
                 )
             ).all()
-            stale = [r[0] for r in rows if r[0] not in present]
+            stale = [r[0] for r in rows if r[0] not in present and (allowed is None or r[0] in allowed)]
             for batch in chunks(stale, 500):
                 resolved += (
                     c.execute(

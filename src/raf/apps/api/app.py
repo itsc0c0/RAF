@@ -18,11 +18,13 @@ from raf.apps.api.deps import ContextPool
 from raf.apps.api.routers import core
 from raf.apps.api.security import (
     LOOPBACK_NAMES,
+    BodyLimitMiddleware,
     HostGuardMiddleware,
     SecurityHeadersMiddleware,
     TokenAuthMiddleware,
     is_loopback,
 )
+from raf.core.config.loader import load_settings
 from raf.core.errors import RafError
 from raf.core.plugins.registry import ProductRegistry
 from raf.core.workspace.manager import RafHome
@@ -81,6 +83,9 @@ def create_app(
             "Refusing to expose the R$F API on a non-loopback address without authentication.",
             hint="Provide a token (RAF_API_TOKEN) or bind to 127.0.0.1.",
         )
+    home = RafHome.from_env(env)
+    limits = load_settings(home.config_path, env=env, overrides=overrides)
+    app.add_middleware(BodyLimitMiddleware, max_bytes=int(limits.get("api.max_upload_mb")) * 1024 * 1024)
     app.add_middleware(SecurityHeadersMiddleware)
     if token:
         app.add_middleware(TokenAuthMiddleware, token=token)
