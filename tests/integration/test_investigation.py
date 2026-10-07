@@ -255,6 +255,27 @@ class TestTimeline:
         )
         assert page2.items
 
+    def test_histogram_buckets_are_exact(self, raven: RafContext, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An event on a bucket boundary falls into the later bucket, in SQL and in the portable
+        fallback alike (whole microseconds, no floating-point day fractions)."""
+        from datetime import timedelta
+
+        from raf.core.storage.repos import events as repo
+
+        query = resolve_scope(raven, ["INC-001"]).event_query()
+        in_sql = raven.store.events.histogram(query, buckets=48)
+        monkeypatch.setattr(repo, "_epoch_micros", lambda dialect: None)
+        in_python = raven.store.events.histogram(query, buckets=48)
+        assert in_sql == in_python
+        events = raven.store.events.query(query, limit=1000).items
+        assert sum(b["count"] for b in in_sql) == len(events)
+        first, width = in_sql[0]["start"], in_sql[1]["start"] - in_sql[0]["start"]
+        offsets = [e.timestamp - first for e in events]
+        on_boundary = [o for o in offsets if o > timedelta(0) and o % width == timedelta(0)]
+        assert on_boundary  # whole-minute demo timestamps land on 50 s boundaries
+        for offset in on_boundary:
+            assert in_sql[offset // width]["start"] == first + offset and in_sql[offset // width]["count"] >= 1
+
     def test_filter_language_rejects_unknown_keys(self, raven: RafContext) -> None:
         with pytest.raises(InvalidInputError):
             parse_filter("colour:blue", resolver=raven.resolver)

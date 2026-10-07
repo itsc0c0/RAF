@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Connection, Engine, Integer, and_, delete, func, or_, select, text
+from sqlalchemy import BigInteger, Connection, Engine, Integer, and_, cast, delete, func, or_, select, text
 
 from raf.core.errors import InvalidInputError
 from raf.core.objects.models import Event, EventDraft, EventObject
@@ -381,28 +381,29 @@ class EventRepository:
             return [(r[0], int(r[1])) for r in c.execute(stmt)]
 
     def histogram(self, q: EventQuery, buckets: int = 60) -> list[dict[str, Any]]:
-        """Event counts in equal-width time buckets over the matching range."""
+        """Event counts in equal-width time buckets over the matching range.
+
+        Computed in whole microseconds (bucket width rounded up to one, at least one second), so an
+        event on a bucket boundary falls into the later bucket on every database."""
         lo, hi = self.bounds(q)
         if lo is None or hi is None:
             return []
-        span = max((hi - lo).total_seconds(), 1.0)
-        width = max(span / max(buckets, 1), 1.0)
-        counts = [0] * (int(span // width) + 1)
+        span = max((hi - lo) // _MICROSECOND, _SECOND_US)
+        width = max(-(-span // max(buckets, 1)), _SECOND_US)
+        counts = [0] * (span // width + 1)
+        start = (lo - _EPOCH) // _MICROSECOND
         with self.engine.connect() as c:
-            if c.dialect.name == "sqlite":
-                # Fast path: bucket in SQL using julianday() (SQLite stores UTC text timestamps).
-                seconds = (func.julianday(s.events.c.ts) - 2440587.5) * 86400.0
-                bucket_expr = func.cast((seconds - lo.timestamp()) / width, Integer).label("b")
+            micros = _epoch_micros(c.dialect.name)
+            if micros is not None:  # bucket in SQL
+                bucket_expr = ((micros - start) // width).label("b")
                 stmt = self._where(select(bucket_expr, func.count()), q).group_by(text("b"))
                 for bucket, n in c.execute(stmt):
-                    idx = min(max(int(bucket or 0), 0), len(counts) - 1)
-                    counts[idx] += int(n)
+                    counts[min(max(int(bucket or 0), 0), len(counts) - 1)] += int(n)
             else:  # portable fallback
                 for (ts,) in c.execute(self._where(select(s.events.c.ts), q)).yield_per(10000):
                     stamp = _as_utc(ts) or lo
-                    idx = min(int((stamp - lo).total_seconds() // width), len(counts) - 1)
-                    counts[idx] += 1
-        return [{"start": lo + timedelta(seconds=i * width), "count": n} for i, n in enumerate(counts)]
+                    counts[min(((stamp - lo) // _MICROSECOND) // width, len(counts) - 1)] += 1
+        return [{"start": lo + i * width * _MICROSECOND, "count": n} for i, n in enumerate(counts)]
 
     def object_counts(self, q: EventQuery, limit: int = 2000) -> list[tuple[str, int]]:
         """Objects involved in the matching events, most involved first: ``[(object_id, events)]``."""
@@ -436,6 +437,21 @@ class EventRepository:
                 select(s.incident_events.c.incident_id, func.count()).group_by(s.incident_events.c.incident_id)
             ).all()
         return {str(i): int(n) for i, n in rows}
+
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_MICROSECOND = timedelta(microseconds=1)
+_SECOND_US = 1_000_000
+
+
+def _epoch_micros(dialect: str) -> Any:
+    """``events.ts`` as exact integer microseconds since the epoch in SQL, or None (compute in Python)."""
+    ts = s.events.c.ts
+    if dialect == "sqlite":  # stored as UTC text 'YYYY-MM-DD HH:MM:SS.ffffff'
+        return cast(func.strftime("%s", ts), Integer) * _SECOND_US + cast(func.substr(ts, 21, 6), Integer)
+    if dialect == "postgresql":  # naive UTC timestamp; EXTRACT(EPOCH ...) is an exact numeric
+        return cast(func.extract("epoch", ts) * _SECOND_US, BigInteger)
+    return None
 
 
 def _as_utc(value: Any) -> datetime | None:
