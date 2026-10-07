@@ -171,8 +171,8 @@ interactive docs at `/api/docs`.
 | GET | `/evidence/items/{id}` | item metadata + custody chain |
 | POST | `/evidence/cases/{case}/verify` | `{verified, items: [{id, ok, expected, actual}]}` |
 | GET | `/lens/query?ref=&filter=&group_by=&buckets=&limit=` | `{scope, total, items, groups, histogram, involved: [{type, count}], top_objects: [...]}` |
-| POST | `/oracle/ask` `{question}` | `{answer, provider, mode, citations: [{id, label}], invalid_references: [ids], facts: [{key, text, refs}], suggestions: [commands]}` |
-| GET | `/oracle/status` | provider configuration (never the API key) |
+| POST | `/oracle/ask` `{question}` (unknown fields rejected) | `{question, answer, provider, mode: builtin|model|builtin-fallback, model, intent, entities, citations: [{id, label, type}], invalid_references: [ids], facts: [{key, kind, text, refs, source, untrusted}], suggestions: [commands], warnings, generated_at, notice}`; 503 when Oracle is disabled |
+| GET | `/oracle/status` | `{provider, enabled, ready, mode, detail, max_facts, tools, stores_answers}` + model settings; never the API key |
 | POST | `/protocol/inspect` (multipart `file`, `?protocol=&host=&port=&flow=&limit=`) | capture summary + `upload` id (uploads are size-checked, verified as captures and addressed only by id) |
 | GET | `/protocol/inspect?upload=&...` | re-inspect a stored upload with filters |
 | GET | `/protocol/packet?upload=&n=` | one packet: layered fields with explanations |

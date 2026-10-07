@@ -10,7 +10,7 @@ import typer
 from rich.text import Text
 
 from raf.core.errors import InvalidInputError, RafError
-from raf.products.lab.backend import terminal_safe
+from raf.core.security.text import terminal_safe
 from raf.products.lab.service import (
     EXEC_DEFAULT_OUTPUT_KB,
     EXEC_DEFAULT_TIMEOUT,

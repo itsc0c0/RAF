@@ -24,6 +24,7 @@ from rich.text import Text
 from raf.core.context.app import RafContext, open_context
 from raf.core.errors import ConfirmationRequired
 from raf.core.objects.types import Severity, confidence_level
+from raf.core.security.text import terminal_safe
 from raf.core.timeutil import format_ts
 
 
@@ -176,7 +177,7 @@ def kv_block(rows: Iterable[tuple[str, Any]], width: int = 20) -> None:
         if isinstance(value, Text):
             line.append_text(value)
         else:
-            line.append(str(value))
+            line.append(terminal_safe(str(value)))
         c.print(line)
 
 
@@ -193,7 +194,8 @@ def table(columns: Sequence[str], rows: Iterable[Sequence[Any]], *, title: str |
     for col in columns:
         t.add_column(col, overflow="fold")
     for row in rows:
-        t.add_row(*[cell if isinstance(cell, Text) else Text(str(cell)) for cell in row])
+        # Cells often hold imported (untrusted) text: control and escape characters are shown escaped.
+        t.add_row(*[cell if isinstance(cell, Text) else Text(terminal_safe(str(cell))) for cell in row])
     console().print(t)
 
 

@@ -37,6 +37,7 @@ from raf.core.errors import (
     SecurityViolation,
 )
 from raf.core.objects.models import RafModel
+from raf.core.security.text import terminal_safe
 from raf.core.timeutil import format_ts, utcnow
 from raf.products.lab.backend import (
     BACKEND_HINT,
@@ -62,7 +63,6 @@ from raf.products.lab.backend import (
     mount_text_problem,
     normalize_cpus,
     normalize_memory,
-    terminal_safe,
     validate_backend_choice,
     validate_image,
     validate_pids_limit,
