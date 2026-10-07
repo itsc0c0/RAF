@@ -83,6 +83,13 @@ Manual installation: `uv sync` (uses `uv.lock`), or `python3.12 -m venv .venv &&
 install -e . --group dev` (pip 25.1 or newer); then `cd web && npm ci && npm run build` for the
 workbench, and `cargo build --release --manifest-path tui/Cargo.toml` for R$F OS.
 
+A wheel that carries the built workbench, so `raf serve` needs neither Node.js nor the checkout:
+
+```bash
+(cd web && npm ci && npm run build) && ./scripts/check-wheel   # builds dist/raf-0.1.0-py3-none-any.whl and tests it
+pipx install dist/raf-0.1.0-py3-none-any.whl                   # or: uv tool install dist/raf-0.1.0-py3-none-any.whl
+```
+
 ## Quick start
 
 ```bash

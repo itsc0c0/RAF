@@ -20,7 +20,7 @@ integration, and documentation that describes the actual behavior.
 |---|---|---|
 | Object model, deterministic IDs, provenance | done | objects, relationships (validity intervals), events, findings, incidents, provenance rows |
 | Workspaces, configuration, secrets | done | layered config; secrets only env/keyring; per-workspace SQLite |
-| Storage | done | SQLite (WAL) with Alembic migrations (schema equality is tested). PostgreSQL: the storage layer supports it (`postgres` extra), but the test suite runs on SQLite only |
+| Storage | done | SQLite (WAL) with Alembic migrations (schema equality is tested). PostgreSQL (`postgres` extra, `storage.url`): CI migrates a fresh database, checks it against the declared schema and runs a 32-command demo workflow on SQLite and PostgreSQL with identical results and content hashes (`tests/integration/test_postgres.py`); the rest of the suite runs on SQLite |
 | Ingestion | done | JSON, JSONL, CSV/TSV, syslog, access logs, text logs, directories, filesystem metadata, archives; native, ECS, CloudTrail and tabular normalizers; product parsers (pcap, policy documents); quarantine of rejected records |
 | `raf analyze` | done | detection + pipelines for pcap, events, directories, policies, repositories, manifests, SBOMs, bundles; `analysis-N` records and scoping |
 | Jobs, audit log, bundles, backups | done | hash-chained audit; bundle verify/import; workspace export/restore |
@@ -32,8 +32,8 @@ integration, and documentation that describes the actual behavior.
 | R$F OS terminal panel (`raf tui`) | done | Rust + Ratatui `raf-os` (`tui/`): 12 pages, keyboard and mouse, inspector, plain-text `--dump`; served by read-only `/api/v1/tui` routes over loopback with a one-time token; see [tui.md](tui.md). Built with Cargo (no prebuilt binaries yet); tested on Linux |
 | Plugins | done | manifests, install/trust (hash pinned)/verify/uninstall; see [plugin-development.md](plugin-development.md) |
 | Architecture rules | done | layering and declared product dependencies enforced by `tests/unit/test_architecture.py` |
-| Packaging | partial | `scripts/bootstrap` and `uv sync`; no published wheel or installer yet |
-| CI | done | `.github/workflows/ci.yml` (Python lint/types/tests/smoke, web lint/types/tests/build, the web workbench end to end in Chromium, R$F OS fmt/clippy/tests/build and an end-to-end `raf tui --dump` of every page) |
+| Packaging | partial | `scripts/bootstrap` and `uv sync`; a wheel with the built web workbench (`uv build` after `npm run build`), installed and served from a clean environment in CI (`scripts/check-wheel`); not published yet, and R$F OS is built with Cargo |
+| CI | done | `.github/workflows/ci.yml` (Python lint/types/tests/smoke, web lint/types/tests/build, the web workbench end to end in Chromium, PostgreSQL migrations and SQLite/PostgreSQL equivalence, R$F OS fmt/clippy/tests/build and an end-to-end `raf tui --dump` of every page) |
 
 ## Products
 

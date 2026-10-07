@@ -41,6 +41,35 @@ jobs:
           uv run raf status
           uv run raf oracle ask "Explain the most important security path in INC-001" > /dev/null
 
+  postgres:
+    name: PostgreSQL (migrations, same results as SQLite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # a throwaway server for this job only, reachable from the runner
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      RAF_TEST_POSTGRES_URL: postgresql+psycopg://postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install (with the postgres extra)
+        run: uv sync --frozen --extra postgres
+      - name: Migrations and the SQLite/PostgreSQL equivalence workflow
+        run: uv run pytest -q -rs tests/integration/test_postgres.py
+
   web:
     name: Web workbench (lint, types, tests, build)
     runs-on: ubuntu-latest
@@ -63,7 +92,7 @@ jobs:
       - run: npm run build
 
   e2e:
-    name: Web workbench end to end (Playwright, Chromium)
+    name: Web workbench end to end (Playwright, Chromium) and the wheel
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -86,6 +115,8 @@ jobs:
       - name: Build the workbench (the suite tests what raf serve serves)
         working-directory: web
         run: npm run build
+      - name: Wheel with the workbench, checked in a clean environment
+        run: ./scripts/check-wheel
       - name: End-to-end tests (demo workspaces, servers on 127.0.0.1)
         working-directory: web
         run: npm run test:e2e

@@ -19,8 +19,8 @@ same security world and every result can be pivoted into every other product.
 6. **Untrusted input.** Everything imported may be hostile: bounded parsers, no shell interpolation,
    escaped rendering, Oracle treats imported text as data.
 7. **Local first.** SQLite workspaces on the analyst's machine; no service is required beyond the
-   Python process. PostgreSQL is supported by the storage layer (`postgres` extra) but not the
-   default.
+   Python process. PostgreSQL is supported by the storage layer (`postgres` extra, `storage.url`;
+   CI checks that it gives the results SQLite gives) but not the default.
 
 ## Layers
 

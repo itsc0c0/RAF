@@ -56,6 +56,9 @@ pattern = "RAF_VERSION = \"(?P<version>[^\"]+)\""
 [tool.hatch.build.targets.wheel]
 packages = ["src/raf"]
 
+# hatch_build.py: puts web/dist into the wheel as raf/apps/web_dist when it has been built
+[tool.hatch.build.targets.wheel.hooks.custom]
+
 [tool.hatch.build.targets.sdist]
 include = ["src/raf", "README.md", "docs", "fixtures"]
 

@@ -29,10 +29,19 @@ cd web && npm run typecheck && npm run lint && npm run format:check && npm run t
 cd web && npm run test:e2e            # browser end-to-end suite (needs the build and .venv/bin/raf)
 ```
 
-`.github/workflows/ci.yml` runs four jobs on every push and pull request: Python (lint, format,
-mypy, pytest, demo smoke test), web (typecheck, lint, format, tests, build), e2e (the Playwright suite
-in Chromium against `raf serve`) and the R$F OS terminal panel (fmt, clippy, tests, build, `raf tui
---dump` of every page).
+`.github/workflows/ci.yml` runs five jobs on every push and pull request: Python (lint, format,
+mypy, pytest, demo smoke test), PostgreSQL (migrations and the SQLite/PostgreSQL equivalence
+workflow against a `postgres:16` service), web (typecheck, lint, format, tests, build), e2e (the
+Playwright suite in Chromium against `raf serve`) and the R$F OS terminal panel (fmt, clippy, tests,
+build, `raf tui --dump` of every page).
+
+`tests/integration/test_postgres.py` is skipped unless `RAF_TEST_POSTGRES_URL` names a PostgreSQL
+server whose user may create databases (each test creates and drops its own):
+
+```bash
+uv sync --extra postgres
+RAF_TEST_POSTGRES_URL=postgresql+psycopg://postgres@127.0.0.1:5432/postgres pytest tests/integration/test_postgres.py
+```
 
 The end-to-end suite starts its own servers with private demo workspaces on 127.0.0.1 (see
 [web-ui.md](web-ui.md#end-to-end-tests-webe2e)). Locally it uses the Chromium Playwright 1.56.1
@@ -110,6 +119,17 @@ disagree.
    [implementation-status.md](implementation-status.md).
 
 Plugins follow the same contract outside the repository: [plugin-development.md](plugin-development.md).
+
+## Packaging
+
+`uv build` makes `dist/raf-<version>-py3-none-any.whl`. The build hook `hatch_build.py` puts
+`web/dist` into the wheel as `raf/apps/web_dist`, where `raf serve` finds it when there is no source
+checkout, so build the workbench first (`cd web && npm ci && npm run build`); with
+`RAF_REQUIRE_WEB_DIST=1` a missing build is an error instead of a wheel without the workbench.
+Editable installs (`uv sync`) serve `web/dist` directly. `./scripts/check-wheel` builds the wheel,
+installs it into a new virtualenv, loads the demo into a temporary home and checks that `raf serve`
+serves the packaged workbench and the API; CI runs it in the e2e job. R$F OS (`tui/`) is not part of
+the wheel: it is built with Cargo.
 
 ## Running the API and the workbench
 
