@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 from rich.console import Console
+from rich.segment import Segment
 from rich.table import Table
 from rich.text import Text
 
@@ -45,6 +46,22 @@ class CliState:
 STATE = CliState()
 
 
+class SafeConsole(Console):
+    """A Rich console on which data can never emit terminal control sequences.
+
+    Rich passes escape sequences in text through to the terminal, so a crafted log line could
+    rewrite the screen, set the window title or hide output. Every text segment is escaped with
+    :func:`terminal_safe` right before it is written; Rich's own control segments and styles are
+    produced separately and stay intact.
+    """
+
+    def _render_buffer(self, buffer: Iterable[Segment]) -> str:
+        return super()._render_buffer(
+            segment if segment.control else Segment(terminal_safe(segment.text), segment.style, segment.control)
+            for segment in buffer
+        )
+
+
 def reset_state() -> None:
     global STATE
     if STATE._ctx is not None:
@@ -56,7 +73,7 @@ def console() -> Console:
     if STATE._console is None:
         no_color = STATE.no_color or bool(os.environ.get("NO_COLOR"))
         width = None if sys.stdout.isatty() else int(os.environ.get("COLUMNS", "160"))
-        STATE._console = Console(
+        STATE._console = SafeConsole(
             no_color=no_color,
             soft_wrap=True,
             highlight=False,
@@ -69,7 +86,7 @@ def console() -> Console:
 def err_console() -> Console:
     if STATE._err is None:
         no_color = STATE.no_color or bool(os.environ.get("NO_COLOR"))
-        STATE._err = Console(stderr=True, no_color=no_color, soft_wrap=True, highlight=False)
+        STATE._err = SafeConsole(stderr=True, no_color=no_color, soft_wrap=True, highlight=False)
     return STATE._err
 
 

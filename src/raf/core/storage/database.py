@@ -24,7 +24,7 @@ from raf.core.errors import StorageError
 log = logging.getLogger("raf.storage")
 
 #: Alembic head revision expected by this version of R$F.
-SCHEMA_HEAD = "0001_initial"
+SCHEMA_HEAD = "0002_drop_unused_tables"
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 

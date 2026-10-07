@@ -6,9 +6,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
-from raf.apps.api.deps import Ctx
 from raf.core.errors import InvalidInputError
 from raf.products.trace.service import TraceService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

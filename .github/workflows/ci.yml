@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python (lint, types, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RAF_HOME: ${{ runner.temp }}/raf-home
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --frozen
+      - name: Lint
+        run: |
+          uv run ruff check src tests scripts
+          uv run ruff format --check src tests scripts
+      - name: Type check
+        run: uv run mypy
+      - name: Tests (incl. the end-to-end signature workflow and fixture freshness)
+        run: uv run pytest -q
+      - name: Demo smoke test
+        run: |
+          uv run raf demo load
+          uv run raf status
+          uv run raf oracle ask "Explain the most important security path in INC-001" > /dev/null
+
+  web:
+    name: Web workbench (lint, types, tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test
+      - run: npm run build

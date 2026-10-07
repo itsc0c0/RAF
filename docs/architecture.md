@@ -1,0 +1,189 @@
+# R$F architecture
+
+R$F is one Python package (`src/raf`, Python 3.12) plus a web workbench (`web/`, React + TypeScript).
+It is built as a set of independent products over a shared core, so that every product sees the
+same security world and every result can be pivoted into every other product.
+
+## Principles
+
+1. **One model of the world.** All data is normalized into one security object model (objects,
+   relationships, events, findings) with deterministic IDs. Products never keep private copies.
+2. **Provenance everywhere.** Every object, relationship and finding records where it came from
+   (source, SHA-256, record locator, parser, job, evidence item); every event keeps its raw record.
+3. **Explainable results.** Scores are lists of signed factors with evidence; paths state why each
+   hop is traversable; findings carry their explanation and the IDs they rest on.
+4. **Determinism.** Same input, same IDs, same results: imports are idempotent, synthetic data is
+   seeded, replay states are hashed, Oracle's default reasoner is deterministic.
+5. **Independence.** Products are packages with manifests; they can be disabled; a product only
+   uses another product it declares in `depends_on`.
+6. **Untrusted input.** Everything imported may be hostile: bounded parsers, no shell interpolation,
+   escaped rendering, Oracle treats imported text as data.
+7. **Local first.** SQLite workspaces on the analyst's machine; no service is required beyond the
+   Python process. PostgreSQL is supported by the storage layer (`postgres` extra) but not the
+   default.
+
+## Layers
+
+```
+raf.apps       CLI (Typer + Rich) and HTTP API (FastAPI)            ┐ application
+raf.analysis   application services shared by CLI and API           ┘
+raf.products   20 products, one package each (manifest, service, cli, api)
+raf.sdk        runtime for product CLIs (raf.sdk.cli) and API routers (raf.sdk.api)
+raf.data       synthetic datasets: Raven Industries, organization and telemetry generators
+raf.core       the platform
+```
+
+A layer imports only layers below it, and a product imports another product only when its manifest
+lists it in `depends_on`. `tests/unit/test_architecture.py` parses every module (including imports
+inside functions) and fails on any violation. Consequences:
+
+* the CLI and the API share one application layer (`raf.analysis` + product services); handlers only
+  parse input and render output;
+* products cannot form cycles, and disabling a product never breaks another one that did not
+  declare it;
+* cross-product features live in the application layer (`raf analyze`, the demo, pivots) or use
+  core extension points (`STATE_PROVIDERS` for `ghost:<model>` snapshot sources; manifest `parsers`
+  for product parsers).
+
+## Repository layout
+
+```
+src/raf/
+  core/
+    objects/      models (SecurityObject, Relationship, Event, Finding, drafts), types, semantics
+    ids.py        deterministic IDs and digests
+    storage/      SQLAlchemy schema, migrations (Alembic), repositories, purge
+    ingestion/    parsers (JSON/JSONL/CSV/syslog/access/text/filesystem), normalizers (native, ECS,
+                  CloudTrail, tabular), entity resolution, pipeline, provenance, quarantine
+    events/       event taxonomy (default actor/target types per event type)
+    graph/        graph sources, algorithms (paths, neighborhoods, induced subgraphs), propagation
+    risk/         explainable risk model (raf-risk/1.0) and the exposure model
+    query/        reference resolution, scopes, filter language
+    snapshots/    snapshots, state providers, materialization
+    jobs/         persisted jobs (inline or background), progress, cancellation
+    audit/        hash-chained audit log
+    config/       typed configuration schema, layered loading, secrets (env / keyring)
+    workspace/    RAF_HOME and workspaces
+    plugins/      manifests and the product registry (built-ins + trusted plugins)
+    bundle/       the .raf bundle format (export / verify / import)
+    security/     safe file handling, redaction, terminal-safe text
+    context/      RafContext (everything a command needs) and @last-style references
+  data/           raven.py (the demo organization and INC-001), synth.py (generators)
+  sdk/            cli.py (output, tables, confirmation, global flags), api.py (Ctx dependency)
+  products/<name>/  manifest.py, service.py, cli.py, api.py (+ product modules)
+  analysis/       analyze.py, ingest.py, demo.py, demo_steps.py, pivots.py, providers.py, backup.py
+  apps/cli/       main.py (entry point, global flags, error rendering), registry (lazy product
+                  commands), commands/ (platform, workspace, data, ingest, analyze, snapshots, ...)
+  apps/api/       app.py (create_app), security.py (host guard, token, CSP, body limit),
+                  deps.py (context pool), routers/ (core, snapshots, analysis)
+web/              the workbench (see docs/web-ui.md)
+fixtures/         deterministic demo data (generated by scripts/generate_fixtures.py)
+tests/            unit, products, api, cli, integration (incl. the end-to-end workflow), security
+```
+
+## Core subsystems
+
+**Context.** `open_context()` builds a `RafContext` for one workspace: settings, store, audit log,
+job manager, context references (`@last`) and the product registry. CLI commands obtain it through
+`raf.sdk.cli.ctx()`; API routes through the `Ctx` dependency (`raf.sdk.api`), which the API backs
+with one long-lived context per workspace (`?workspace=` or `X-RAF-Workspace`).
+
+**Workspaces.** `RAF_HOME` (default `~/.raf`) holds `config.toml`, `registry.json`, `plugins/`,
+`logs/` and `workspaces/<name>/` with `raf.db` (SQLite, WAL), `config.toml`, `evidence/`
+(content-addressed, read-only), `rejects/` (quarantined records), `uploads/`, `labs/`, `exports/`.
+
+**Storage.** SQLAlchemy Core with Alembic migrations, applied on open. Tables:
+objects (+ object_aliases), relationships (with validity intervals), events (+ event_objects, incident_events), findings
+(+ finding_objects), provenance, snapshots (+ items, blobs), jobs, analyses, audit_log, cases,
+evidence_items, custody_events, kv (small product state), counters (human IDs such as `job-12`,
+`analysis-3`). Repositories expose typed queries; upserts merge observations and keep history.
+
+**Ingestion.** `IngestionPipeline` (inside a job): detect the parser (`sniff` scores, or `--format`)
+→ parse records with limits (file size, line length, nesting) → normalize to drafts (native schema,
+ECS, CloudTrail, tabular) → resolve names to existing objects → build deterministic objects,
+relationships and events → store with provenance. Malformed records are rejected individually with a
+reason and quarantined (`raf import report <job>`); nothing is silently dropped.
+
+**Graph and propagation.** `MemoryGraphSource` (or store-backed sources) with temporal filtering
+(`--at`). `Propagator` explores from a subject with three modes (control, reach, trust): each
+relationship type has forward/reverse traversal rules with factors (`core/objects/semantics.py`);
+best-first search keeps Pareto fronts of (confidence, depth); network reach can be upgraded to control
+by an exploitable vulnerability; disabled identities stop control. Blast, Exposure, IAM, Ghost and
+Oracle all use it, so they agree.
+
+**Risk.** `raf-risk/1.0` scores are sums of documented factors (`RiskFactor`: rule, label, sign,
+points, evidence) with levels at 25/50/75. The exposure model combines criticality, reachability from
+entry points (Internet zones, workstations), exploitable vulnerabilities, who can obtain control (and
+whether through exposed credentials), stepping-stone value and stored secrets.
+See [risk-model.md](risk-model.md).
+
+**Findings.** `finding:<product>:<rule>:<hash>` IDs make findings idempotent; re-running an
+analysis updates them, keeps their status history, reopens resolved ones that reappear, and resolves
+those that no longer apply. Severity and confidence are separate.
+
+**Snapshots.** A snapshot freezes objects and relationships (content-addressed blobs). Sources:
+the current workspace, another snapshot, or a state provider (`ghost:<model>`). Diff compares any
+two states.
+
+**Jobs, audit, config.** Long operations are persisted jobs with progress and cancellation. Every
+state-changing operation is recorded in a hash-chained audit log (`raf audit verify`). Configuration
+is typed and layered (defaults < global < workspace < environment < overrides); secrets are read
+only from environment variables or the OS keyring, never from config files.
+
+**Plugins.** The registry merges built-in product manifests with installed plugins; plugins must be
+trusted (hash pinned) before they load. See [plugin-development.md](plugin-development.md).
+
+## Products
+
+Each product package contains `manifest.py` (name, status, category, commands, `cli`/`api` import
+paths, parsers, `depends_on`, docs, UI route), a `service.py` with the domain logic, and thin `cli.py`
+/ `api.py` adapters. The CLI loads a product's commands lazily when invoked (`RafGroup`); the API
+mounts each available product's router at `/api/v1/<name>`. A product that fails to load is reported
+as unavailable instead of breaking the CLI or the API.
+
+| Area | Products |
+|---|---|
+| Investigation | Graph, Timeline, Trace, Replay, Diff, Lens |
+| Exposure | Blast, IAM, Policy, Exposure, Surface |
+| Synthetic environments | Ghost, Range, Forge, Lab |
+| Specialized analysis | Protocol, Vault, Dependency, Evidence |
+| AI | Oracle (deterministic by default; optional model provider) |
+
+## Interfaces
+
+* **CLI** (`raf`): global flags anywhere on the command line, `--json` documents with schema ids,
+  structured errors (`raf.error/v1`) with reasons, hints and suggestions, stable exit codes, an
+  interactive shell, `@last` references, and next-step suggestions that are never executed
+  automatically. Reference: [cli.md](cli.md).
+* **HTTP API** (`raf serve`, `/api/v1`): the same services; loopback by default, bearer token
+  required for remote binding, host-header guard, request size limit, strict security headers.
+  Reference: [api.md](api.md).
+* **Web workbench** (`web/`, served by `raf serve`): views over the same API with pivots between
+  products. Reference: [web-ui.md](web-ui.md).
+
+## Example data flow: `raf analyze capture.pcap`
+
+1. `raf.apps.cli.commands.analyze` parses arguments and calls `raf.analysis.analyze.analyze_path`.
+2. Detection reads the first 64 KB (pcap magic) → pipeline `pcap`.
+3. The ingestion job runs the Protocol product's parser (contributed through its manifest): flows,
+   DNS, HTTP and TLS events with objects (IPs, domains, URLs) and provenance.
+4. Timeline and Graph steps summarize what was indexed; correlation re-scores exposure for the assets
+   that own the capture's addresses; the Findings step reports new findings.
+5. The analysis is stored as `analysis-N` with its jobs, so `raf lens analysis-N`,
+   `raf graph analysis-N` and `raf timeline analysis-N` scope to exactly this data, and the API
+   (`POST /api/v1/analyze`) returns the same structure.
+
+## Design decisions
+
+| Decision | Why |
+|---|---|
+| SQLite by default, PostgreSQL-ready | a workstation should need no server; SQLAlchemy Core keeps a path to PostgreSQL |
+| Deterministic IDs and idempotent imports | re-importing never duplicates; results are reproducible; bundles merge cleanly |
+| Provenance rows instead of opaque merges | every derived fact must answer "where did this come from?" |
+| One propagation engine for Blast, Exposure, IAM, Ghost, Oracle | products must agree on what "control" means |
+| Factor-based risk instead of opaque scores | every number must be explainable and testable |
+| Products only through manifests, `depends_on` enforced by tests | no circular architecture; disabling is safe |
+| Lazy product loading, resilient mounting | one broken product must not take down the platform |
+| Oracle deterministic by default; models optional and validated | the platform must be useful with AI disabled; AI output is never authoritative |
+| API takes uploads, never server paths | an API client must not make R$F read arbitrary files on the server |
+| Synthetic offensive behavior only | R$F is a defensive tool (see [security-model.md](security-model.md)) |

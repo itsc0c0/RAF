@@ -201,7 +201,7 @@ def render_finding(f: Finding) -> None:
         c.print()
         c.print(Text("Evidence", style="bold"))
         for ev in f.evidence[:20]:
-            c.print(Text(f"  {ev.kind:<12}", style="dim") + Text(ev.id) + Text(f"  {ev.note or ''}", style="dim"))
+            c.print(Text(f"  {ev.kind:<12} ", style="dim") + Text(ev.id) + Text(f"  {ev.note or ''}", style="dim"))
     if f.recommendation:
         c.print()
         c.print(Text("Recommendation", style="bold"))

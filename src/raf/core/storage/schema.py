@@ -25,7 +25,6 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    UniqueConstraint,
 )
 
 from raf.core.storage.types import JSONType, UTCDateTime
@@ -340,59 +339,6 @@ custody_events = Table(
     Column("entry_hash", String(64), nullable=False),
     Index("ix_custody_events_evidence", "evidence_id"),
     Index("ix_custody_events_case", "case_id"),
-)
-
-ghost_models = Table(
-    "ghost_models",
-    metadata,
-    Column("id", String(160), primary_key=True),
-    Column("name", String(128), nullable=False, unique=True),
-    Column("base_snapshot_id", String(160), nullable=False),
-    Column("parent", String(160)),
-    Column("description", Text, nullable=False, default=""),
-    Column("created_at", UTCDateTime(), nullable=False),
-    Column("updated_at", UTCDateTime(), nullable=False),
-)
-
-ghost_ops = Table(
-    "ghost_ops",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("model_id", String(160), nullable=False),
-    Column("seq", Integer, nullable=False),
-    Column("op", String(64), nullable=False),
-    Column("params", JSONType, nullable=False),
-    Column("summary", JSONType, nullable=False),
-    Column("created_at", UTCDateTime(), nullable=False),
-    UniqueConstraint("model_id", "seq"),
-)
-
-ranges = Table(
-    "ranges",
-    metadata,
-    Column("name", String(128), primary_key=True),
-    Column("preset", String(64)),
-    Column("seed", Integer, nullable=False),
-    Column("config", JSONType, nullable=False),
-    Column("status", String(16), nullable=False),
-    Column("sim_clock", UTCDateTime()),
-    Column("worker_pid", Integer),
-    Column("stats", JSONType, nullable=False),
-    Column("created_at", UTCDateTime(), nullable=False),
-    Column("updated_at", UTCDateTime(), nullable=False),
-)
-
-labs = Table(
-    "labs",
-    metadata,
-    Column("name", String(128), primary_key=True),
-    Column("template", String(64), nullable=False),
-    Column("backend", String(32), nullable=False),
-    Column("config", JSONType, nullable=False),
-    Column("status", String(16), nullable=False),
-    Column("container_id", String(128)),
-    Column("created_at", UTCDateTime(), nullable=False),
-    Column("updated_at", UTCDateTime(), nullable=False),
 )
 
 kv = Table(

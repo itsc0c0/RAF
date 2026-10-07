@@ -7,8 +7,8 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from raf.apps.api.deps import Ctx
 from raf.products.ghost.service import GhostService, operation_help
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

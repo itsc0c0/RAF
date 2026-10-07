@@ -10,10 +10,10 @@ from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
-from raf.apps.api.deps import Ctx
 from raf.core.query.scope import resolve_scope
 from raf.core.timeutil import parse_timestamp
 from raf.products.timeline.service import TimelineService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

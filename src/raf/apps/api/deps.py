@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Mapping
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import Depends, Header, Query, Request
+from fastapi import Request
 
 from raf.core.context.app import RafContext, open_context
 from raf.core.plugins.registry import ProductRegistry
 from raf.core.workspace.manager import RafHome, WorkspaceManager, validate_workspace_name
+from raf.sdk.api import Ctx as Ctx  # re-exported for the application's own routers
+from raf.sdk.api import get_context as get_context
 
 
 class ContextPool:
@@ -64,14 +66,3 @@ class ContextPool:
 def get_pool(request: Request) -> ContextPool:
     pool: ContextPool = request.app.state.pool
     return pool
-
-
-def get_context(
-    request: Request,
-    workspace: Annotated[str | None, Query(description="Workspace (default: current)")] = None,
-    x_raf_workspace: Annotated[str | None, Header()] = None,
-) -> RafContext:
-    return get_pool(request).get(workspace or x_raf_workspace)
-
-
-Ctx = Annotated[RafContext, Depends(get_context)]

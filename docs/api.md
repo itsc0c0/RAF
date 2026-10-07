@@ -185,4 +185,6 @@ interactive docs at `/api/docs`.
 | GET | `/dependency/projects/{ref}/graph` | dependency tree of a project |
 | GET | `/dependency/vulnerable?include_unused=` | packages matched by advisories, with confidence |
 | GET | `/dependency/advisories` | imported (OSV) advisories |
-| GET | `/surface/...` | see the product documentation |
+| GET | `/surface/summary?at=&expiring_days=`, `/surface/assets?kind=&scope=in\|out\|all&references=&limit=&offset=`, `/surface/scope`, `/surface/findings?rule=&min_severity=&status=` | summary tree, assets, authorized scope, findings |
+| POST, DELETE | `/surface/scope` `{target, kind?, owner?, authorization?, replace?}`, `/surface/scope/{target}` | manage the authorized scope (201 / 409 on conflict) |
+| POST | `/surface/import?apply_scope=&format=&source_name=` (body: the inventory; never a path), `/surface/analyze?at=&expiring_days=&persist=` | import an inventory (20 MB, 413 above), analyze — see [products/surface.md](products/surface.md) |

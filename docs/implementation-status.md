@@ -1,0 +1,71 @@
+# Implementation status (0.1.0)
+
+What works today, what is partial, and what is missing. "Implemented" here means: core logic,
+input validation, meaningful output, error handling, tests, CLI/API (and UI where it exists)
+integration, and documentation that describes the actual behavior.
+
+## Status meanings
+
+| Status | Meaning in R$F |
+|---|---|
+| STABLE | feature-complete, interfaces frozen for the 1.x line. **Nothing is STABLE in 0.x.** |
+| BETA | implemented end to end (logic, validation, CLI, API, tests, docs); interfaces may still change |
+| ALPHA | usable core with significant gaps |
+| EXPERIMENTAL | implemented but not validated in its real operating environment |
+| DISABLED | turned off by the operator (`raf product disable`) |
+
+## Platform
+
+| Area | State | Notes |
+|---|---|---|
+| Object model, deterministic IDs, provenance | done | objects, relationships (validity intervals), events, findings, incidents, provenance rows |
+| Workspaces, configuration, secrets | done | layered config; secrets only env/keyring; per-workspace SQLite |
+| Storage | done | SQLite (WAL) with Alembic migrations (schema equality is tested). PostgreSQL: the storage layer supports it (`postgres` extra), but the test suite runs on SQLite only |
+| Ingestion | done | JSON, JSONL, CSV/TSV, syslog, access logs, text logs, directories, filesystem metadata, archives; native, ECS, CloudTrail and tabular normalizers; product parsers (pcap, policy documents); quarantine of rejected records |
+| `raf analyze` | done | detection + pipelines for pcap, events, directories, policies, repositories, manifests, SBOMs, bundles; `analysis-N` records and scoping |
+| Jobs, audit log, bundles, backups | done | hash-chained audit; bundle verify/import; workspace export/restore |
+| Findings lifecycle | done | idempotent IDs, status history, reopen, resolve-absent, triage via CLI/API/UI |
+| Risk model | done | `raf-risk/1.0` explainable factors (Blast, Exposure, Ghost, Oracle) |
+| CLI | done | global flags, `--json` schemas, structured errors and exit codes, interactive shell, `@last` |
+| HTTP API | done | `/api/v1` for every product; loopback default, token for remote binding, host guard, CSP, body limit |
+| Web workbench | partial | overview, investigate (Lens/Trace), graph, replay, timeline, exposure, findings, evidence, ranges, labs, products, settings; see [web-ui.md](web-ui.md) for the current page list |
+| Plugins | done | manifests, install/trust (hash pinned)/verify/uninstall; see [plugin-development.md](plugin-development.md) |
+| Architecture rules | done | layering and declared product dependencies enforced by `tests/unit/test_architecture.py` |
+| Packaging | partial | `scripts/bootstrap` and `uv sync`; no published wheel or installer yet |
+| CI | done | `.github/workflows/ci.yml` (Python lint/types/tests/smoke, web lint/types/tests/build) |
+
+## Products
+
+| Product | Status | Works | Partial / not yet |
+|---|---|---|---|
+| Graph | BETA | neighborhoods, paths, temporal `--at` views, incident/analysis scopes, GraphML/JSON export, stats | layout is the client's job (web); very large graphs are truncated with notice |
+| Timeline | BETA | unified events, filter language, grouping, histograms, cursor pagination, CSV/JSON/bundle export | — |
+| Trace | BETA | causal chains: observed links vs labeled correlations with confidence | correlation windows are heuristics (configurable) |
+| Replay | BETA | deterministic incident reconstruction, state at T, checkpoints, state hashes | — |
+| Diff | BETA | snapshots, current state and Ghost models; categories, importance with reasons | — |
+| Blast | BETA | control/reach/trust propagation, vulnerability upgrades, explainable paths and risk | port-level policy is not part of propagation (see `raf policy can`) |
+| IAM | BETA | effective access, privilege paths, dormant/MFA/excessive/inherited/credential-exposure findings | no cloud-provider permission evaluation beyond imported statements |
+| Policy | BETA | firewall and access policy normalization (raf-policy/1, IAM JSON, CSV), anomaly analysis, flow decisions, revision diffs | vendor-specific firewall syntaxes are not parsed (CSV export path only) |
+| Exposure | BETA | per-asset explainable exposure, workspace metrics, findings | — |
+| Ghost | BETA | what-if models with 12 operations, undo, simulate, compare, min-cost cut suggestions, snapshot source | zone-level network modeling |
+| Range | BETA | presets (raven, acme, small-office, enterprise), seeded organizations, simulated activity periods, clean purge | no live services; periods are generated synchronously |
+| Forge | BETA | 7 telemetry generators, 3 modeled scenarios, deterministic seeds, optional ingestion | — |
+| Lab | EXPERIMENTAL | definitions, secure container arguments, lifecycle, exec/shell via CLI, audit; fully tested with fakes | never run against a live Docker/Podman daemon in CI |
+| Protocol | BETA | pcap/pcapng reader, explained fields, flows (Community ID), DNS/HTTP/TLS metadata, ingestion | no live capture, TCP reassembly or decryption (by design) |
+| Vault | BETA | rule-based secret detection with entropy, redaction, keyed fingerprints, allowlists, findings | — |
+| Dependency | BETA | manifests and lockfiles (Python, JavaScript, …), SBOM import/export, offline OSV matching with confidence | advisories must be imported (no online feed) |
+| Evidence | BETA | cases, SHA-256 read-only storage, hash-chained custody, verification, incident linking, export | no disk/memory image parsing; custody is not externally signed |
+| Surface | BETA | authorized-scope inventory import (DNS, certificates, services, cloud storage), ownership, findings | see [products/surface.md](products/surface.md) for limits; no scanning by design |
+| Lens | BETA | any scope: events, groups, histograms, involved objects, findings, pivots | ranking considers the top 2,000 objects |
+| Oracle | BETA | deterministic grounded reasoner, OpenAI-compatible provider with validated citations, injection defenses | keyword-based intent detection; model provider tested with mocks only |
+
+## Verified workflows
+
+* The signature workflow (README "Example workflow") runs end to end in
+  `tests/integration/test_end_to_end.py` and in CI.
+* `raf demo load` followed by `raf graph alice`, `raf blast alice`, `raf timeline alice`,
+  `raf replay INC-001`, `raf oracle ask …` (CI smoke test).
+
+## Known gaps
+
+See [next-steps.md](next-steps.md).

@@ -46,8 +46,14 @@ def root(
     no_color: bool = typer.Option(False, "--no-color", help="Disable colors."),
     debug: bool = typer.Option(False, "--debug", help="Verbose diagnostics and full tracebacks."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm destructive operations."),
+    version: bool = typer.Option(False, "--version", help="Show the R$F version and exit (details: raf version)."),
 ) -> None:
     """R$F security platform. Run without arguments for the interactive shell."""
+    if version:
+        from raf.version import RAF_VERSION
+
+        rt.console().print(f"R$F {RAF_VERSION}")
+        raise typer.Exit()
     # Global flags are normally extracted by run(); honor them here too when invoked directly.
     rt.STATE.workspace = workspace or rt.STATE.workspace
     rt.STATE.json = json_output or rt.STATE.json

@@ -6,8 +6,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
-from raf.apps.api.deps import Ctx
 from raf.products.exposure.service import ExposureService, level_rank, parse_level
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

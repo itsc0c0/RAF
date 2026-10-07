@@ -23,7 +23,7 @@ def _step_line(step: AnalysisStep | dict[str, Any]) -> Text:
     data = step.to_json_dict() if isinstance(step, AnalysisStep) else step
     mark, style = _MARK.get(str(data["status"]), ("?", ""))
     line = Text(f"  {mark} ", style=style)
-    line.append(f"{data['name']:<24}", style="bold" if data["status"] == "ok" else style)
+    line.append(f"{data['name']:<24} ", style="bold" if data["status"] == "ok" else style)
     detail = terminal_safe(str(data.get("detail") or ""))
     if data["status"] == "skipped":
         detail = f"skipped: {detail}"

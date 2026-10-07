@@ -6,10 +6,10 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from raf.apps.api.deps import Ctx
 from raf.core.query.scope import resolve_scope
 from raf.core.timeutil import parse_timestamp
 from raf.products.replay.service import ReplayService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

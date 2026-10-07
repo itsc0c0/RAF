@@ -7,10 +7,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Body
 from pydantic import BaseModel, Field
 
-from raf.apps.api.deps import Ctx
 from raf.core.errors import InvalidInputError
 from raf.products.policy.formats import MAX_POLICY_FILE_BYTES, parse_policy_text
 from raf.products.policy.service import PolicyService, resolve_endpoint
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

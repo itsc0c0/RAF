@@ -12,8 +12,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from raf.apps.api.deps import Ctx
 from raf.products.dependency.service import DependencyService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

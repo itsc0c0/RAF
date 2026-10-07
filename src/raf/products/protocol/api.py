@@ -10,10 +10,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request, UploadFile
 
-from raf.apps.api.deps import Ctx
 from raf.core.timeutil import parse_timestamp
 from raf.products.protocol.filters import PacketFilter
 from raf.products.protocol.service import ProtocolService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

@@ -6,9 +6,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
-from raf.apps.api.deps import Ctx
 from raf.core.timeutil import parse_timestamp
 from raf.products.lens.service import LensService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

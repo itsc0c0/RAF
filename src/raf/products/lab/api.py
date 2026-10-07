@@ -16,8 +16,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
-from raf.apps.api.deps import Ctx
 from raf.products.lab.service import MAX_DESCRIPTION, MAX_MOUNTS, LabService, LifecycleResult
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -35,6 +36,21 @@ def _event(n: int, actor: str = "user:alice", target: str = "host:ws-01", etype:
 
 def test_schema_head_matches_migrations() -> None:
     assert alembic_head() == SCHEMA_HEAD
+
+
+def test_migrated_database_matches_the_schema(tmp_path: Path) -> None:
+    """The tables, columns and indexes the migrations create are exactly what schema.py declares."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from raf.core.storage.database import create_db_engine, migrate, sqlite_url
+    from raf.core.storage.schema import metadata
+
+    engine = create_db_engine(sqlite_url(tmp_path / "check.db"))
+    migrate(engine)
+    with engine.connect() as conn:
+        diff = compare_metadata(MigrationContext.configure(conn), metadata)
+    assert diff == []
 
 
 def test_object_upsert_is_idempotent_and_merges(ctx: RafContext) -> None:

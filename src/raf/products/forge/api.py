@@ -7,9 +7,9 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from raf.apps.api.deps import Ctx
 from raf.core.timeutil import parse_timestamp
 from raf.products.forge.service import ForgeService, catalog
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

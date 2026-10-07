@@ -10,9 +10,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
-from raf.apps.api.deps import Ctx
 from raf.core.errors import InvalidInputError
 from raf.products.evidence.service import EvidenceService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

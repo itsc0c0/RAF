@@ -6,8 +6,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
-from raf.apps.api.deps import Ctx
 from raf.products.iam.service import IamReport, IamService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

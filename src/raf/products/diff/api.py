@@ -6,8 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from raf.apps.api.deps import Ctx
 from raf.products.diff.service import DiffService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

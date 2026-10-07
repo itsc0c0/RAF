@@ -11,9 +11,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
-from raf.apps.api.deps import Ctx
 from raf.core.objects.types import Severity
 from raf.products.vault.service import VaultService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 

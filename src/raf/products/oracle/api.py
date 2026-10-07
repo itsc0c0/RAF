@@ -11,8 +11,8 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
-from raf.apps.api.deps import Ctx
 from raf.products.oracle.service import MAX_QUESTION, OracleService
+from raf.sdk.api import Ctx
 
 router = APIRouter()
 
