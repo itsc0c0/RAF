@@ -89,6 +89,29 @@ class TestNormalizers:
         alice = next(o for o in out.objects if o.id == "user:alice")
         assert alice.metadata["domain"] == "CORP"
 
+    @pytest.mark.parametrize(
+        ("actor", "attributes", "expected"),
+        [
+            ("alice", {}, "user:alice"),  # an account name, not a process called "alice"
+            ("/usr/bin/cat", {}, "process:"),
+            ("cmd.exe", {}, "process:"),
+            ("backup", {"pid": 4242}, "process:"),
+            ("identity:svc-deploy", {}, "identity:svc-deploy"),
+        ],
+    )
+    def test_file_event_actor_typing(self, actor: str, attributes: dict[str, Any], expected: str) -> None:
+        record = {
+            "timestamp": "2026-10-06T10:00:00Z",
+            "event_type": "file.read",
+            "actor": actor,
+            "host": "DB-01",
+            "target": "/srv/data/customers.csv",
+            "attributes": attributes,
+        }
+        ev = NativeNormalizer().normalize(RawRecord(record, "line 1"), _pctx()).events[0]
+        assert ev.actor is not None and ev.actor.startswith(expected)
+        assert ev.target == "file:db-01|/srv/data/customers.csv"
+
     def test_native_rejects_bad_event_type(self) -> None:
         from raf.core.ingestion.base import RecordRejected
 

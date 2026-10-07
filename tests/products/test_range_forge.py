@@ -79,8 +79,12 @@ def test_range_purge_keeps_shared_data(ctx: RafContext) -> None:
     from raf.analysis.ingest import import_records
     from raf.products.range.service import RangeService
 
-    import_records(ctx, [{"kind": "object", "type": "user", "name": "alice", "metadata": {"note": "real HR record"}}],
-                   source_name="hr-export", title="HR export")
+    import_records(
+        ctx,
+        [{"kind": "object", "type": "user", "name": "alice", "metadata": {"note": "real HR record"}}],
+        source_name="hr-export",
+        title="HR export",
+    )
     service = RangeService(ctx)
     service.create("raven", seed=1)
     service.reset("raven")
@@ -94,9 +98,11 @@ def test_range_generic_config_and_validation(ctx: RafContext, tmp_path: Path) ->
     from raf.products.range.service import RangeService, load_config_file
 
     config_file = tmp_path / "acme.yaml"
-    config_file.write_text("name: acme\nemployees: 8\nworkstations: 6\nservers: 2\ndepartments: [engineering, hr]\n"
-                           "services: [dns, git]\nsecurity controls:\n  mfa: 0.5\n  segmentation: false\n",
-                           encoding="utf-8")
+    config_file.write_text(
+        "name: acme\nemployees: 8\nworkstations: 6\nservers: 2\ndepartments: [engineering, hr]\n"
+        "services: [dns, git]\nsecurity controls:\n  mfa: 0.5\n  segmentation: false\n",
+        encoding="utf-8",
+    )
     service = RangeService(ctx)
     run = service.create("acme", seed=5, config=load_config_file(config_file))
     status = service.status("acme")
@@ -122,8 +128,11 @@ def test_forge_uses_workspace_population(raven: RafContext, tmp_path: Path) -> N
     users = {u.id for u in raven.store.objects.iter_all(types=["user"])}
     assert f"user:{result.subject}" in users
     # the modeled credential placement became part of the graph (IAM can now see it)
-    uses = [r for r in raven.store.relationships.iter_all(types=["USES"])
-            if r.metadata.get("credential_location", "").endswith("/project/.env")]
+    uses = [
+        r
+        for r in raven.store.relationships.iter_all(types=["USES"])
+        if r.metadata.get("credential_location", "").endswith("/project/.env")
+    ]
     assert uses
     out = tmp_path / "dns.jsonl"
     written = service.telemetry("dns", count=25, seed=1, output=out, ingest=False)

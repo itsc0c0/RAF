@@ -193,6 +193,14 @@ class NativeNormalizer(Normalizer):
         actor_value = data.get("actor")
         if actor_value is None and event_type.startswith("process.") and attributes.get("user"):
             actor_value = attributes.get("user")
+        if (
+            actor_default == ObjectType.PROCESS
+            and isinstance(actor_value, str)
+            and not _is_typed(actor_value)
+            and not _looks_like_process(actor_value, attributes)
+        ):
+            # "file.read actor=alice": a bare account name is the user, not a process called "alice".
+            actor_default = ObjectType.USER
         actor = add(self._ref(actor_value, actor_default, ctx, "actor"), "actor", ev)
 
         target_default = spec.target if spec else ObjectType.HOST
@@ -472,6 +480,21 @@ class NativeNormalizer(Normalizer):
             metadata={"imported_from": ctx.source.name},
         )
         return NormalizedRecord(objects=objects, findings=[finding])
+
+
+_PROCESS_SUFFIXES = (".exe", ".com", ".bat", ".cmd", ".ps1", ".sh", ".py", ".bin", ".dll")
+
+
+def _looks_like_process(value: str, attributes: dict[str, Any]) -> bool:
+    """A bare actor that names an executable (path, extension) or comes with process details."""
+    text = value.strip().lower()
+    return (
+        "/" in text
+        or "\\" in text
+        or text.endswith(_PROCESS_SUFFIXES)
+        or attributes.get("pid") is not None
+        or bool(attributes.get("image"))
+    )
 
 
 def _is_typed(value: Any) -> bool:

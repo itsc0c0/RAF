@@ -251,8 +251,13 @@ def _time(value: Any) -> datetime | None:
     return parse_timestamp(value) if value else None
 
 
-def import_bundle(ctx: RafContext, path: Path, *, restore_tables: bool = False) -> dict[str, Any]:
-    """Merge a bundle into the workspace (``restore_tables`` also restores snapshots/audit/DFIR tables)."""
+def import_bundle(
+    ctx: RafContext, path: Path, *, restore_tables: bool = False, job_id: str | None = None
+) -> dict[str, Any]:
+    """Merge a bundle into the workspace (``restore_tables`` also restores snapshots/audit/DFIR tables).
+
+    ``job_id`` attributes the imported events and provenance to a job of this workspace (so the
+    import can be scoped, explored and purged like any other import)."""
     reader = open_bundle(ctx, path)
     try:
         problems = reader.verify()
@@ -345,9 +350,9 @@ def import_bundle(ctx: RafContext, path: Path, *, restore_tables: bool = False) 
         with store.transaction() as conn:
             counts["objects"] = store.objects.upsert_drafts(objects, conn=conn).created
             counts["relationships"] = store.relationships.upsert_drafts(relationships, conn=conn).created
-            counts["events"] = store.events.insert_drafts(events, job_id=None, conn=conn).created
+            counts["events"] = store.events.insert_drafts(events, job_id=job_id, conn=conn).created
             counts["findings"] = store.findings.upsert(findings, conn=conn).created
-            counts["provenance"] = store.provenance.add_many(provenance, conn=conn)
+            counts["provenance"] = store.provenance.add_many(provenance, job_id=job_id, conn=conn)
             for name, table, keys in (("cases", s.cases, ["id"]), ("evidence", s.evidence_items, ["id"])):
                 rows = [_table_row(table, r) for r in reader.rows(f"{name}.jsonl")]
                 upsert(conn, table, rows, keys, update=False)

@@ -82,12 +82,50 @@ class ProvenanceRepository:
                 ).scalar_one()
             )
 
-    def subjects_for_jobs(self, job_ids: Iterable[str], kind: str | None = None) -> set[str]:
+    def subjects_for_jobs(
+        self, job_ids: Iterable[str], kind: str | None = None, *, source: str | None = None
+    ) -> set[str]:
         stmt = select(s.provenance.c.subject_id).where(s.provenance.c.job_id.in_(list(job_ids))).distinct()
         if kind:
             stmt = stmt.where(s.provenance.c.subject_kind == kind)
+        if source:
+            stmt = stmt.where(s.provenance.c.source == source)
         with self.engine.connect() as c:
             return {r[0] for r in c.execute(stmt)}
+
+    def jobs_for_sources(self, digests: Iterable[str]) -> list[str]:
+        """Jobs that imported data from sources with these SHA-256 digests (oldest job first)."""
+        wanted = sorted({d for d in digests if d})
+        if not wanted:
+            return []
+        stmt = (
+            select(s.provenance.c.job_id)
+            .where(s.provenance.c.source_sha256.in_(wanted), s.provenance.c.job_id.is_not(None))
+            .distinct()
+        )
+        with self.engine.connect() as c:
+            jobs = [str(r[0]) for r in c.execute(stmt)]
+        return sorted(jobs, key=lambda j: (len(j), j))
+
+    def source_digests(self, job_id: str) -> set[str]:
+        """SHA-256 digests of the sources a job imported."""
+        stmt = (
+            select(s.provenance.c.source_sha256)
+            .where(s.provenance.c.job_id == job_id, s.provenance.c.source_sha256.is_not(None))
+            .distinct()
+        )
+        with self.engine.connect() as c:
+            return {str(r[0]) for r in c.execute(stmt)}
+
+    def source_names(self, job_id: str, digest: str) -> set[str]:
+        """Names under which a job recorded the source with this digest."""
+        stmt = (
+            select(s.provenance.c.source)
+            .where(s.provenance.c.job_id == job_id, s.provenance.c.source_sha256 == digest)
+            .distinct()
+        )
+        with self.engine.connect() as c:
+            return {str(r[0]) for r in c.execute(stmt)}
 
     def jobs_for_subjects(self, subject_ids: Iterable[str]) -> dict[str, set[str | None]]:
         """Which jobs contributed provenance to each subject (``None`` = written outside a job)."""

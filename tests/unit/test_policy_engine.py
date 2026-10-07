@@ -29,15 +29,27 @@ NOW = datetime(2026, 10, 7, tzinfo=UTC)
 
 def _obj(oid: str, **metadata: object) -> SecurityObject:
     otype, key = oid.split(":", 1)
-    return SecurityObject(id=oid, type=otype, name=key.upper() if otype in ("host", "network") else key,
-                          created_at=NOW, updated_at=NOW, metadata=dict(metadata))
+    return SecurityObject(
+        id=oid,
+        type=otype,
+        name=key.upper() if otype in ("host", "network") else key,
+        created_at=NOW,
+        updated_at=NOW,
+        metadata=dict(metadata),
+    )
 
 
 def _rel(source: str, rtype: str, target: str) -> Relationship:
     from raf.core.ids import relationship_id
 
-    return Relationship(id=relationship_id(source, rtype, target), relationship_type=rtype, source_object=source,
-                        target_object=target, created_at=NOW, updated_at=NOW)
+    return Relationship(
+        id=relationship_id(source, rtype, target),
+        relationship_type=rtype,
+        source_object=source,
+        target_object=target,
+        created_at=NOW,
+        updated_at=NOW,
+    )
 
 
 @pytest.fixture
@@ -50,13 +62,18 @@ def world() -> PolicyWorld:
         _obj("host:ws-01", ip="10.10.1.21"),
         _obj("host:dev-01", ip="10.20.0.11"),
         _obj("host:db-01", ip="10.30.0.10", criticality="critical"),
-        _obj("user:alice"), _obj("group:engineering"), _obj("role:developer"),
+        _obj("user:alice"),
+        _obj("group:engineering"),
+        _obj("role:developer"),
         _obj("cloud_resource:production", criticality="critical"),
     ]
     rels = [
-        _rel("host:ws-01", "MEMBER_OF", "network:corp"), _rel("host:dev-01", "MEMBER_OF", "network:dev"),
-        _rel("host:db-01", "MEMBER_OF", "network:prod"), _rel("user:alice", "OWNS", "host:ws-01"),
-        _rel("user:alice", "MEMBER_OF", "group:engineering"), _rel("group:engineering", "HAS_ROLE", "role:developer"),
+        _rel("host:ws-01", "MEMBER_OF", "network:corp"),
+        _rel("host:dev-01", "MEMBER_OF", "network:dev"),
+        _rel("host:db-01", "MEMBER_OF", "network:prod"),
+        _rel("user:alice", "OWNS", "host:ws-01"),
+        _rel("user:alice", "MEMBER_OF", "group:engineering"),
+        _rel("group:engineering", "HAS_ROLE", "role:developer"),
         _rel("cloud_resource:production", "CONTAINS", "host:db-01"),
     ]
     return PolicyWorld(objects, rels)
@@ -93,12 +110,32 @@ def test_zone_semantics_internet_does_not_cover_internal(world: PolicyWorld) -> 
 
 
 def test_first_match_evaluation_explains_every_port(world: PolicyWorld) -> None:
-    policy = parse_native({"policies": [{"id": "fw", "rules": [
-        {"id": "allow-dev-prod", "action": "allow", "source": "network:dev", "destination": "network:prod",
-         "ports": ["any"]},
-        {"id": "deny-db", "action": "deny", "source": "network:dev", "destination": "host:db-01",
-         "ports": ["tcp/5432"]},
-    ]}]}, None).policies[0]
+    policy = parse_native(
+        {
+            "policies": [
+                {
+                    "id": "fw",
+                    "rules": [
+                        {
+                            "id": "allow-dev-prod",
+                            "action": "allow",
+                            "source": "network:dev",
+                            "destination": "network:prod",
+                            "ports": ["any"],
+                        },
+                        {
+                            "id": "deny-db",
+                            "action": "deny",
+                            "source": "network:dev",
+                            "destination": "host:db-01",
+                            "ports": ["tcp/5432"],
+                        },
+                    ],
+                }
+            ]
+        },
+        None,
+    ).policies[0]
     verdict = evaluate_network(world, [policy], "host:dev-01", "host:db-01", PortSet.parse(["tcp/5432"]))[0]
     assert verdict.decision == "allow"
     assert [d.rule for d in verdict.decisions] == ["allow-dev-prod"]
@@ -108,24 +145,77 @@ def test_first_match_evaluation_explains_every_port(world: PolicyWorld) -> None:
 
 
 def test_anomaly_detection(world: PolicyWorld) -> None:
-    doc = {"policies": [
-        {"id": "fw", "rules": [
-            {"id": "broad", "action": "allow", "source": "network:dev", "destination": "network:prod", "ports": "any"},
-            {"id": "shadowed", "action": "deny", "source": "network:dev", "destination": "host:db-01",
-             "ports": "tcp/5432"},
-            {"id": "ssh", "action": "allow", "source": "network:corp", "destination": "network:dev",
-             "ports": ["tcp/22", "tcp/443"]},
-            {"id": "dup", "action": "allow", "source": "network:corp", "destination": "network:dev", "ports": "tcp/22"},
-            {"id": "gone", "action": "allow", "source": "network:corp", "destination": "host:ftp-old", "ports": 21},
-        ]},
-        {"id": "iam", "domain": "identity", "statements": [
-            {"id": "dev", "effect": "allow", "principals": ["role:developer"], "actions": ["git:*"],
-             "resources": ["service:git"]},
-            {"id": "eng-read", "effect": "allow", "principals": ["group:engineering"], "actions": ["git:read"],
-             "resources": ["service:git"]},
-            {"id": "god", "effect": "allow", "principals": ["role:developer"], "actions": ["*"], "resources": ["*"]},
-        ]},
-    ]}
+    doc = {
+        "policies": [
+            {
+                "id": "fw",
+                "rules": [
+                    {
+                        "id": "broad",
+                        "action": "allow",
+                        "source": "network:dev",
+                        "destination": "network:prod",
+                        "ports": "any",
+                    },
+                    {
+                        "id": "shadowed",
+                        "action": "deny",
+                        "source": "network:dev",
+                        "destination": "host:db-01",
+                        "ports": "tcp/5432",
+                    },
+                    {
+                        "id": "ssh",
+                        "action": "allow",
+                        "source": "network:corp",
+                        "destination": "network:dev",
+                        "ports": ["tcp/22", "tcp/443"],
+                    },
+                    {
+                        "id": "dup",
+                        "action": "allow",
+                        "source": "network:corp",
+                        "destination": "network:dev",
+                        "ports": "tcp/22",
+                    },
+                    {
+                        "id": "gone",
+                        "action": "allow",
+                        "source": "network:corp",
+                        "destination": "host:ftp-old",
+                        "ports": 21,
+                    },
+                ],
+            },
+            {
+                "id": "iam",
+                "domain": "identity",
+                "statements": [
+                    {
+                        "id": "dev",
+                        "effect": "allow",
+                        "principals": ["role:developer"],
+                        "actions": ["git:*"],
+                        "resources": ["service:git"],
+                    },
+                    {
+                        "id": "eng-read",
+                        "effect": "allow",
+                        "principals": ["group:engineering"],
+                        "actions": ["git:read"],
+                        "resources": ["service:git"],
+                    },
+                    {
+                        "id": "god",
+                        "effect": "allow",
+                        "principals": ["role:developer"],
+                        "actions": ["*"],
+                        "resources": ["*"],
+                    },
+                ],
+            },
+        ]
+    }
     analysis = analyze_set(world, parse_native(doc, None).policies)
     found = {(f.metadata["policy"], f.rule_id, f.metadata["rules"][0]) for f in analysis.findings}
     assert ("fw", "overly-broad-rule", "broad") in found
@@ -138,11 +228,33 @@ def test_anomaly_detection(world: PolicyWorld) -> None:
 
 
 def test_identity_evaluation_deny_overrides(world: PolicyWorld) -> None:
-    policy = parse_native({"policies": [{"id": "iam", "domain": "identity", "statements": [
-        {"id": "admin-prod", "effect": "allow", "principals": ["group:engineering"], "actions": ["*"],
-         "resources": ["cloud_resource:production"]},
-        {"id": "no-export", "effect": "deny", "principals": ["*"], "actions": ["db:export"], "resources": ["*"]},
-    ]}]}, None).policies[0]
+    policy = parse_native(
+        {
+            "policies": [
+                {
+                    "id": "iam",
+                    "domain": "identity",
+                    "statements": [
+                        {
+                            "id": "admin-prod",
+                            "effect": "allow",
+                            "principals": ["group:engineering"],
+                            "actions": ["*"],
+                            "resources": ["cloud_resource:production"],
+                        },
+                        {
+                            "id": "no-export",
+                            "effect": "deny",
+                            "principals": ["*"],
+                            "actions": ["db:export"],
+                            "resources": ["*"],
+                        },
+                    ],
+                }
+            ]
+        },
+        None,
+    ).policies[0]
     allowed = evaluate_identity(world, [policy], "user:alice", "host:db-01", "db:read")
     assert allowed is not None and allowed.decision == "allow"
     assert "production" in " ".join(allowed.explanation)  # resource inherited through containment

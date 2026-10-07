@@ -11,13 +11,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
-
 from raf.core.context.app import RafContext
 from raf.core.errors import InvalidInputError, NotFoundError
 from raf.core.objects.models import SecurityObject
 from raf.core.objects.types import ObjectType, validate_object_type
-from raf.core.storage import schema as s
 from raf.core.storage.repos.events import EventQuery
 
 _TYPE_WORDS = {t.value for t in ObjectType} | {"hostname", "account", "cve", "proc"}
@@ -31,6 +28,8 @@ class Scope:
     obj: SecurityObject | None = None
     job_ids: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    #: For analyses that re-read data an earlier, larger import already holds: only that source.
+    source: str | None = None
 
     def event_query(self) -> EventQuery:
         if self.kind == "incident":
@@ -38,25 +37,21 @@ class Scope:
         if self.kind == "object":
             return EventQuery(object_ids=[self.id])
         if self.kind in ("analysis", "job"):
-            return EventQuery(job_ids=self.job_ids or ["<none>"])
+            return EventQuery(job_ids=self.job_ids or ["<none>"], source=self.source)
         return EventQuery()
 
     def to_dict(self) -> dict[str, object]:
-        return {"kind": self.kind, "id": self.id, "label": self.label, "job_ids": self.job_ids}
+        data: dict[str, object] = {"kind": self.kind, "id": self.id, "label": self.label, "job_ids": self.job_ids}
+        if self.source:
+            data["source"] = self.source
+        return data
 
 
 def analysis_jobs(ctx: RafContext, analysis_id: str) -> list[str]:
-    with ctx.store.engine.connect() as conn:
-        row = conn.execute(
-            select(s.analyses.c.job_id, s.analyses.c.stats).where(s.analyses.c.id == analysis_id)
-        ).first()
-    if row is None:
-        raise NotFoundError(f"Analysis '{analysis_id}' does not exist.", suggestions=["raf jobs"])
-    jobs = [row[0]] if row[0] else []
-    extra = (row[1] or {}).get("job_ids") if isinstance(row[1], dict) else None
-    if isinstance(extra, list):
-        jobs.extend(str(j) for j in extra if j not in jobs)
-    return jobs
+    record = ctx.store.analyses.get(analysis_id)
+    if record is None:
+        raise NotFoundError(f"Analysis '{analysis_id}' does not exist.", suggestions=["raf analyses"])
+    return record.job_ids
 
 
 def resolve_scope(ctx: RafContext, parts: Sequence[str], *, default_workspace: bool = True) -> Scope:
@@ -81,12 +76,15 @@ def resolve_scope(ctx: RafContext, parts: Sequence[str], *, default_workspace: b
     resolved = ctx.resolve(ref, types=types, accept=("object", "analysis", "job"))
     if resolved.kind == "analysis":
         ctx.refs.remember("analysis", resolved.id)
+        record = ctx.store.analyses.get(resolved.id)
+        source = record.stats.get("scope_source") if record is not None else None
         return Scope(
             kind="analysis",
             id=resolved.id,
             label=resolved.id,
             job_ids=analysis_jobs(ctx, resolved.id),
             notes=resolved.notes,
+            source=str(source) if source else None,
         )
     if resolved.kind == "job":
         ctx.jobs.require(resolved.id)

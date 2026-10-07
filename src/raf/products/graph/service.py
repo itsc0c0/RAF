@@ -102,7 +102,7 @@ class GraphService:
         if scope.kind == "incident":
             return self._incident_view(scope, rel_types=rel_types, max_nodes=limit, at=at)
         if scope.kind in ("analysis", "job"):
-            ids = self._job_objects(scope.job_ids)
+            ids = self._job_objects(scope.job_ids, scope.source)
             graph = induced_subgraph(src, ids, rel_types=rel_types, max_nodes=limit)
             graph.roots = [scope.id]
             return graph
@@ -141,14 +141,17 @@ class GraphService:
         graph.roots = [scope.id]
         return graph
 
-    def _job_objects(self, job_ids: Sequence[str]) -> list[str]:
+    def _job_objects(self, job_ids: Sequence[str], source: str | None = None) -> list[str]:
         if not job_ids:
             return []
-        ids = self.store.provenance.subjects_for_jobs(job_ids, kind="object")
+        ids = self.store.provenance.subjects_for_jobs(job_ids, kind="object", source=source)
         eo, ev = s.event_objects.c, s.events.c
         with self.store.engine.connect() as conn:
             for batch in chunks(list(job_ids), 100):
-                stmt = select(eo.object_id).where(eo.event_id.in_(select(ev.id).where(ev.job_id.in_(batch)))).distinct()
+                events = select(ev.id).where(ev.job_id.in_(batch))
+                if source:
+                    events = events.where(ev.source == source)
+                stmt = select(eo.object_id).where(eo.event_id.in_(events)).distinct()
                 ids.update(r[0] for r in conn.execute(stmt))
         return sorted(ids)
 

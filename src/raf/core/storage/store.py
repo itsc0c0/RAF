@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import Connection, Engine
 
 from raf.core.storage.database import create_db_engine, migrate, sqlite_url
+from raf.core.storage.repos.analyses import AnalysisRepository
 from raf.core.storage.repos.events import EventRepository
 from raf.core.storage.repos.findings import FindingRepository
 from raf.core.storage.repos.incidents import IncidentRepository
@@ -31,6 +32,7 @@ class Store:
         self.counters = CounterRepository(engine)
         self.kv = KVRepository(engine)
         self.incidents = IncidentRepository(engine, self.objects, self.events)
+        self.analyses = AnalysisRepository(engine)
 
     @classmethod
     def open(cls, url: str, *, run_migrations: bool = True) -> Store:

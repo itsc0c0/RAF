@@ -95,10 +95,11 @@ class BodyLimitMiddleware:
         self.max_bytes = max_bytes
 
     async def _reject(self, send: Send, status: int, message: str) -> None:
-        response = JSONResponse({"error": {"code": "raf.request_too_large" if status == 413 else "raf.bad_request",
-                                           "message": message}}, status_code=status)
-        await send({"type": "http.response.start", "status": response.status_code,
-                    "headers": response.raw_headers})
+        response = JSONResponse(
+            {"error": {"code": "raf.request_too_large" if status == 413 else "raf.bad_request", "message": message}},
+            status_code=status,
+        )
+        await send({"type": "http.response.start", "status": response.status_code, "headers": response.raw_headers})
         await send({"type": "http.response.body", "body": response.body})
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

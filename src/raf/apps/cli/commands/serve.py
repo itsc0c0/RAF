@@ -36,8 +36,12 @@ def register(app: typer.Typer) -> None:
             raise DependencyUnavailableError("uvicorn is not installed.") from exc
         from raf.apps.api.app import create_app, find_web_dist
 
-        application = create_app(host=bind, token=token if not is_loopback(bind) else None,
-                                 allowed_hosts=set(allow_host or []), serve_ui=not no_ui)
+        application = create_app(
+            host=bind,
+            token=token if not is_loopback(bind) else None,
+            allowed_hosts=set(allow_host or []),
+            serve_ui=not no_ui,
+        )
         ctx.audit.record("api.serve", details={"host": bind, "port": bind_port, "remote": not is_loopback(bind)})
         workspace = ctx.workspace.name
         rt.close_ctx()
@@ -46,8 +50,10 @@ def register(app: typer.Typer) -> None:
         c.print(Text("R$F", style="bold"))
         c.print()
         base = f"http://{bind if ':' not in bind else f'[{bind}]'}:{bind_port}"
-        rt.kv_block([("API", f"{base}/api/v1"), ("UI", f"{base}/" if not no_ui else "disabled"),
-                     ("Docs", f"{base}/api/docs")], width=8)
+        rt.kv_block(
+            [("API", f"{base}/api/v1"), ("UI", f"{base}/" if not no_ui else "disabled"), ("Docs", f"{base}/api/docs")],
+            width=8,
+        )
         c.print()
         c.print(Text(f"Workspace: {workspace}", style="cyan"))
         if not no_ui and find_web_dist() is None:

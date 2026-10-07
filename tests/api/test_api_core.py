@@ -78,6 +78,8 @@ def test_request_body_limit(raf_home: Path) -> None:
         big = b"x" * (1024 * 1024 + 10)
         response = client.post("/api/v1/policy/check", content=big, headers={"content-type": "application/json"})
         assert response.status_code == 413 and response.json()["error"]["code"] == "raf.request_too_large"
-        ok = client.post("/api/v1/policy/check", json={"document": "id,action,source,destination\nr1,deny,any,any\n",
-                                                       "format": "csv"})
+        ok = client.post(
+            "/api/v1/policy/check",
+            json={"document": "id,action,source,destination\nr1,deny,any,any\n", "format": "csv"},
+        )
         assert ok.status_code == 200

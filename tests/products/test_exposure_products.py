@@ -189,7 +189,9 @@ def test_api_exposure_products(api: Any) -> None:
     assert flow["decision"] == "allow" and flow["parts"][0]["decisions"][0]["rule"] == "r40-dev-to-prod"
     access = api.post("/api/v1/policy/evaluate", json={"principal": "alice", "target": "DB-01"}).json()
     assert access["decision"] == "deny" and access["indirect"]
-    checked = api.post("/api/v1/policy/check", json={"document": "id,action,source,destination,port\n"
-                                                                  "r1,allow,any,any,any\n", "format": "csv"}).json()
+    checked = api.post(
+        "/api/v1/policy/check",
+        json={"document": "id,action,source,destination,port\nr1,allow,any,any,any\n", "format": "csv"},
+    ).json()
     assert checked["analysis"]["findings"][0]["rule_id"] == "overly-broad-rule"
     assert api.get("/api/v1/policy/diff", params={"before": "../etc/passwd"}).status_code == 422

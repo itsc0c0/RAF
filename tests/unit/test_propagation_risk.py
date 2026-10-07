@@ -16,14 +16,27 @@ NOW = datetime(2026, 10, 7, tzinfo=UTC)
 
 
 def _obj(oid: str, **metadata: object) -> SecurityObject:
-    return SecurityObject(id=oid, type=oid.split(":", 1)[0], name=oid.split(":", 1)[1], created_at=NOW,
-                          updated_at=NOW, metadata=dict(metadata))
+    return SecurityObject(
+        id=oid,
+        type=oid.split(":", 1)[0],
+        name=oid.split(":", 1)[1],
+        created_at=NOW,
+        updated_at=NOW,
+        metadata=dict(metadata),
+    )
 
 
 def _rel(source: str, rtype: str, target: str, confidence: float = 1.0, **metadata: object) -> Relationship:
-    return Relationship(id=relationship_id(source, rtype, target), relationship_type=rtype, source_object=source,
-                        target_object=target, confidence=confidence, created_at=NOW, updated_at=NOW,
-                        metadata=dict(metadata))
+    return Relationship(
+        id=relationship_id(source, rtype, target),
+        relationship_type=rtype,
+        source_object=source,
+        target_object=target,
+        confidence=confidence,
+        created_at=NOW,
+        updated_at=NOW,
+        metadata=dict(metadata),
+    )
 
 
 def test_semantics_reach_never_grants_control() -> None:
@@ -54,9 +67,14 @@ def test_pareto_front_keeps_short_weak_path() -> None:
 
 
 def test_vulnerability_upgrades_reach_to_control_and_disabled_identities_stop() -> None:
-    nodes = [_obj("network:internet"), _obj("network:dmz"), _obj("host:vpn"),
-             _obj("vulnerability:sim-1", cvss=9.8, exploit_available=True),
-             _obj("identity:svc", disabled=True), _obj("host:db")]
+    nodes = [
+        _obj("network:internet"),
+        _obj("network:dmz"),
+        _obj("host:vpn"),
+        _obj("vulnerability:sim-1", cvss=9.8, exploit_available=True),
+        _obj("identity:svc", disabled=True),
+        _obj("host:db"),
+    ]
     rels = [
         _rel("network:internet", "CAN_REACH", "network:dmz"),
         _rel("host:vpn", "MEMBER_OF", "network:dmz"),
@@ -68,8 +86,9 @@ def test_vulnerability_upgrades_reach_to_control_and_disabled_identities_stop() 
     reached = Propagator(graph, max_depth=6, min_confidence=0.05).run(["network:internet"], start_mode=REACH)
     assert reached["host:vpn"].mode == CONTROL and reached["host:vpn"].via_vulnerability == "vulnerability:sim-1"
     assert "identity:svc" not in reached and "host:db" not in reached  # disabled identity blocks control
-    no_upgrade = Propagator(graph, max_depth=6, upgrade_vulnerabilities=False).run(["network:internet"],
-                                                                                    start_mode=REACH)
+    no_upgrade = Propagator(graph, max_depth=6, upgrade_vulnerabilities=False).run(
+        ["network:internet"], start_mode=REACH
+    )
     assert no_upgrade["host:vpn"].mode == REACH
 
 
@@ -84,14 +103,19 @@ def test_risk_model_is_clamped_and_ordered() -> None:
 def test_exposure_context_beats_cvss() -> None:
     """Internet-facing + critical + reachable outranks an isolated host with a higher CVSS."""
     nodes = [
-        _obj("network:internet", cidr="0.0.0.0/0", zone="external"), _obj("network:dmz", cidr="10.40.0.0/16"),
+        _obj("network:internet", cidr="0.0.0.0/0", zone="external"),
+        _obj("network:dmz", cidr="10.40.0.0/16"),
         _obj("network:lab", cidr="10.50.0.0/16", zone="isolated-lab"),
-        _obj("host:vpn-01", criticality="high", internet_facing=True), _obj("host:lab-01", criticality="low"),
-        _obj("vulnerability:v1", cvss=8.1), _obj("vulnerability:v2", cvss=9.9, exploit_available=True),
+        _obj("host:vpn-01", criticality="high", internet_facing=True),
+        _obj("host:lab-01", criticality="low"),
+        _obj("vulnerability:v1", cvss=8.1),
+        _obj("vulnerability:v2", cvss=9.9, exploit_available=True),
     ]
     rels = [
-        _rel("network:internet", "CAN_REACH", "network:dmz"), _rel("host:vpn-01", "MEMBER_OF", "network:dmz"),
-        _rel("host:lab-01", "MEMBER_OF", "network:lab"), _rel("vulnerability:v1", "AFFECTS", "host:vpn-01"),
+        _rel("network:internet", "CAN_REACH", "network:dmz"),
+        _rel("host:vpn-01", "MEMBER_OF", "network:dmz"),
+        _rel("host:lab-01", "MEMBER_OF", "network:lab"),
+        _rel("vulnerability:v1", "AFFECTS", "host:vpn-01"),
         _rel("vulnerability:v2", "AFFECTS", "host:lab-01"),
     ]
     model = ExposureModel(MemoryGraphSource(nodes, rels))

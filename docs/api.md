@@ -92,8 +92,9 @@ interactive docs at `/api/docs`.
 | GET | `/jobs?status=`, `/jobs/{id}`; POST `/jobs/{id}/cancel` | job status/progress/result |
 | GET/POST | `/snapshots` | list / create `{name, source: "current"|"ghost:<model>", description}` |
 | GET/DELETE | `/snapshots/{name}` | read / delete |
-| POST | `/analyze` (multipart `file`) | upload and analyze; returns `{analysis, job}` |
-| GET | `/analyses`, `/analyses/{id}` | analysis records (detected type, modules executed, stats, suggestions) |
+| POST | `/analyze` (multipart `file`; form `incident?`, `correlate?`) | upload and analyze (see [analyze.md](analyze.md)); returns `{id, input, input_sha256, detected_type, detected_label, detection, status, steps: [{name, product, status, detail, duration_ms, stats}], stats, suggestions, job_id, job_ids, incidents}`; no route accepts a server path |
+| GET | `/analyses?limit=` | `{items: [AnalysisRecord], total}` |
+| GET | `/analyses/{id}` | one record (+ `job_ids`) |
 
 ## Investigation products
 
