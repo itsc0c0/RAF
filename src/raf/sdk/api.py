@@ -24,7 +24,10 @@ def get_context(
     x_raf_workspace: Annotated[str | None, Header()] = None,
 ) -> RafContext:
     provider: ContextProvider = request.app.state.pool
-    return provider.get(workspace or x_raf_workspace)
+    ctx = provider.get(workspace or x_raf_workspace)
+    if ctx.registry is not None:
+        ctx.registry.refresh()  # products enabled or disabled by another process (raf product disable)
+    return ctx
 
 
 Ctx = Annotated[RafContext, Depends(get_context)]

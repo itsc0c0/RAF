@@ -2,8 +2,15 @@
 
 Built-in products and third-party plugins are described by the same manifest
 model. A manifest declares what the product contributes (CLI commands, API
-routes, parsers, analyzers), which other products it depends on (must form a
+routes, ingestion parsers), which other products it depends on (must form a
 DAG), and - for plugins - which permissions it requests.
+
+Permissions are declarations for the operator to review (``raf install`` and
+``raf plugin trust`` show them); nothing enforces them. A trusted plugin is Python
+code running in the R$F process with all of its privileges.
+
+``analyzers`` and ``entrypoint`` are reserved: they are validated as import paths,
+but R$F never imports or calls them.
 """
 
 from __future__ import annotations
@@ -28,7 +35,8 @@ class ProductStatus(StrEnum):
     EXPERIMENTAL = "EXPERIMENTAL"
 
 
-#: Permissions a plugin may request. Enforced by the SDK facade (PluginContext).
+#: Permissions a plugin may declare. Declarations only: shown for review at install and trust
+#: time, never enforced (plugins run in-process with R$F's privileges).
 PERMISSIONS: dict[str, str] = {
     "read.objects": "Read objects, relationships and incidents",
     "write.objects": "Create or update objects",
@@ -47,6 +55,11 @@ _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,40}$")
 _IMPORT_RE = re.compile(r"^[A-Za-z_][\w.]*:[A-Za-z_]\w*$")
 
 
+def is_product_name(value: str) -> bool:
+    """Whether ``value`` is a valid product name (also the plugin's directory and API prefix)."""
+    return bool(_NAME_RE.match(value))
+
+
 class ProductManifest(RafModel):
     name: str
     display_name: str
@@ -60,9 +73,9 @@ class ProductManifest(RafModel):
     cli: str | None = None
     api: str | None = None
     parsers: list[str] = Field(default_factory=list)
-    analyzers: list[str] = Field(default_factory=list)
-    permissions: list[str] = Field(default_factory=list)
-    entrypoint: str | None = None
+    analyzers: list[str] = Field(default_factory=list)  # reserved: validated, never loaded
+    permissions: list[str] = Field(default_factory=list)  # declarations, not enforced
+    entrypoint: str | None = None  # reserved: validated, never loaded
     optional: bool = False
     builtin: bool = True
     docs: str | None = None

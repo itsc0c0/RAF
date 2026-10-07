@@ -15,14 +15,15 @@ end of this document, installed into a scratch `RAF_HOME` with the Raven demo lo
 | Contribution | Manifest | Behavior |
 |---|---|---|
 | CLI commands | `cli`, `commands` | loaded lazily when invoked; listed in the **Plugins** panel of `raf --help` |
-| API routes | `api` | mounted at `/api/v1/<plugin name>` when `raf serve` starts |
+| API routes | `api` | mounted at `/api/v1/<plugin name>` when `raf serve` starts (if the plugin is trusted, enabled and unmodified then); they answer 503 while it is unavailable |
 | Ingestion parsers | `parsers` | used by `raf import`, `raf analyze` and `raf evidence import` (detection or `--format NAME`) |
 
 There is no hook for anything else: web workbench views (the workbench only links to its own
 routes), object pivots (the pivot lists are fixed), snapshot state providers, and analyzers (the
-`analyzers` and `entrypoint` manifest fields are validated but never loaded). R$F does not install
-a plugin's Python dependencies: a plugin runs in R$F's environment and can import only what is
-installed there. There is no remote registry; `raf install` takes local directories.
+`analyzers` and `entrypoint` manifest fields are reserved: validated as import paths, never
+loaded). R$F does not install a plugin's Python dependencies: a plugin runs in R$F's environment
+and can import only what is installed there. There is no remote registry; `raf install` takes
+local directories.
 
 ## Directory layout
 
@@ -45,8 +46,15 @@ asset-notes/                    the plugin directory (any name)
   other: give the package a name nothing else uses (`asset_notes`, not `cli` or `utils`). Two
   plugins with the same top-level package collide (the first one imported wins), and a top-level
   module in the plugin directory can shadow an installed library of the same name.
+* Modules in a plugin directory are compiled from their `.py` source on every import. R$F never
+  reads bytecode there (neither `__pycache__/*.pyc` nor a `.pyc` without source) and never writes
+  any: Python's bytecode cache is bypassed for plugins. Compiled extension modules (`.so`) load as
+  usual and are covered by the trust hash like every other file.
 * Symbolic links anywhere in the directory are refused at installation
-  (*"Plugin contains a symlink (data.txt); refusing to install."*, `raf.security_violation`, exit 5).
+  (*"Plugin contains a symlink (data.txt); refusing to install."*, `raf.security_violation`, exit 5),
+  and so are special files (named pipes, sockets). A link or special file that appears in the
+  installed copy later makes the plugin unavailable (*"plugin 'asset-notes' failed its integrity
+  check: Plugin contains a symlink: data"*).
 
 ## The manifest
 
@@ -55,21 +63,21 @@ asset-notes/                    the plugin directory (any name)
 
 | Field | Required | Default (plugins) | Rules and effect |
 |---|---|---|---|
-| `name` | yes | | 2-41 characters: a lower-case letter, then lower-case letters, digits or `-` (`^[a-z][a-z0-9-]{1,40}$`); must not be a built-in product name. It is also the API prefix `/api/v1/<name>` and the directory under `RAF_HOME/plugins` |
+| `name` | yes | | 2-41 characters: a lower-case letter, then lower-case letters, digits or `-` (`^[a-z][a-z0-9-]{1,40}$`); must not be a built-in product name. It is also the API prefix `/api/v1/<name>` and the directory under `RAF_HOME/plugins`. A plugin named like a route of R$F's own API (`objects`, `events`, `findings`, `products`, `tui` ...) gets no API routes (logged warning) |
 | `display_name` | no | `name` with `-` replaced by spaces, title-cased (`multi-cmd` -> `Multi Cmd`) | shown by `raf products`, `raf product info` and as the OpenAPI tag. Error messages use the name instead (*"R$F Asset-Notes is not available."*) |
 | `version` | yes | | a **string**: quote values YAML reads as numbers (`'1.0'`, `'2'`; `0.1.0` is already a string) |
 | `api_version` | no | `1` | must equal the plugin API version of this R$F (`raf version` prints `plugin_api 1`) |
 | `status` | no | `EXPERIMENTAL` | `STABLE`, `BETA`, `ALPHA` or `EXPERIMENTAL`: the maturity you declare |
 | `description` | yes | | one line, shown by `raf products` and `raf product info` |
 | `category` | no | `analysis` | free text, present in the JSON of `raf product info` and `GET /api/v1/products`; plugin commands always appear in the **Plugins** help panel whatever the category |
-| `depends_on` | no | `[]` | product names (built-in or plugins); see [Dependencies](#dependencies) |
-| `commands` | no | `[]` | top-level command names, all mapped to the same `cli` object; when empty, the command is the plugin `name` |
+| `depends_on` | no | `[]` | names of installed products (built-in or plugins); see [Dependencies](#dependencies) |
+| `commands` | no | `[]` | top-level command names, all mapped to the same `cli` object; when empty, the command is the plugin `name`. A name that R$F or another installed product already uses is refused (see [Command names](#command-names)) |
 | `cli` | no | | `module.path:attribute` of a Typer app (a plain Click command also works) |
 | `api` | no | | `module.path:attribute` of a FastAPI `APIRouter` |
 | `parsers` | no | `[]` | `module.path:Class` of `Parser` subclasses |
-| `analyzers` | no | `[]` | validated as import paths; **not used** |
-| `permissions` | no | `[]` | names from the list below, stored sorted and de-duplicated; **declarative only**, see [What trust means](#what-trust-means) |
-| `entrypoint` | no | | validated as an import path; **not used** |
+| `analyzers` | no | `[]` | **reserved**: validated as import paths, never loaded or called |
+| `permissions` | no | `[]` | names from the list below, stored sorted and de-duplicated; **declarations, not enforced**, see [What trust means](#what-trust-means) |
+| `entrypoint` | no | | **reserved**: validated as an import path, never loaded or called |
 | `optional` | no | `false` | shown as "(optional)" next to the status in `raf products`; no other effect |
 | `builtin` | no | `false` | plugins may not set it to `true` (*"Plugins cannot declare themselves built-in."*) |
 | `docs` | no | | free text (a path or URL) shown as "Docs" by `raf product info` |
@@ -100,14 +108,19 @@ Reason:
 ```
 
 An unknown field is reported as `author: Extra inputs are not permitted`, a built-in name as
-*"'timeline' is a built-in product name."* (all exit 4).
+*"'timeline' is a built-in product name."* (all exit 4). `raf install` also checks the
+[dependencies](#dependencies) and the [command names](#command-names) before it writes anything.
 
 ### Product statuses
 
 `status` is the maturity the author declares. `raf products`, `raf product info`, `raf plugin list`
 and `GET /api/v1/products` show a display status: `DISABLED` when the product is disabled (an
-installed, untrusted plugin is disabled), `UNAVAILABLE` when a dependency is not available,
-otherwise the maturity. The JSON carries both: `status` (display status) and `maturity`.
+installed, untrusted plugin is disabled), `UNAVAILABLE` when it is enabled but cannot be used,
+otherwise the maturity. A product is unavailable when a dependency is unavailable, when the
+plugin's files changed after it was trusted (see [What trust means](#what-trust-means)), when it is
+on a dependency cycle, or when its code failed to load in the running process (see
+[Failures](#failures)). The JSON carries `status` (display status), `maturity` and
+`unavailable_reason`; `raf product info` prints the reason.
 
 ### Dependencies
 
@@ -127,16 +140,17 @@ Reason:
   requires 'graph', which is unavailable
 
 Try:
-  raf product enable asset-notes
-  raf products
+  raf product enable graph
 ```
 
-The command exits 4 and the API router is not mounted. A dependency that is not installed at all
-gives the same result. Dependency cycles are rejected, but `raf install` stores the plugin before it
-checks for cycles: a plugin that depends on itself (or closes a cycle) stays installed, and every
-later command that loads the registry fails with *"Product dependency cycle"*, `raf uninstall`
-included. Recover by deleting `RAF_HOME/plugins/<name>/` and its entry under `plugins` in
-`RAF_HOME/registry.json`.
+The command exits 4 (the suggestions are those of the unavailable dependency) and the plugin's API
+routes answer 503. `raf install` refuses, before anything is written, a plugin whose `depends_on`
+names a product that is not installed (*"Plugin 'asset-notes' depends on 'host-inventory', which
+is not installed."*) or that would form a dependency cycle, a plugin that depends on itself included
+(*"Product dependency cycle: asset-notes -> asset-notes"*); both exit 4. A dependency uninstalled
+later makes the plugin unavailable. A registry that contains a cycle anyway (written by an earlier
+version or edited by hand) still loads: the plugins on the cycle are unavailable with the reason
+*"dependency cycle: a -> b -> a"* (logged as a warning by every command) and `raf uninstall` works.
 
 **Imports are not checked for plugins.** For built-in code the layering core -> data/sdk ->
 products -> analysis -> apps, and the rule that a product imports another product only if it lists
@@ -170,11 +184,12 @@ $ raf notes
 R$F: R$F Asset-Notes is not available.
 
 Reason:
-  product 'asset-notes' is disabled
+  plugin 'asset-notes' is not trusted yet
+
+Review its files in /home/analyst/.raf/plugins/asset-notes first: a trusted plugin runs with your privileges.
 
 Try:
-  raf product enable asset-notes
-  raf products
+  raf plugin trust asset-notes
 
 $ raf product enable asset-notes
 
@@ -197,8 +212,13 @@ PLUGIN       VERSION  TRUSTED  STATUS        PERMISSIONS
 asset-notes  0.1.0    yes      EXPERIMENTAL  read.objects, write.objects
 ```
 
-* The not-available message suggests `raf product enable`, but for a new plugin `raf plugin trust`
-  is the step that enables it; `raf product enable` refuses untrusted plugins (exit 4).
+* `raf notes` and `raf product enable` exit 4 for an untrusted plugin: `raf plugin trust` is the
+  step that enables a new plugin. Trusting also enables a plugin that was disabled with
+  `raf product disable`.
+* `raf plugin verify NAME` exits 0 when the files match the trusted hash, 5 when they changed
+  (*"asset-notes: files were modified after the plugin was trusted."*; `raf --json plugin verify`
+  prints `{"name": ..., "unchanged": false}`), 4 for a plugin that is not trusted yet (there is no
+  trusted hash to compare with) and 3 for a plugin that is not installed.
 * `raf plugin trust` and `raf uninstall` ask for confirmation; without a terminal they need `--yes`
   (`raf --yes plugin trust asset-notes`), otherwise they fail with `raf.confirmation_required`.
 * Installing a name that is already installed is refused (`raf.conflict`, exit 4). A source that
@@ -207,7 +227,8 @@ asset-notes  0.1.0    yes      EXPERIMENTAL  read.objects, write.objects
   directory"* (exit 4).
 * State changes are written to the audit log: `plugin.install`, `plugin.trust`, `plugin.uninstall`,
   `product.enable`, `product.disable`.
-* State lives in `RAF_HOME/registry.json` (`source` is the path as given to `raf install`):
+* State lives in `RAF_HOME/registry.json` (`source` is the absolute path of the directory given to
+  `raf install`):
 
 ```json
 {
@@ -217,7 +238,7 @@ asset-notes  0.1.0    yes      EXPERIMENTAL  read.objects, write.objects
       "enabled": true,
       "installed_at": "2026-10-07T14:05:58.573290Z",
       "sha256": "d6e60ad91fd6e318b5abb8a00b673539de912f473a7b20758fc64bab31999548",
-      "source": "asset-notes",
+      "source": "/home/analyst/src/asset-notes",
       "trusted": true,
       "trusted_at": "2026-10-07T14:06:01.622592Z",
       "version": "0.1.0"
@@ -232,51 +253,90 @@ asset-notes  0.1.0    yes      EXPERIMENTAL  read.objects, write.objects
   the installed directory except `__pycache__` directories, data files included. Installation
   records a hash too, but `raf plugin trust` replaces it with the hash of the files at that moment:
   whatever is in `RAF_HOME/plugins/<name>/` when you trust it is what you trust. Review that copy.
+* `__pycache__` is not hashed because nothing in it can run: R$F compiles plugin modules from their
+  source and never reads (or writes) bytecode in a plugin directory, so a `.pyc` planted there, even
+  one whose header matches the source, is ignored.
 * Every time R$F loads something from the plugin (a CLI command, the API router, a parser) it hashes
-  the directory again and refuses to import anything when the hash differs:
+  the directory again and imports nothing when the hash differs. Listings check the hash as well: a
+  plugin whose files changed is `UNAVAILABLE` in `raf products`, `raf plugin list`, `raf product
+  info` and `GET /api/v1/products`, its commands are listed in `raf --help` as *"[unavailable: plugin
+  'asset-notes' was modified after it was trusted]"*, and running one fails with exit 5:
 
   ```text
   $ raf notes
 
-  R$F: Plugin 'asset-notes' is not trusted or was modified after it was trusted.
+  R$F: R$F Asset-Notes is not available.
+
+  Reason:
+    plugin 'asset-notes' was modified after it was trusted
 
   Review the plugin, then run: raf plugin trust asset-notes
+
+  Try:
+    raf plugin verify asset-notes
   ```
 
-  (exit 5). `raf serve` skips the router with a logged warning; imports print a warning
-  (*"parser asset_notes.parser:AssetNotesParser from asset-notes unavailable: ..."*) and detect the
-  file without the plugin's parser. The hash covers content only, so restoring the original files
-  restores trust; keeping a change requires `raf plugin trust` again.
-* A modified plugin also breaks `raf --help` and `raf help` (exit 5), because building the help
-  loads every product command, while `raf products` and `raf plugin list` keep showing it as
-  available. `raf plugin verify` reports the change as a warning but exits 0: check `unchanged` in
-  `raf --json plugin verify NAME`.
-* The hash does not cover `__pycache__`, and Python loads cached bytecode from there when its header
-  matches the source file: a replaced `.pyc` runs while `raf plugin verify` still reports a match.
-  Anyone who can write to the plugin directory can also edit `registry.json`; protect `RAF_HOME`
+  `raf serve` does not mount the router of a plugin that is modified when it starts, and the routes
+  of one modified while it runs answer 503; imports detect files without the plugin's parsers. The
+  hash covers content only, so restoring the original files restores trust; keeping a change
+  requires `raf plugin trust` again.
+* Anyone who can write to the plugin directory can also edit `registry.json`; protect `RAF_HOME`
   itself.
-* A trusted plugin whose module fails to import with anything other than `ImportError` or
-  `AttributeError` (a `SyntaxError`, an exception raised at import time) is not contained:
-  `raf --help` ends with an internal error (exit 1), `raf serve` does not start, and a broken parser
-  module makes every import fail (*"Internal error while running the job."*). `raf product disable
-  NAME` and `raf uninstall NAME` still work. Run your tests before trusting a new version.
-* **Trust is the only boundary.** A trusted plugin runs in the R$F process with your privileges and
-  can read and write everything R$F can. The declared `permissions` are validated against the list
-  above and shown by `raf install`, `raf plugin trust` and `raf plugin list`, but **nothing enforces
-  them**. The "SDK facade (`raf.sdk.PluginContext`)" that code comments and `raf help plugins`
-  mention does not exist.
-* A plugin command name is not checked against built-in product commands: a trusted plugin that
-  declares `commands: [timeline]` replaces `raf timeline`. Platform commands (`status`, `show`,
-  `import`, `help`, ...) cannot be replaced: they are looked up first.
+* **Trust is the only boundary.** A trusted plugin is Python code running in the R$F process with
+  your privileges: it can read and write everything R$F can, and nothing in R$F could stop it. The
+  declared `permissions` are validated against the list above and shown by `raf install`,
+  `raf plugin trust` and `raf plugin list` so that you can review what the author says the plugin
+  does, but **nothing enforces them**.
+
+### Failures
+
+A plugin cannot break the rest of R$F. When loading its CLI app, API router or a parser fails (a
+`SyntaxError`, an exception or `SystemExit` raised at import time, a missing module, an object of
+the wrong kind), the plugin is unavailable for the rest of that process with the reason, and a
+warning is logged:
+
+```text
+$ raf notes
+[warning] raf.registry: product asset-notes is unavailable: failed to load asset_notes.cli:app: SyntaxError: invalid syntax (service.py, line 28)
+
+R$F: R$F Asset-Notes is not available.
+
+Reason:
+  failed to load asset_notes.cli:app: SyntaxError: invalid syntax (service.py, line 28)
+
+Fix the plugin and trust it again (raf plugin trust asset-notes); restart a running raf serve.
+
+Try:
+  raf product disable asset-notes
+```
+
+(exit 4). `raf --help` and `raf help` list the command as *"[unavailable: failed to load ...]"*,
+`raf serve` starts without the plugin's routes and reports it `UNAVAILABLE` in
+`GET /api/v1/products`, and imports proceed with the other parsers. The traceback is in the R$F log
+file (`RAF_HOME/logs/raf.log`); `--debug` also prints it. Listings that do not load plugin code
+(`raf products`, `raf plugin list`) cannot know about such a failure. Run your tests before
+trusting a new version.
+
+### Command names
+
+A plugin cannot take a command name that R$F already uses. `raf install` refuses (exit 4) a plugin
+whose `commands` (or whose name, when `commands` is empty) include a command of R$F itself
+(*"Plugin 'asset-notes' declares the command 'status', which R$F itself already provides."*), of a
+built-in product (`timeline`, `graph` ...) or of another installed plugin. If a collision appears
+later (a newer R$F adds a command, a manifest is edited and trusted again), the built-in command
+wins: the plugin's command is ignored and `raf --help` logs *"plugin asset-notes: command 'timeline'
+is ignored, product 'timeline' already provides it"*; the plugin's other commands keep working.
+Between two plugins, the first in name order keeps the command.
 
 ## CLI commands (`raf.sdk.cli`)
 
 The manifest's `cli` points to a Typer app. With one command the app is the top-level command
 (`raf notes`); with several it becomes a group (`raf notes list`, `raf notes set`) whose help line in
 `raf --help` comes from `typer.Typer(help="...")`. Every name in `commands` maps to the same app. A
-plain Click command also works, but when it is listed under several names `raf --help` shows the
-last name for each entry. Global flags (`--json`, `--quiet`, `-w`, ...) are removed from the command
-line before your command is parsed, wherever the user typed them, and are available in `rt.STATE`.
+plain Click command also works, under one name or several; any other object makes the plugin
+unavailable (see [Failures](#failures)). Global flags (`--json`, `--quiet`, `-w`, ...) are removed
+from the command line before your command is parsed, wherever the user typed them, and are
+available in `rt.STATE`.
 
 | Function | Purpose |
 |---|---|
@@ -326,10 +386,19 @@ workspace and shares it between requests: never close it.
 * The server's protections apply to plugin routes: loopback binding by default, the Host header
   check (403), a bearer token for non-loopback binding, the request size limit `api.max_upload_mb`
   (200), security headers.
-* Routers are mounted when the server starts and never unmounted: restart `raf serve` after
-  trusting, enabling, disabling or updating a plugin. A product disabled while the server runs
-  (with `raf product disable` or `POST /api/v1/products/{name}/disable`) keeps answering on its
-  routes until the restart.
+* Every route of a product checks, per request, that the product is available. A product disabled
+  while the server runs (with `POST /api/v1/products/{name}/disable`, or with `raf product disable`
+  in another terminal) answers 503 from the next request, with the error that `raf` would print
+  (`raf.product_disabled`; `raf.security_violation` for a plugin whose files changed after it was
+  trusted); so do the products that depend on it. Enabling it again restores the routes.
+* A plugin router is mounted only if the plugin is trusted, enabled and unmodified when the server
+  starts (a dependency that is disabled only makes its routes answer 503): restart `raf serve` after
+  installing, trusting, enabling or updating a plugin.
+  Loaded modules stay in the running server: a changed file takes effect after a restart.
+* The router must be an `APIRouter` whose routes are declared with its decorators (`@router.get`,
+  ...) or come from routers included in it: those are the routes the availability check can be
+  attached to. A route added any other way (a Starlette `Route` or `Mount` appended to
+  `router.routes`) makes the plugin unavailable with *"unsupported route ..."*.
 * Accept uploaded content rather than server-side paths, so that API clients cannot make R$F read
   arbitrary files.
 
@@ -340,7 +409,7 @@ events, incidents and findings. Plugins contribute parsers (`raf.core.ingestion.
 
 | Member | Meaning |
 |---|---|
-| `name` (class attribute) | the format name for `--format`. A parser with an existing name replaces it, including built-in ones (`csv`, `jsonl`, ...) for every import |
+| `name` (class attribute) | the format name for `--format`. It must be new: a plugin parser named like a parser that is already registered (the built-in `csv`, `jsonl`, ... and those of built-in products, then plugins in name order) is ignored with a warning (*"parser 'csv' of plugin asset-notes ignored: a parser with that name exists"*) |
 | `version` | default `"1.0"`; the label `name/version` is recorded on events and provenance records |
 | `description`, `extensions` | informational; use `extensions` in your own `sniff` |
 | `normalizer` | `raf-native` (default), `ecs`, `cloudtrail`, `tabular`, `generic-json`, or `auto` (the normalizer whose `score` is highest over the first 25 records; `generic-json` when none fits) |
@@ -515,6 +584,10 @@ exit 1; API: 500 `raf.internal`).
 | `DependencyUnavailableError` | `raf.dependency_unavailable` | 6 | 503 | missing external tool or service |
 | `OperationCancelled` | `raf.cancelled` | 130 | 409 | raised by `jc.check_cancelled()` |
 
+When a request needs a product that is unavailable (any route of the product, an R$F OS page), the
+API answers 503 with the error R$F raised for it (`raf.product_disabled`, or
+`raf.security_violation` for a modified plugin), whatever the HTTP status in this table.
+
 `RecordRejected` (`raf.core.ingestion.base`, code `raf.record_rejected`) is an `InvalidInputError`.
 Every error takes `message` plus the keyword arguments `reason=`, `hint=`, `suggestions=[commands]`
 and `details={...}`:
@@ -620,7 +693,7 @@ def test_tampering_is_detected(home: Path) -> None:
     raf("--yes", "plugin", "trust", "asset-notes")
     (home / "plugins" / "asset-notes" / "asset_notes" / "service.py").write_text("raise SystemExit\n")
     code, out, _ = raf("--json", "plugin", "verify", "asset-notes")
-    assert json.loads(out)["unchanged"] is False
+    assert code == 5 and json.loads(out)["unchanged"] is False
     code, out, _ = raf("--json", "notes")
     assert code == 5 and json.loads(out)["error"]["code"] == "raf.security_violation"
 ```
@@ -914,13 +987,14 @@ in `raf import report job-5`. `raf analyze hosts.notes.csv` picks the plugin's p
 
 ## Limitations
 
-* Permissions are declared and displayed, never enforced; a trusted plugin has the full privileges
-  of the R$F process.
-* The trust hash skips `__pycache__`, which Python reads cached bytecode from.
-* A broken or modified trusted plugin can break `raf --help` (and, if it fails at import, `raf
-  serve` and every import) instead of being shown as unavailable.
-* Plugin commands can replace built-in product commands without a warning.
-* A dependency cycle introduced by `raf install` leaves the registry unusable until it is repaired
-  by hand.
-* `analyzers` and `entrypoint` are accepted but unused; there are no hooks for web views, pivots or
+* Permissions are declarations shown for review, never enforced: a trusted plugin is Python code
+  with the full privileges of the R$F process. Trust (the hash of reviewed files) is the only
+  boundary.
+* Integrity is checked when R$F loads plugin code and when it lists products; a module the plugin
+  imports later by itself is compiled from the files on disk at that moment.
+* A plugin whose code failed to load is reported unavailable only in the process that tried to load
+  it (`raf products` does not load plugin code).
+* A running `raf serve` mounts plugin routers when it starts: a plugin that was not available then
+  (not installed, untrusted, disabled or modified) and an updated plugin need a restart.
+* `analyzers` and `entrypoint` are reserved and unused; there are no hooks for web views, pivots or
   snapshot state providers; Python dependencies are not installed; no remote registry.

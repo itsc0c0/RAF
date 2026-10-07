@@ -64,7 +64,7 @@ src/raf/
     audit/        hash-chained audit log
     config/       typed configuration schema, layered loading, secrets (env / keyring)
     workspace/    RAF_HOME and workspaces
-    plugins/      manifests and the product registry (built-ins + trusted plugins)
+    plugins/      manifests, the product registry (built-ins + trusted plugins), source-only plugin imports
     bundle/       the .raf bundle format (export / verify / import)
     security/     safe file handling, redaction, terminal-safe text
     context/      RafContext (everything a command needs) and @last-style references
@@ -131,15 +131,21 @@ is typed and layered (defaults < global < workspace < environment < overrides); 
 only from environment variables or the OS keyring, never from config files.
 
 **Plugins.** The registry merges built-in product manifests with installed plugins; plugins must be
-trusted (hash pinned) before they load. See [plugin-development.md](plugin-development.md).
+trusted (hash pinned) before they load, a plugin whose files changed is unavailable, and plugin
+modules are compiled from source only (`core/plugins/loader.py`: cached bytecode never runs).
+Plugins run in-process: the permissions they declare are shown for review, not enforced. Built-in
+commands, parsers and API paths always win over a plugin's. See
+[plugin-development.md](plugin-development.md).
 
 ## Products
 
 Each product package contains `manifest.py` (name, status, category, commands, `cli`/`api` import
 paths, parsers, `depends_on`, docs, UI route), a `service.py` with the domain logic, and thin `cli.py`
 / `api.py` adapters. The CLI loads a product's commands lazily when invoked (`RafGroup`); the API
-mounts each available product's router at `/api/v1/<name>`. A product that fails to load is reported
-as unavailable instead of breaking the CLI or the API.
+mounts each product's router at `/api/v1/<name>` (a plugin's only if it is available at startup)
+behind a per-request availability check, so a product disabled while the server runs answers 503
+until it is enabled again. A product whose code fails to load (a syntax error, an exception at
+import time) is reported as unavailable, with the reason, instead of breaking the CLI or the API.
 
 | Area | Products |
 |---|---|

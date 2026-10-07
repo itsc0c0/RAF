@@ -132,7 +132,11 @@ run in a lab only through the local CLI. Details: [products/lab.md](products/lab
 ## 9. Extensions
 
 Plugins run with the privileges of the R$F process. They are loaded only after an operator trusts
-them; trust pins a hash of the plugin directory, and a changed plugin must be trusted again. Treat
+them; trust pins a hash of the plugin directory, and a changed plugin is reported unavailable until
+it is trusted again. Plugin modules are compiled from their source files, so bytecode that the hash
+does not cover never runs. The permissions a plugin declares are shown for review when it is
+installed and trusted; R$F does not enforce them and, for in-process Python code, could not. A
+plugin that fails to load is reported unavailable instead of breaking the CLI or the API. Treat
 plugins like any other code you install. See [plugin-development.md](plugin-development.md).
 
 ## 10. Authorization statement

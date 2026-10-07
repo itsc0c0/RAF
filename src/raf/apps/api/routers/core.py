@@ -11,11 +11,13 @@ from raf.analysis.pivots import pivots_for
 from raf.apps.api.deps import Ctx, get_pool
 from raf.core.errors import InvalidInputError
 from raf.core.jobs.manager import JobStatus
+from raf.core.objects.models import SecurityObject
 from raf.core.objects.types import FindingStatus, Severity, validate_object_type
+from raf.core.query.resolve import Resolved
 from raf.core.storage.repos.events import EventQuery
 from raf.core.timeutil import parse_timestamp
 from raf.core.workspace.manager import RafHome, WorkspaceManager
-from raf.version import RAF_VERSION, versions
+from raf.version import API_VERSION, RAF_VERSION, versions
 
 router = APIRouter()
 
@@ -27,6 +29,22 @@ def _available(ctx: Any) -> set[str] | None:
     if ctx.registry is None:
         return None
     return {p.name for p in ctx.registry.products() if p.available}
+
+
+#: Where references that resolve to something other than an object are described.
+_OTHER_ROUTES = {"event": "events", "finding": "findings", "snapshot": "snapshots"}
+
+
+def _require_object(ref: str, resolved: Resolved) -> SecurityObject:
+    """The object a reference resolved to; event, finding and snapshot IDs are refused with their route."""
+    if resolved.obj is None:
+        route = f"/api/{API_VERSION}/{_OTHER_ROUTES.get(resolved.kind, resolved.kind)}/{resolved.id}"
+        raise InvalidInputError(
+            f"'{ref}' is {'an' if resolved.kind[0] in 'aeiou' else 'a'} {resolved.kind}, not an object.",
+            hint=f"Use GET {route}.",
+            details={"kind": resolved.kind, "id": resolved.id, "route": route},
+        )
+    return resolved.obj
 
 
 # --------------------------------------------------------------------------- platform
@@ -186,19 +204,17 @@ def object_provenance(object_id: str, ctx: Ctx, limit: Limit = 100) -> dict[str,
 
 @router.get("/objects/{object_id:path}/pivots", tags=["objects"])
 def object_pivots(object_id: str, ctx: Ctx) -> dict[str, Any]:
-    resolved = ctx.resolve(object_id)
-    assert resolved.obj is not None
+    obj = _require_object(object_id, ctx.resolve(object_id))
     return {
-        "object_id": resolved.id,
-        "items": [p.to_dict() for p in pivots_for(resolved.id, resolved.obj.type, _available(ctx))],
+        "object_id": obj.id,
+        "items": [p.to_dict() for p in pivots_for(obj.id, obj.type, _available(ctx))],
     }
 
 
 @router.get("/objects/{object_id:path}", tags=["objects"])
 def get_object(object_id: str, ctx: Ctx) -> dict[str, Any]:
     resolved = ctx.resolve(object_id)
-    assert resolved.obj is not None
-    obj = resolved.obj
+    obj = _require_object(object_id, resolved)
     activity = ctx.store.events.object_activity([obj.id]).get(obj.id)
     return {
         "object": obj.to_json_dict(),

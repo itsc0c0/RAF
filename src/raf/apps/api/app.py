@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import importlib
 import logging
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.routing import APIRoute, APIWebSocketRoute
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from raf.apps.api.deps import ContextPool
@@ -125,6 +126,7 @@ def create_app(
         return JSONResponse({"error": {"code": "raf.internal", "message": "Internal error."}}, status_code=500)
 
     app.include_router(core.router, prefix=API_PREFIX)
+    namespaces = _namespaces(core.router)
     for module_name in ("raf.apps.api.routers.snapshots", "raf.apps.api.routers.analysis", "raf.apps.api.routers.tui"):
         try:
             module = importlib.import_module(module_name)
@@ -133,29 +135,82 @@ def create_app(
                 raise
             continue
         app.include_router(module.router, prefix=API_PREFIX)
-    _mount_products(app, registry)
+        namespaces |= _namespaces(module.router)
+    _mount_products(app, registry, namespaces)
 
     if serve_ui:
         _mount_ui(app)
     return app
 
 
-def _mount_products(app: FastAPI, registry: ProductRegistry) -> None:
-    for info in registry.products():
+def _check_routes(router: APIRouter) -> None:
+    for route in router.routes:
+        nested = getattr(route, "original_router", None)  # a router included in this one (kept lazily by FastAPI)
+        if isinstance(nested, APIRouter):
+            _check_routes(nested)
+        elif not isinstance(route, APIRoute | APIWebSocketRoute):
+            raise TypeError(
+                f"unsupported route {getattr(route, 'path', type(route).__name__)!r}: only routes declared with "
+                "the router's decorators (@router.get, ...) get R$F's availability check"
+            )
+
+
+def _api_router(value: Any) -> APIRouter:
+    """A product's ``api`` object: a FastAPI router whose routes can all carry the availability check."""
+    if not isinstance(value, APIRouter):
+        raise TypeError(f"expected a FastAPI APIRouter, got {type(value).__name__}")
+    _check_routes(value)
+    return value
+
+
+def _require_available(product: str) -> Callable[[Request], None]:
+    """Router dependency: a product's routes answer 503 while it is disabled or otherwise unavailable."""
+
+    def require_available(request: Request) -> None:
+        registry: ProductRegistry = request.app.state.registry
+        registry.refresh()  # `raf product disable` in another process applies from the next request
+        registry.require(product)
+
+    return require_available
+
+
+def _namespaces(router: APIRouter) -> set[str]:
+    """First path segments of a router's routes (``/objects/{id}`` -> ``objects``)."""
+    paths = (getattr(route, "path", None) for route in router.routes)
+    return {path.lstrip("/").split("/", 1)[0] for path in paths if isinstance(path, str)}
+
+
+def _mount_products(app: FastAPI, registry: ProductRegistry, namespaces: set[str]) -> None:
+    """Mount every product router at ``/api/v1/<name>`` behind a per-request availability check.
+
+    Built-in routers are mounted even when the product is unavailable at startup, so that enabling
+    it later takes effect immediately. Plugin code is imported only from a plugin that is trusted,
+    enabled and unmodified, and a plugin cannot add routes under a path of R$F's own routes
+    (``namespaces``: ``objects``, ``products``, ``tui`` ... and the built-in product names)."""
+    infos = registry.products()
+    namespaces = namespaces | {info.name for info in infos if info.source == "builtin"}
+    for info in infos:
         manifest = info.manifest
-        if not manifest.api or not info.available:
+        if not manifest.api:
+            continue
+        if info.source == "plugin" and manifest.name in namespaces:
+            log.warning("plugin %s API not mounted: %s/%s is an R$F route", manifest.name, API_PREFIX, manifest.name)
             continue
         try:
-            if info.source == "plugin":
-                router = registry.load_plugin_attr(manifest.name, manifest.api)
-            else:
-                module_name, attr = manifest.api.split(":", 1)
-                router = getattr(importlib.import_module(module_name), attr)
-        except (RafError, ImportError, AttributeError) as exc:
-            # one broken product (or plugin) must not take the whole API down
-            log.warning("product %s API not mounted: %s", manifest.name, exc)
+            router = registry.load_attr(manifest.name, manifest.api, _api_router)
+        except RafError as exc:
+            # untrusted, disabled or modified plugins are not loaded; broken code was logged by the registry
+            log.debug("product %s API not mounted: %s", manifest.name, exc)
             continue
-        app.include_router(router, prefix=f"{API_PREFIX}/{manifest.name}", tags=[manifest.display_name])
+        try:
+            app.include_router(
+                router,
+                prefix=f"{API_PREFIX}/{manifest.name}",
+                tags=[manifest.display_name],
+                dependencies=[Depends(_require_available(manifest.name))],
+            )
+        except Exception as exc:  # noqa: BLE001 - one broken product (or plugin) must not take the API down
+            registry.mark_unavailable(manifest.name, f"API routes could not be mounted: {exc}")
 
 
 def _mount_ui(app: FastAPI) -> None:

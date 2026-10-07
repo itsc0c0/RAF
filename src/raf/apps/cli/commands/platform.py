@@ -11,7 +11,7 @@ from rich.text import Text
 from raf.apps.cli.clickcompat import Context, is_group
 from raf.apps.cli.helptopics import HELP_TOPICS
 from raf.apps.cli.registry import build_registry
-from raf.core.errors import NotFoundError
+from raf.core.errors import ConflictError, NotFoundError
 from raf.sdk import cli as rt
 from raf.version import RAF_VERSION, versions
 
@@ -104,7 +104,7 @@ def register(app: typer.Typer) -> None:
 
         parts = topic or []
         if len(parts) == 1 and parts[0] in HELP_TOPICS:
-            rt.console().print(HELP_TOPICS[parts[0]])
+            rt.console().print(Text(HELP_TOPICS[parts[0]]))  # literal text: [brackets] are not Rich markup
             return
         root = typer.main.get_command(root_app)
         context = Context(root, info_name="raf")
@@ -206,6 +206,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command("install", rich_help_panel=PANEL)
     def install_cmd(
+        click_ctx: typer.Context,
         source: str = typer.Argument(..., help="Local plugin directory (remote registry: future)."),
     ) -> None:
         """Install a product plugin (installed plugins stay disabled until trusted)."""
@@ -215,7 +216,9 @@ def register(app: typer.Typer) -> None:
         if not path.exists():
             # Not a local path: ask the (future) remote registry to fetch it into a staging directory.
             path = registry.remote.fetch(source, None, ctx.home.root / "staging")
-        info = registry.install_plugin(path)
+        # a plugin may not take the name of a command of R$F itself (status, show, import, ...)
+        core_commands = set(getattr(click_ctx.find_root().command, "commands", {}))
+        info = registry.install_plugin(path, reserved_commands=core_commands)
         ctx.audit.record("plugin.install", affected=[info.name], details={"source": source})
 
         def render() -> None:
@@ -273,8 +276,15 @@ def register(app: typer.Typer) -> None:
 
     @plugin_app.command("verify")
     def plugin_verify(name: str) -> None:
-        """Check that a trusted plugin's files are unchanged."""
+        """Check that a trusted plugin's files are unchanged (exit 5 when they changed)."""
         registry = rt.ctx().registry or build_registry()
+        if not registry.is_plugin(name):
+            raise NotFoundError(f"Plugin '{name}' is not installed.", suggestions=["raf plugin list"])
+        if not registry.info(name).trusted:
+            raise ConflictError(
+                f"Plugin '{name}' is not trusted yet: there is no trusted hash to verify.",
+                suggestions=[f"raf plugin trust {name}"],
+            )
         ok = registry.verify_plugin(name)
         data = {"name": name, "unchanged": ok}
         rt.output(
@@ -283,9 +293,11 @@ def register(app: typer.Typer) -> None:
             lambda: (
                 rt.success(f"{name}: files match the trusted hash.")
                 if ok
-                else rt.warn(f"{name}: not trusted or modified.")
+                else rt.warn(f"{name}: files were modified after the plugin was trusted.")
             ),
         )
+        if not ok:
+            raise typer.Exit(5)  # integrity failure, like raf evidence verify
 
     app.add_typer(product_app, name="product", rich_help_panel=PANEL)
     app.add_typer(plugin_app, name="plugin", rich_help_panel=PANEL)
