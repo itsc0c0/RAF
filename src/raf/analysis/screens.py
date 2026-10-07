@@ -1119,8 +1119,10 @@ def ghost(ctx: RafContext, ref: str | None) -> Screen:
     blast_service = BlastService(ctx)
     blast_before = blast_service.blast(subject.id, source=before.graph())
     blast_after = blast_service.blast(subject.id, source=after.graph())
-    metrics_before = ExposureModel(before.graph()).metrics()
-    metrics_after = ExposureModel(after.graph()).metrics()
+    exposure_before, exposure_after = ExposureModel(before.graph()), ExposureModel(after.graph())
+    metrics_before, metrics_after = exposure_before.metrics(), exposure_after.metrics()
+    pairs_before, pairs_after = exposure_before.attack_pairs()[0], exposure_after.attack_pairs()[0]
+    broken, opened = len(pairs_before - pairs_after), len(pairs_after - pairs_before)
 
     def privileged(blast_result: Any) -> int:
         nodes = before.objects
@@ -1176,6 +1178,18 @@ def ghost(ctx: RafContext, ref: str | None) -> Screen:
                 _compare_row("Reachable privileged identities", privileged(blast_before), privileged(blast_after)),
                 _compare_row("Attack paths (workspace)", metrics_before.attack_paths, metrics_after.attack_paths),
                 _compare_row("Critical paths (workspace)", metrics_before.critical_paths, metrics_after.critical_paths),
+                {
+                    "label": "Attack paths broken",
+                    "before": "",
+                    "after": str(broken),
+                    "verdict": "better" if broken else "same",
+                },
+                {
+                    "label": "New attack paths",
+                    "before": "",
+                    "after": str(opened),
+                    "verdict": "worse" if opened else "same",
+                },
                 {
                     "label": "Operational impact",
                     "before": "",

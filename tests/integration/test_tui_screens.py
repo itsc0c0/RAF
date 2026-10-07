@@ -193,6 +193,8 @@ def test_ghost_page_simulates_without_saving(raven: RafContext) -> None:
     compare = _blocks(doc, "compare")[0]
     first = compare["rows"][0]
     assert first["label"] == "bob → production" and (first["before"], first["after"]) == ("REACHABLE", "BLOCKED")
+    rows = {row["label"]: row for row in compare["rows"]}
+    assert int(rows["Attack paths broken"]["after"]) > 0 and rows["New attack paths"]["after"] == "0"
     assert "No production changes have been made" in _all_text(doc)
     assert raven.store.relationships.count() == before
     assert not raven.store.kv.items("ghost")  # nothing saved as a Ghost model
