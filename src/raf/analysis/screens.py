@@ -397,6 +397,9 @@ def _incident_scope(ctx: RafContext, ref: str | None) -> Scope:
     return resolve_scope(ctx, [ref])
 
 
+_MIN_GAP = timedelta(seconds=1)  # shorter gaps are not drawn: same-second events read as one moment
+
+
 def timeline(ctx: RafContext, ref: str | None) -> Screen:
     from raf.products.replay.service import ReplayService, group_steps
 
@@ -416,7 +419,7 @@ def timeline(ctx: RafContext, ref: str | None) -> Screen:
     previous: datetime | None = None
     if steps:
         for step, count in group_steps(steps):
-            if previous is not None:
+            if previous is not None and step.timestamp - previous >= _MIN_GAP:
                 blocks.append({"t": "gap", "text": "+" + duration(step.timestamp - previous)})
             event = by_id.get(step.event_id)
             lines = [("" if count == 1 else f"{count}x ") + step.summary]
@@ -426,7 +429,7 @@ def timeline(ctx: RafContext, ref: str | None) -> Screen:
             previous = step.timestamp
     else:
         for event in events:
-            if previous is not None:
+            if previous is not None and event.timestamp - previous >= _MIN_GAP:
                 blocks.append({"t": "gap", "text": "+" + duration(event.timestamp - previous)})
             lines = [_describe(ctx, event)]
             if event.outcome:
@@ -1093,8 +1096,10 @@ def ghost(ctx: RafContext, ref: str | None) -> Screen:
     from raf.products.ghost.service import GhostService
 
     subject, target = _ghost_refs(ctx, ref)
-    service = GhostService(ctx)
-    before, after = service.current_state(), service.current_state()
+    # propagation-only states: same verdicts, metrics and cut as the full workspace, without
+    # loading activity records (see GhostService.propagation_state)
+    before = GhostService(ctx).propagation_state()
+    after = before.copy("containment-test")
 
     def controls(state: Any, *, vulnerabilities: bool = False) -> bool:
         reached = Propagator(

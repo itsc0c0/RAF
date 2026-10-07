@@ -16,6 +16,7 @@ from pydantic import Field
 from raf.core.context.app import RafContext
 from raf.core.errors import ConflictError, InvalidInputError, NotFoundError
 from raf.core.objects.models import RafModel
+from raf.core.objects.semantics import NON_PROPAGATING_TYPES, PROPAGATION_RELATIONSHIPS
 from raf.core.risk.exposure import AssetExposure, ExposureMetrics, ExposureModel
 from raf.core.snapshots.service import SnapshotService, StateView, resolve_state
 from raf.core.timeutil import utcnow
@@ -173,6 +174,20 @@ class GhostService:
     def current_state(self) -> ModelState:
         store = self.ctx.store
         return ModelState("current", store.objects.iter_all(), store.relationships.iter_all())
+
+    def propagation_state(self, label: str = "current") -> ModelState:
+        """The current workspace restricted to what propagation uses (filtered in the database, like
+        :func:`~raf.core.graph.source.load_propagation_source`): access what-ifs (remove-access cuts,
+        Blast, Exposure) give the same results as on :meth:`current_state`, much faster on workspaces
+        full of activity records. Activity relationships are absent, so do not diff such states for
+        relationship changes."""
+        excluded = sorted(NON_PROPAGATING_TYPES)
+        store = self.ctx.store
+        return ModelState(
+            label,
+            store.objects.iter_all(exclude_types=excluded),
+            store.relationships.iter_all(types=sorted(PROPAGATION_RELATIONSHIPS), exclude_endpoint_types=excluded),
+        )
 
     def state_for(self, ref: str) -> ModelState:
         text = ref.strip()

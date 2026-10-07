@@ -56,6 +56,11 @@ class ModelState:
         self.relationships: dict[str, Relationship] = {r.id: r for r in relationships}
         self._names: dict[str, list[str]] | None = None
 
+    def copy(self, label: str) -> ModelState:
+        """An independent state with the same content (cheap: :meth:`apply` replaces objects and
+        relationships instead of mutating them, so they can be shared)."""
+        return ModelState(label, self.objects.values(), self.relationships.values())
+
     # ------------------------------------------------------------------ views
     def graph(self) -> MemoryGraphSource:
         """The state as a propagation graph (activity records that propagation never enters are left out)."""

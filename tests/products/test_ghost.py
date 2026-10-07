@@ -50,6 +50,37 @@ def test_remove_access_cuts_all_paths_and_explains(raven: RafContext) -> None:
     assert all(rid in current.relationships for rid in op.effects.removed_relationships)
 
 
+def test_propagation_state_matches_the_full_state(raven: RafContext) -> None:
+    from raf.core.risk.exposure import ExposureModel
+    from raf.core.timeutil import utcnow
+    from raf.products.blast.service import BlastService
+    from raf.products.ghost.ops import run_operation
+    from raf.products.ghost.service import GhostService
+
+    service = GhostService(raven)
+    full, lean = service.current_state(), service.propagation_state()
+    assert len(lean.relationships) < len(full.relationships)
+    assert not any(oid.startswith("process:") for oid in lean.objects)
+    blast = BlastService(raven)
+    for subject in ("user:bob", "user:alice", "host:dev-01"):
+        a, b = blast.blast(subject, source=full.graph()), blast.blast(subject, source=lean.graph())
+        assert (a.risk.score, a.critical_assets, sorted(a.critical_paths)) == (
+            b.risk.score,
+            b.critical_assets,
+            sorted(b.critical_paths),
+        )
+    assert ExposureModel(full.graph()).metrics() == ExposureModel(lean.graph()).metrics()
+    cut_full = run_operation(full, "remove-access", "user:bob:cloud_resource:production", "x")
+    cut_lean = run_operation(lean, "remove-access", "user:bob:cloud_resource:production", "x")
+    assert cut_full.effects == cut_lean.effects
+    # a copy is independent of its origin
+    copy = lean.copy("y")
+    copy.apply(cut_lean.effects, model="y", when=utcnow())
+    assert all(
+        rid in lean.relationships and rid not in copy.relationships for rid in cut_lean.effects.removed_relationships
+    )
+
+
 def test_model_lifecycle_clone_undo_delete(raven: RafContext) -> None:
     from raf.products.ghost.service import GhostService
 
