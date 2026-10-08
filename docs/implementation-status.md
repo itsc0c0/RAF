@@ -21,7 +21,7 @@ integration, and documentation that describes the actual behavior.
 | Object model, deterministic IDs, provenance | done | objects, relationships (validity intervals), events, findings, incidents, provenance rows |
 | Workspaces, configuration, secrets | done | layered config; secrets only env/keyring; per-workspace SQLite |
 | Storage | done | SQLite (WAL) with Alembic migrations (schema equality is tested). PostgreSQL (`postgres` extra, `storage.url`): CI migrates a fresh database, checks it against the declared schema and runs a 32-command demo workflow on SQLite and PostgreSQL with identical results and content hashes (`tests/integration/test_postgres.py`); the rest of the suite runs on SQLite |
-| Ingestion | done | JSON, JSONL, CSV/TSV, syslog, access logs, text logs, directories, filesystem metadata, archives; native, ECS, CloudTrail and tabular normalizers; product parsers (pcap, policy documents); quarantine of rejected records |
+| Ingestion | done | JSON, JSONL, CSV/TSV, syslog, access logs, mixed multi-source logs (per-line decoding of CloudTrail, Kubernetes/GCP/Azure audit, Okta/Azure AD/IdP sign-ins, Windows/Sysmon, Suricata, Zeek, ECS, EDR, flows, change records, application JSON/logfmt, web access/error logs, BIND/dnsmasq, PostgreSQL, auditd, Cisco ASA, Squid, VPC flow, S3 access, CEF/LEEF, syslog daemons, free text; continuations, W3C/Zeek headers, credential redaction, re-reading earlier imports), text logs, directories, filesystem metadata, archives; native, ECS, CloudTrail and tabular normalizers; product parsers (pcap, policy documents); quarantine of rejected records |
 | `raf analyze` | done | detection + pipelines for pcap, events, directories, policies, repositories, manifests, SBOMs, bundles; `analysis-N` records and scoping |
 | Jobs, audit log, bundles, backups | done | hash-chained audit; bundle verify/import; workspace export/restore |
 | Findings lifecycle | done | idempotent IDs, status history, reopen, resolve-absent, triage via CLI/API/UI |
@@ -40,7 +40,7 @@ integration, and documentation that describes the actual behavior.
 | Product | Status | Works | Partial / not yet |
 |---|---|---|---|
 | Graph | BETA | neighborhoods, paths, temporal `--at` views, incident/analysis scopes, GraphML/JSON export, stats | layout is the client's job (web); very large graphs are truncated with notice |
-| Timeline | BETA | unified events, filter language, grouping, histograms, cursor pagination, CSV/JSON/bundle export | — |
+| Timeline | BETA | unified events, filter language, grouping, histograms, cursor pagination, CSV/JSON/bundle export; detections (19 rules with ATT&CK mapping, scope baselines, explained activity from change records, tickets and scheduled jobs, correlated suspected incidents) in `raf analyze` and `raf detect` | detection thresholds are fixed; baselines are the examined scope's |
 | Trace | BETA | causal chains: observed links vs labeled correlations with confidence | correlation windows are heuristics (configurable) |
 | Replay | BETA | deterministic incident reconstruction, state at T, checkpoints, state hashes | — |
 | Diff | BETA | snapshots, current state and Ghost models; categories, importance with reasons | — |

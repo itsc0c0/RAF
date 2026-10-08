@@ -109,6 +109,13 @@ KEYS: tuple[ConfigKey, ...] = (
         "Maximum minutes between correlated trace events: credential read -> login, DNS resolution -> connection.",
         minimum=1,
     ),
+    ConfigKey(
+        "detect.internal_networks",
+        str,
+        "",
+        "Extra internal networks for detections, comma-separated CIDRs (RFC 1918, CGNAT, loopback, link-local "
+        "and IPv6 ULA ranges are always internal).",
+    ),
     ConfigKey("iam.dormant_days", int, 90, "Days without activity before a privileged identity is dormant.", minimum=1),
     ConfigKey(
         "iam.broad_role_threshold", int, 10, "Principals holding a privileged role before it is 'broad'.", minimum=2

@@ -144,6 +144,7 @@ def _file(c: _Ctx) -> None:
     c.rel(actor, rel_type, c.ev.target)
     host = c.first("host")
     c.rel(host, RelationshipType.CONTAINS, c.ev.target, confidence=0.9, end=c.ev.event_type == "file.delete")
+    c.rel(c.first("bucket"), RelationshipType.CONTAINS, c.ev.target, confidence=0.95)
 
 
 def _network(c: _Ctx) -> None:
@@ -235,13 +236,61 @@ def _service_access(c: _Ctx) -> None:
         c.rel(c.ev.actor, RelationshipType.CAN_ACCESS, c.ev.target, confidence=0.8, observed=True)
 
 
+#: Error codes meaning the request's credential did not authenticate (as opposed to "not authorized").
+_AUTH_ERRORS = frozenset(
+    {
+        "invalidclienttokenid",
+        "signaturedoesnotmatch",
+        "invalidaccesskeyid",
+        "unrecognizedclientexception",
+        "expiredtoken",
+        "expiredtokenexception",
+        "authfailure",
+        "invalidtoken",
+    }
+)
+_OBJECT_RELS = {
+    "getobject": RelationshipType.READ,
+    "headobject": RelationshipType.READ,
+    "putobject": RelationshipType.CREATED,
+    "copyobject": RelationshipType.CREATED,
+    "deleteobject": RelationshipType.DELETED,
+}
+
+
+def _credential(c: _Ctx) -> None:
+    """A request signed with a credential: the credential authenticates as the actor (unless it did not
+    authenticate at all) and the source address used it."""
+    credential = c.first("credential")
+    if credential is None:
+        return
+    error = str(c.ev.attributes.get("error_code") or "").lower()
+    if error not in _AUTH_ERRORS:
+        c.rel(credential, RelationshipType.AUTHENTICATES_AS, c.ev.actor, confidence=0.95)
+    c.rel(c.first("src_ip"), RelationshipType.USES, credential, confidence=0.9, api=c.ev.action)
+
+
 def _cloud_api(c: _Ctx) -> None:
+    _credential(c)
     if not c.ok:
         return
     if c.type_of(c.ev.target) == ObjectType.ROLE:
         c.rel(c.ev.actor, RelationshipType.CAN_ASSUME, c.ev.target, observed=True)
     elif c.type_of(c.ev.actor) in _PRINCIPALS:
         c.rel(c.ev.actor, RelationshipType.CAN_ACCESS, c.ev.target, confidence=0.7, observed=True, api=c.ev.action)
+    stored = c.first("object")
+    if stored is not None:
+        c.rel(c.ev.target, RelationshipType.CONTAINS, stored, confidence=0.95)
+        rel_type = _OBJECT_RELS.get(str(c.ev.action or "").lower())
+        if rel_type is not None:
+            c.rel(c.ev.actor, rel_type, stored, api=c.ev.action)
+
+
+def _db_query(c: _Ctx) -> None:
+    if not c.ok:
+        return
+    c.rel(c.ev.actor, RelationshipType.CAN_ACCESS, c.ev.target, confidence=0.8, observed=True)
+    c.rel(c.first("host"), RelationshipType.RUNS, c.ev.target, confidence=0.9)
 
 
 def _policy_change(c: _Ctx) -> None:
@@ -273,13 +322,17 @@ RULES: dict[str, Callable[[_Ctx], None]] = {
     "iam.user.enable": _user_state,
     "service.access": _service_access,
     "cloud.api": _cloud_api,
+    "db.query": _db_query,
     "policy.change": _policy_change,
 }
 
 
 def build(ev: EventDraft, types: dict[str, str]) -> BuildOutput:
     out = BuildOutput()
+    ctx = _Ctx(ev, types, out)
     rule = RULES.get(ev.event_type)
     if rule is not None:
-        rule(_Ctx(ev, types, out))
+        rule(ctx)
+    if rule is not _cloud_api and "credential" in ctx.roles:
+        _credential(ctx)
     return out

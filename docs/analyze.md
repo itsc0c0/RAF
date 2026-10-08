@@ -12,20 +12,38 @@ R$F ANALYZE  raven-events.jsonl
 Detected: JSON Lines: jsonl parser (score 0.95)
 
 Running:
-  ✓ Ingest (JSON Lines)     774 of 774 records accepted (jsonl/1.0 + raf-native/1.0)  0.29 s
+  ✓ Ingest (JSON Lines)     774 of 774 records accepted (jsonl/1.0 + raf-native/1.0)  0.28 s
   ✓ Timeline                531 events indexed, 2026-10-06T06:00:00Z → 2026-10-07T01:06:00Z
   ✓ Graph                   357 objects and 696 relationships created; 0 objects and 0 relationships updated
   ✓ Incidents               events linked to INC-001
+  ✓ Detections              6 detection(s) (5 high, 1 medium) over 531 events; 2 explained (approved changes,
+                            tickets, scheduled jobs); correlated detections match INC-001
   ✓ IAM analysis            29 principal(s) in the input; workspace re-analyzed: 9 IAM finding(s), 9 involving them
   ✓ Exposure correlation    31 asset(s) involved (6 critical, 8 high, 3 low, 8 medium); 14 exposure finding(s)
-  ✓ Findings                23 new finding(s) (3 medium, 14 high, 6 critical)
+  ✓ Findings                29 new finding(s) (4 medium, 19 high, 6 critical)
   → analysis-1
 
 Objects             357
 Relationships       696
 Events              531
-Findings             23
+Detections            6
+Findings             29
 Incidents      INC-001
+
+Detections:
+  HIGH      6 failed sign-ins for bob in 45 s from 203.0.113.45, then a success from 203.0.113.45
+  HIGH      Suspected credential attack → suspicious sign-in (203.0.113.45): 2 correlated detections, matching INC-001
+  HIGH      Suspected exfiltration → security alert (APP-01): 2 correlated detections, matching INC-001
+  HIGH      Large transfer between 10.30.0.5 and 198.51.100.23 (files.exfil-test.example): 48.3 MB over 443/tcp
+            (988x the largest routine flow)
+  HIGH      Alert from raven-ids: Unusual outbound data volume from APP-01 to a first-seen domain
+  MEDIUM    Sign-in from a new public address: bob from 203.0.113.45 to VPN-01 (no MFA seen)
+
+Explained (no finding):
+  Transfer of 182.4 MB from 10.30.0.10 to 203.0.113.200: follows the scheduled job 'pg_dump raven' (svc-backup,
+  started by /usr/sbin/cron) that wrote raven-20261006.dump (182.0 MB) on DB-01: consistent with a scheduled
+  backup or export
+  Database export on DB-01: pg_dump raven: run by svc-backup from a scheduler (/usr/sbin/cron): a scheduled job
 
 Explore:
   raf lens analysis-1
@@ -41,6 +59,7 @@ Explore:
 raf analyze <file | directory | analysis-N> [--format PARSER] [--incident NAME] [--source-name NAME]
                                             [--synthetic] [--no-correlate]
 raf analyses [--limit N]
+raf detect [SCOPE] [--dry-run]
 ```
 
 `raf analyze analysis-3` shows a recorded analysis again; `raf analyses` lists them. After an
@@ -56,7 +75,7 @@ Content first, then names; deterministic.
 | `.raf` bundle | `bundle` | ZIP archive with an R$F `manifest.json` |
 | `package.json`, `requirements*.txt`, lockfiles, … | `manifest` | Dependency manifest names |
 | CycloneDX / SPDX JSON | `sbom` | `"bomFormat": "CycloneDX"` or `"spdxVersion"` |
-| JSON Lines, JSON, CSV, syslog, web access logs, text logs | `events` | the ingestion parser with the best sniff score |
+| JSON Lines, JSON, CSV, syslog, web access logs, mixed multi-source logs ([formats](logs.md)), text logs | `events` | the ingestion parser with the best sniff score; for mixed logs the detection names the sources seen in the first lines |
 | `raf-policy/1`, IAM JSON, firewall CSV exports | `policy` | the Policy parser's sniff score |
 | `raf-surface/1` inventories (JSON, JSONL, YAML, CSV with surface `kind`s) | `surface` | the Surface parser's sniff score |
 | directory with dependency manifests or `.git` | `repository` | bounded walk (5,000 entries, depth 4) |
@@ -69,14 +88,20 @@ list of parsers.
 
 | Type | Steps |
 |---|---|
-| `pcap` | **Protocol** (decode: flows, DNS, HTTP, TLS) → Timeline → Graph → IAM analysis* → Exposure correlation* → Findings |
-| `events`, `directory` | Ingest → Timeline → Graph → Incidents (when linked) → IAM analysis* → Exposure correlation* → Findings |
+| `pcap` | **Protocol** (decode: flows, DNS, HTTP, TLS) → Timeline → Graph → Detections → IAM analysis* → Exposure correlation* → Findings |
+| `events`, `directory` | Ingest → Timeline → Graph → Incidents (when linked) → Detections → IAM analysis* → Exposure correlation* → Findings |
 | `policy` | Ingest → Timeline → Graph → Policy analysis → Findings |
 | `surface` | Ingest → Timeline → Graph → Surface analysis (only within the authorized scope; an analyze never changes the scope) → IAM analysis* → Exposure correlation* → Findings |
 | `repository` | Dependency scan (+ advisory matching) → Vault secret scan → Graph → Findings |
 | `manifest` | Dependency scan → Graph → Findings |
 | `sbom` | Dependency SBOM import (+ advisory matching) → Graph → Findings |
 | `bundle` | Bundle verification (every member SHA-256) → Bundle import → Timeline → Graph → Findings |
+
+**Detections** run the [Timeline detection rules](products/timeline.md#detections) over the events of
+the analysis: the step reports the findings by severity, the activity it explained (approved
+changes, tickets, scheduled jobs) and the suspected incident it created (`CASE-...`) or the existing
+incident its correlated detections match; the summary lists the detections and what was ruled out.
+`raf detect analysis-N` runs them again, `raf detect` over the whole workspace.
 
 \* Correlation re-runs the workspace-wide analyses so findings stay consistent with the new data:
 **IAM analysis** runs when the input brought users, identities, groups or roles; **Exposure
@@ -97,6 +122,10 @@ detected type, every step with its numbers, the statistics, the suggestions and 
 created. `raf lens|graph|timeline analysis-N` scope to exactly that data through job provenance.
 
 Imports are idempotent: analyzing data that is already in the workspace creates no duplicates.
+Data imported earlier with another parser (a mixed log imported as plain text before) is re-read
+with the current one: the Timeline step says how many events were re-read, and the analysis covers
+the job that first imported them. The summary counts the events and objects of the analysis scope,
+not only the new ones.
 The analysis then also covers the jobs that first imported it: a job that imported only this input
 joins the scope; a job that imported it together with other sources (for example an evidence case)
 joins it for a single file, with the scope narrowed to that file's source name. Example: analyzing

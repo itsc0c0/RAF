@@ -14,6 +14,7 @@ from raf.core.ingestion.normalizers import (
     NativeNormalizer,
     TabularNormalizer,
 )
+from raf.core.ingestion.parsers.multilog import MultiLogParser
 from raf.core.ingestion.parsers.structured import CsvParser, JsonLinesParser, JsonParser
 from raf.core.ingestion.parsers.textlogs import AccessLogParser, SyslogParser, TextLogParser
 from raf.core.ingestion.refs import ResolveName
@@ -29,7 +30,15 @@ class ParserRegistry:
     @classmethod
     def default(cls) -> ParserRegistry:
         registry = cls()
-        for parser in (JsonLinesParser, JsonParser, CsvParser, SyslogParser, AccessLogParser, TextLogParser):
+        for parser in (
+            JsonLinesParser,
+            JsonParser,
+            CsvParser,
+            SyslogParser,
+            AccessLogParser,
+            MultiLogParser,
+            TextLogParser,
+        ):
             registry.register_parser(parser)
         registry.register_normalizer("ecs", EcsNormalizer)
         registry.register_normalizer("cloudtrail", CloudTrailNormalizer)

@@ -2,10 +2,12 @@
 
 R$F Timeline puts every normalized event of a scope - an object, an incident, an analysis, a job or
 the whole workspace - on one time axis, whatever source it came from (JSONL exports, syslog, EDR
-events, proxy logs, packet captures). It answers: what happened, in which order, by whom, against
-what, from which source record - and it exports exactly that selection.
+events, proxy logs, packet captures, [mixed multi-source logs](../logs.md)). It answers: what
+happened, in which order, by whom, against what, from which source record - and it exports exactly
+that selection. Its [detections](#detections) turn the events into findings and correlated
+incidents.
 
-Status: **BETA** · category: investigation · command: `raf timeline` · API: `/api/v1/timeline`
+Status: **BETA** · category: investigation · commands: `raf timeline`, `raf detect` · API: `/api/v1/timeline`
 · web: Timeline · depends on: core only (event store and filter language in `raf.core`)
 
 ## Usage
@@ -172,12 +174,142 @@ of the filter language does the same). `start` and `end` must be full timestamps
 `category` are repeatable. `group_by` always applies (an empty value is rejected). The export route
 has no `category` or `q` parameter: use `category:` terms in `filter`.
 
+## Detections
+
+`raf detect [SCOPE] [--dry-run]` runs R$F's detection rules over the events of a scope (by default the
+whole workspace); `raf analyze` runs them over the events of every input it imports (the
+**Detections** step). Rules read normalized events, so they work the same on JSON Lines, syslog, a
+packet capture or a [mixed multi-source log](../logs.md). Each finding cites its events, the objects
+involved, the baseline it compared against and its MITRE ATT&CK technique; findings are stored with
+product `timeline` and stable IDs, so a re-run updates them and resolves the ones it no longer
+produces (only those whose evidence lies in the examined events).
+
+```text
+$ raf detect analysis-1
+
+R$F DETECT  analysis-1
+────────────────────────────────────────
+Events      2,560
+Detections  9
+Explained   2
+Incidents   CASE-125236
+
+Detections:
+  CRITICAL  Suspected exposed credentials → credential misuse → data collection → persistence attempt →
+            exfiltration (198.51.100.77): 5 correlated detections
+  CRITICAL  Bulk read from bucket raven-backups by svc-ci from 198.51.100.77: 8 object(s), 320.7 MB (db/2026-10-05/)
+  HIGH      Cloud identity svc-ci used from public address 198.51.100.77: 12 API call(s) (GetObject x8,
+            GetCallerIdentity, ListBuckets, ListObjectsV2, AttachUserPolicy), 1 denied
+  HIGH      Sensitive artifact served publicly: support-bundle.zip downloaded by 198.51.100.77; it contains deploy.env
+  HIGH      Large transfer between 198.51.100.77 and 52.95.150.20: 320.7 MB over 443/tcp (1,074x the largest routine flow)
+  MEDIUM    Persistence attempt: svc-ci called AttachUserPolicy for itself from 198.51.100.77 - denied (AccessDenied)
+  MEDIUM    Alert from Raven EdgeWAF: SQL injection attempt blocked
+  LOW       Web reconnaissance from 203.0.113.66: 6 probes of sensitive paths (/.env, /wp-login.php, ...) in 10 s; all refused
+  LOW       Sign-in from a new public address: carol from 192.0.2.44 to raven-sso (MFA completed)
+
+Explained (no finding):
+  3 destructive operation(s) by system:serviceaccount:ops:deploy-bot (delete pods x3): covered by approved change
+  CHG-1017 (rolling_restart on payments, window 21:20-21:50Z)
+  Large export of q3-summary.csv (151.2 MB) by finance.batch: carries its own reference ticket FIN-301 (...)
+```
+
+### Rules
+
+| Rule | Detects | Severity | ATT&CK |
+|---|---|---|---|
+| `web-recon` | one client requesting 5+ well-known sensitive paths (`/wp-admin`, `/.git/`, `/.env`, `/actuator`, ...) within 15 minutes, or a burst of 30+ client errors (70%+ of its requests, 10+ paths) | LOW when every probe was refused, MEDIUM when one was answered | T1595.003 |
+| `exposed-artifact` | an archive, dump or diagnostics bundle served without authentication, through a public link or to a public address; web and application records of the same download are joined by request ID | HIGH when its manifest lists credential files (`.env`, keys, `credentials` ...), else MEDIUM | T1552.001 |
+| `cloud-credential-public` | calls signed by a cloud identity from a public address, when the scope's cloud calls come from internal networks (80%+), the identity is also used internally (the description names the same key used from both networks), a long-term key (`AKIA...`) signed them, the identity is a service identity, or the address appears in other detections | HIGH (MEDIUM for a person's identity with no other signal) | T1078.004 |
+| `bulk-storage-read` | 5+ objects or 100 MB+ read from one bucket by one identity and address (CloudTrail and S3 access logs joined by request ID; sizes from the access logs) from a public address or by a flagged identity | CRITICAL from a public address with 100 MB+ or a sensitive bucket name, HIGH otherwise | T1530 |
+| `cloud-persistence` | credential, user and permission changes (`CreateAccessKey`, `AttachUserPolicy`, `CreateUser` ...) from a public address, by a flagged or service identity, or denied | MEDIUM when denied (an attempt), HIGH, CRITICAL from a public address by a flagged identity | T1098.001 |
+| `large-transfer` | a flow of 10 MB+ and 20× the 90th percentile of the scope's flows; the description names the domain the destination was resolved from and the storage read it matches | HIGH with a public endpoint, else MEDIUM | T1048 |
+| `brute-force` | 5+ failures for an account in 10 minutes, 3× its own median rate, from one public address (or 10+ from anywhere) | HIGH when a sign-in followed within 30 minutes, else MEDIUM | T1110.001 |
+| `password-spray` | 10+ failures from one address across 3+ accounts in 10 minutes | HIGH with a success, else MEDIUM | T1110.003 |
+| `mfa-fatigue` | 5+ MFA challenges for an account in 10 minutes | MEDIUM | T1621 |
+| `new-external-signin` | a sign-in from a public address never seen for the user, whose other sign-ins (3+) are internal | LOW with MFA in the same session, MEDIUM without | T1078 |
+| `service-account-new-source` | a service account (`svc-`, `-bot`, `deploy` ...) with 3+ sign-ins from stable sources authenticating from a new one (the host holding the address is named) | HIGH | T1078, T1021 |
+| `credential-access` | reads of credential files (`.env`, private keys, cloud credentials, `.pgpass` ...) and commands searching for them | HIGH for reads, MEDIUM for searches | T1552.001 |
+| `suspicious-command` | reverse shells, download-and-execute, credential dumping, defense evasion, data uploads (`curl -T`), database exports (`COPY ... TO`, `pg_dump`), control bypasses (`--skip-review`), encoded PowerShell, persistence | HIGH or MEDIUM by kind | T1059 |
+| `risky-sql` | statements exporting or reading files, running commands, changing privileges or destroying data | HIGH or MEDIUM | T1005 |
+| `destructive-change` | deletion of workloads, secrets, roles or namespaces (Kubernetes) and `Delete*`/`Terminate*` cloud calls not covered by an approved change | MEDIUM | T1489 |
+| `log-tampering` | `StopLogging`, `DeleteTrail`, `DeleteFlowLogs` ..., Windows 1102/104 | HIGH (MEDIUM when denied) | T1562.008 |
+| `dns-tunneling` | 30+ distinct long names under one domain from one client | MEDIUM | T1071.004 |
+| `large-export` | an application export or download of 100 MB+ without a ticket | MEDIUM | T1567 |
+| `security-alert` | alerts of MEDIUM or higher raised by tools in the data (IDS, WAF, EDR, SIEM; CEF/LEEF, Suricata, Zeek notices), relayed with their own severity | the tool's | - |
+| `attack-chain` | detections that share an entity (address, identity, credential, bucket, artifact, host) within two hours, one of them HIGH or worse | the worst member; one level higher with 4+ members | - |
+
+Addresses count as internal in RFC 1918, carrier-grade NAT, loopback, link-local and IPv6
+unique-local ranges and in `detect.internal_networks`; documentation ranges (192.0.2.0/24,
+198.51.100.0/24, 203.0.113.0/24) count as public, as they stand for Internet addresses in examples.
+
+### Explained activity
+
+Some activity looks like an attack and is not; R$F says why instead of raising a finding:
+
+* a destructive operation inside the window of an **approved change record** (`change.record`
+  events: ticket, status, window) for the same service or actor;
+* an export that carries its own **ticket** (`FIN-301`);
+* a database export, upload or large transfer by a **scheduled job** (a process started by cron,
+  systemd or the Windows scheduler) - a transfer only when the job wrote a file of the same size
+  (within 5%) on the same host before it.
+
+They are listed under `Explained (no finding)` with the record that explains them, in the analysis
+and in the narrative of a nearby incident.
+
+### Correlated incidents
+
+Detections that share an entity within two hours form a chain. A chain with a HIGH or worse member
+becomes a **suspected incident** named `CASE-<hash>` (status `suspected`, source `raf detections`)
+whose description is the time-ordered narrative of its steps and of the activity ruled out around
+it; its events are linked, so `raf timeline CASE-...`, `raf replay CASE-...`, `raf graph CASE-...` and
+`raf oracle ask` work on it. When most of a chain's events already belong to an incident of the
+workspace (`INC-001` in the demo), the chain is reported as matching it and no new incident is made:
+an existing incident is cited, never rewritten. Each chain is also an `attack-chain` finding citing
+its member findings.
+
+```text
+CASE-125236  Suspected exposed credentials → credential misuse → data collection → persistence attempt → exfiltration
+  2026-10-06 21:40:05  [HIGH] Credential Access: Sensitive artifact served publicly: support-bundle.zip ...
+  2026-10-06 21:41:02  [HIGH] Initial Access: Cloud identity svc-ci used from public address 198.51.100.77 ...
+  2026-10-06 21:41:14  [CRITICAL] Collection: Bulk read from bucket raven-backups by svc-ci ...
+  2026-10-06 21:42:39  [MEDIUM] Persistence: Persistence attempt: svc-ci called AttachUserPolicy ...
+  2026-10-06 21:42:56  [HIGH] Exfiltration: Large transfer between 198.51.100.77 and 52.95.150.20 ...
+  Ruled out (no finding):
+    3 destructive operation(s) by system:serviceaccount:ops:deploy-bot ...: covered by approved change CHG-1017 ...
+```
+
+In the demo workspace (`raf demo load` runs the detections), the rules reconstruct INC-001 from its
+evidence: the VPN brute force ending in a sign-in without MFA, the `.env` read on DEV-01, `svc-deploy`
+signing in to CI-01 from DEV-01, the `--skip-review` deployment, the `COPY ... TO` export and
+`curl -T` upload on APP-01, the 48 MB transfer to `files.exfil-test.example` and the IDS alert; the
+nightly backup (cron `pg_dump`, then 182 MB to the backup storage) is explained.
+
+### Output and API
+
+`raf detect --json` emits `raf.detections/v1`: `{scope, generated_at, events_examined, findings,
+explained: [{rule, title, reason, events, at}], incidents: [{id, name, title, severity, confidence,
+findings, events, start, end, narrative, existing}], by_severity, by_rule, created, updated,
+resolved}`. `--dry-run` reports without storing findings or incidents.
+
+| Method | Path | Result |
+|---|---|---|
+| POST | `/timeline/detect` with `{"ref": "analysis-3" \| "INC-001" \| null, "dry_run": false}` | the report above (without `schema`); recorded in the audit log unless `dry_run` |
+
 ## Configuration
 
-Timeline has no configuration keys of its own. What an event carries is decided at import time
-(`ingest.store_raw`, `ingest.raw_max_bytes`, `ingest.default_timezone`; see `raf config keys`).
+| Key | Default | Meaning |
+|---|---|---|
+| `detect.internal_networks` | empty | extra internal networks for the detections, comma-separated CIDRs |
+
+What an event carries is decided at import time (`ingest.store_raw`, `ingest.raw_max_bytes`,
+`ingest.default_timezone`; see `raf config keys`).
 
 ## Limitations
 
 * `after:` / `before:` filter terms do not accept `HH:MM` or relative values; `--from` / `--to` do.
 * A `raf` export holds the selected events in memory while the bundle is written.
+* Detections compare against the baseline of the examined scope (one file, one analysis or the
+  workspace): a short scope gives a thin baseline, which is why several rules also require a public
+  address, a service identity or a concentrated source. Thresholds are fixed, documented above.
+* Detections keep bounded state (100,000 keys and 5,000 items per key and collection); beyond that
+  the rules see a sample.

@@ -43,6 +43,7 @@ def _summary_rows(stats: dict[str, Any]) -> list[tuple[str, Any]]:
         ("packages", "Packages"),
         ("vulnerable_packages", "Vulnerable"),
         ("secrets", "Secrets"),
+        ("detections", "Detections"),
         ("findings", "Findings"),
     ):
         if key in stats:
@@ -50,6 +51,31 @@ def _summary_rows(stats: dict[str, Any]) -> list[tuple[str, Any]]:
     if stats.get("incidents"):
         rows.append(("Incidents", ", ".join(i.split(":", 1)[1].upper() for i in stats["incidents"])))
     return rows
+
+
+def render_detections(findings: list[dict[str, Any]], explained: list[dict[str, Any]]) -> None:
+    """The detections of an analysis (most severe first) and what was ruled out, one line each."""
+    if rt.STATE.quiet or not (findings or explained):
+        return
+    c = rt.console()
+    if findings:
+        c.print()
+        c.print(Text("Detections:", style="bold"))
+        for item in findings:
+            line = Text("  ")
+            line.append_text(rt.sev_text(str(item.get("severity") or "INFO")))
+            line.append(" " * max(1, 10 - len(str(item.get("severity") or ""))))
+            line.append(terminal_safe(str(item.get("title") or "")))
+            c.print(line)
+    if explained:
+        c.print()
+        c.print(Text("Explained (no finding):", style="bold"))
+        for item in explained:
+            c.print(
+                Text(
+                    f"  {terminal_safe(str(item.get('title')))}: {terminal_safe(str(item.get('reason')))}", style="dim"
+                )
+            )
 
 
 def render_result(result: AnalysisResult, *, live: bool) -> None:
@@ -61,6 +87,7 @@ def render_result(result: AnalysisResult, *, live: bool) -> None:
             c.print(_step_line(step))
     c.print()
     rt.kv_block(_summary_rows(result.stats), width=15)
+    render_detections(result.stats.get("top_findings") or [], result.stats.get("explained") or [])
     if result.status == "partial":
         rt.warn("some steps failed; the rest of the analysis completed (see above)")
     rt.next_steps(result.suggestions, title="Explore")
@@ -87,6 +114,7 @@ def render_record(record: AnalysisRecord) -> None:
         c.print(_step_line(step))
     c.print()
     rt.kv_block(_summary_rows(stats), width=15)
+    render_detections(stats.get("top_findings") or [], stats.get("explained") or [])
     rt.next_steps(record.suggestions, title="Explore")
 
 
@@ -153,6 +181,73 @@ raf lens/graph/timeline analysis-N (or @last).""",
         rt.output("raf.analysis/v1", result.to_json_dict(), lambda: render_result(result, live=live))
         if result.status == "failed":
             raise typer.Exit(1)
+
+    @app.command(
+        "detect",
+        rich_help_panel=PANEL,
+        help="""Run R$F detections over events: web reconnaissance, exposed artifacts, cloud credentials used
+from public addresses, bulk storage reads, persistence attempts, large transfers, brute force, password
+spraying, MFA fatigue, new external sign-ins, destructive changes, log tampering, suspicious commands,
+risky SQL, DNS tunneling and large exports. Detections sharing entities become a suspected incident.
+
+  raf detect                 the whole workspace
+  raf detect analysis-3      the events of an analysis (raf analyze runs this for you)
+  raf detect INC-001         an incident's events
+  raf detect --dry-run       report only: no findings or incidents are stored
+
+Activity covered by an approved change record or carrying its own ticket is listed as explained.""",
+    )
+    def detect_cmd(
+        words: list[str] = typer.Argument(None, help="Scope: analysis-N, an incident, an object, or 'workspace'."),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Show detections without storing anything."),
+    ) -> None:
+        ctx = rt.ctx()
+        if ctx.registry is not None:
+            ctx.registry.require("timeline")
+        from raf.core.query.scope import resolve_scope
+        from raf.products.timeline.detections import DetectionService
+
+        scope = resolve_scope(ctx, words or [])
+        for message in scope.notes:
+            rt.note(message)
+        report = DetectionService(ctx).run(scope.event_query(), scope_label=scope.id, persist=not dry_run)
+        if not dry_run:
+            ctx.audit.record(
+                "detections.run",
+                affected=[scope.id],
+                details={"findings": len(report.findings), "incidents": [i.name for i in report.incidents]},
+            )
+            for incident in report.incidents[:1]:
+                ctx.refs.remember("incident", incident.id)
+
+        def render() -> None:
+            rt.header(f"R$F DETECT  {scope.label}", "dry run: nothing stored" if dry_run else None)
+            rt.kv_block(
+                [
+                    ("Events", f"{report.events_examined:,}"),
+                    ("Detections", f"{len(report.findings):,}"),
+                    ("Explained", f"{len(report.explained):,}"),
+                    ("Incidents", ", ".join(dict.fromkeys(i.name for i in report.incidents)) or "-"),
+                ]
+                + ([("Resolved", f"{report.resolved:,} earlier detection(s)")] if report.resolved else []),
+                width=12,
+            )
+            render_detections(
+                [{"severity": f.severity.value, "title": f.title} for f in report.findings],
+                [{"title": e.title, "reason": e.reason} for e in report.explained],
+            )
+            for incident in report.incidents:
+                c = rt.console()
+                c.print()
+                c.print(Text(f"{incident.name}  {terminal_safe(incident.title)}", style="bold"))
+                for line in incident.narrative:
+                    c.print(Text(f"  {terminal_safe(line)}"))
+            steps = [f"raf finding show {report.findings[0].id}"] if report.findings else []
+            for incident in report.incidents[:1]:
+                steps += [f"raf timeline {incident.name}", f"raf replay {incident.name}", f"raf graph {incident.name}"]
+            rt.next_steps(steps)
+
+        rt.output("raf.detections/v1", report.to_json_dict(), render)
 
     @app.command("analyses", rich_help_panel=PANEL)
     def analyses_cmd(limit: int = typer.Option(20, "--limit", min=1, max=500)) -> None:

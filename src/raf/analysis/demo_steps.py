@@ -85,8 +85,21 @@ def _step_surface(ctx: RafContext, state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _step_detections(ctx: RafContext, state: dict[str, Any]) -> dict[str, Any]:
+    from raf.core.storage.repos.events import EventQuery
+    from raf.products.timeline.detections import DetectionService
+
+    report = DetectionService(ctx).run(EventQuery(), scope_label=ctx.workspace.name)
+    return {
+        "detections": len(report.findings),
+        "explained": len(report.explained),
+        "matching incidents": sorted({i.name for i in report.incidents}),
+    }
+
+
 register_demo_step(DemoStep("INC-001 evidence case", "evidence", _step_evidence))
 register_demo_step(DemoStep("Raven firewall and access policies", "policy", _step_policies))
 register_demo_step(DemoStep("Raven external attack surface (imported inventory)", "surface", _step_surface))
 register_demo_step(DemoStep("IAM analysis", "iam", _step_iam))
 register_demo_step(DemoStep("Exposure analysis", "exposure", _step_exposure))
+register_demo_step(DemoStep("Timeline detections", "timeline", _step_detections))

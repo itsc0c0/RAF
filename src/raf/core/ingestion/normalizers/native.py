@@ -231,13 +231,15 @@ class NativeNormalizer(Normalizer):
         if target is not None:
             ev.target = target.id
 
-        self._attribute_objects(attributes, event_type, host_key, ts, ctx, ev, add, out)
-
         for extra in data.get("objects") or []:
             if not isinstance(extra, dict):
                 raise RecordRejected("'objects' entries must be mappings.")
             role = str(extra.get("role") or "related")[:32]
-            add(self._ref(extra, None, ctx, "object"), role, ev)
+            # an entry without a type is typed by its role ("user", "host" ...): bare names are then
+            # normalized and entity-resolved like an actor or target of that type
+            add(self._ref(extra, _ROLE_TYPES.get(role), ctx, "object"), role, ev)
+
+        self._attribute_objects(attributes, event_type, host_key, ts, ctx, ev, add, out, drafts)
 
         for rel in data.get("relationships") or []:
             out.relationships.append(self._explicit_relationship(rel, ctx, ts, drafts))
@@ -343,10 +345,18 @@ class NativeNormalizer(Normalizer):
         ev: EventDraft,
         add: Any,
         out: NormalizedRecord,
+        drafts: dict[str, ObjectDraft] | None = None,
     ) -> None:
         for key, role in (("src_ip", "src_ip"), ("dst_ip", "dst_ip"), ("ip", "ip")):
             if attributes.get(key):
-                add(self._ref(str(attributes[key]), ObjectType.IP, ctx, key), role, ev)
+                try:
+                    address = self._ref(str(attributes[key]), ObjectType.IP, ctx, key)
+                except RecordRejected:
+                    # not an address (a host name, "unknown" ...): the event keeps it as an attribute
+                    if len(ctx.warnings) < 50:
+                        ctx.warnings.append(f"{key} {str(attributes[key])[:60]!r} is not an IP address")
+                    continue
+                add(address, role, ev)
         for key in ("domain", "query", "sni"):
             if attributes.get(key):
                 add(self._ref(str(attributes[key]), ObjectType.DOMAIN, ctx, key), "domain", ev)
@@ -360,7 +370,10 @@ class NativeNormalizer(Normalizer):
                     continue  # CNAME answers etc. are kept as attributes only
         if attributes.get("url") and not event_type.startswith("http."):
             add(self._ref(str(attributes["url"]), ObjectType.URL, ctx, "url"), "url", ev)
+        involves_file = any(d.type == ObjectType.FILE for d in drafts.values()) if drafts is not None else False
         for key in ("file", "file_path", "path"):
+            if key == "path" and (event_type.startswith(_URL_PATH_EVENTS) or involves_file):
+                continue  # a URL path, or the file is already part of the event
             if attributes.get(key) and not event_type.startswith("file."):
                 add(self._file_draft(str(attributes[key]), host_key, ctx), "file", ev)
                 break
@@ -483,6 +496,21 @@ class NativeNormalizer(Normalizer):
 
 
 _PROCESS_SUFFIXES = (".exe", ".com", ".bat", ".cmd", ".ps1", ".sh", ".py", ".bin", ".dll")
+#: Event types whose ``path`` attribute is a URL or API path, never a file.
+_URL_PATH_EVENTS = ("http.", "dns.", "db.", "cloud.", "network.", "tls.")
+#: The object type of an untyped ``objects`` entry, from its role.
+_ROLE_TYPES: dict[str, str] = {
+    "user": ObjectType.USER,
+    "host": ObjectType.HOST,
+    "ip": ObjectType.IP,
+    "src_ip": ObjectType.IP,
+    "dst_ip": ObjectType.IP,
+    "service": ObjectType.SERVICE,
+    "domain": ObjectType.DOMAIN,
+    "url": ObjectType.URL,
+    "group": ObjectType.GROUP,
+    "role": ObjectType.ROLE,
+}
 
 
 def _looks_like_process(value: str, attributes: dict[str, Any]) -> bool:

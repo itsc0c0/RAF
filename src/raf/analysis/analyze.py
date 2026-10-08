@@ -3,9 +3,10 @@
 Pipelines (every executed step is reported, with its product, status, duration and numbers):
 
 * **pcap** - Protocol decodes the capture into flows, DNS, HTTP and TLS events → Timeline → Graph →
-  Exposure correlation → Findings.
-* **events** (JSON Lines, JSON, CSV, syslog, access logs, text logs) and **directory** - Ingest
-  (auto-detected parser) → Timeline → Graph → Incidents → IAM analysis → Exposure correlation → Findings.
+  Detections → Exposure correlation → Findings.
+* **events** (JSON Lines, JSON, CSV, syslog, access logs, mixed multi-source logs, text logs) and
+  **directory** - Ingest (auto-detected parser) → Timeline → Graph → Incidents → Detections → IAM
+  analysis → Exposure correlation → Findings.
 * **policy** documents - Ingest → Policy analysis → Findings.
 * **surface** inventories (``raf-surface/1``) - Ingest → Surface analysis (authorized scope only;
   the import never changes the scope) → Exposure correlation → Findings.
@@ -54,6 +55,7 @@ PARSER_LABELS = {
     "syslog": "Syslog",
     "access-log": "Web access log",
     "text": "Text log",
+    "multilog": "Multi-source log",
     "raf-policy": "Policy document",
     "raf-surface": "Surface inventory",
     "pcap": "PCAP",
@@ -211,9 +213,11 @@ def detect_input(
         )
     parser, score = detected
     kind = _PARSER_KINDS.get(parser.name, "events")
-    return Detection(
-        kind, PARSER_LABELS.get(parser.name, parser.name), parser.name, [f"{parser.name} parser (score {score:.2f})"]
-    )
+    reasons = [f"{parser.name} parser (score {score:.2f})"]
+    describe = getattr(parser, "describe", None)
+    if callable(describe):
+        reasons.append(str(describe(head)))
+    return Detection(kind, PARSER_LABELS.get(parser.name, parser.name), parser.name, reasons)
 
 
 # --------------------------------------------------------------------------- running
@@ -302,6 +306,15 @@ def _include_earlier_imports(run: _Run, report: IngestReport, *, single_file: bo
     single-file input, with the scope narrowed to that source's name."""
     provenance = run.ctx.store.provenance
     digests = {d for d in [report.sha256 or ""] + [str(f.get("sha256") or "") for f in report.files] if d}
+    events = run.ctx.store.events
+    for earlier in report.earlier_jobs:  # jobs that stored the very events this import met again
+        if earlier in run.jobs:
+            continue
+        run.add_job(earlier)
+        if single_file and events.count(EventQuery(job_ids=[earlier])) != events.count(
+            EventQuery(job_ids=[earlier], source=report.source)
+        ):
+            run.stats["scope_source"] = report.source
     for earlier in provenance.jobs_for_sources(digests):
         if earlier in run.jobs:
             continue
@@ -333,7 +346,7 @@ def _ingest(run: _Run, path: Path, det: Detection, name: str, product: str | Non
             )
         box["report"] = report
         run.incidents += [i for i in report.incidents if i not in run.incidents]
-        if report.events_duplicate or report.objects_updated:
+        if report.events_duplicate or report.events_reparsed or report.objects_updated:
             _include_earlier_imports(run, report, single_file=path.is_file())
         if report.files:
             parsers = Counter(str(f.get("format")) for f in report.files)
@@ -341,6 +354,11 @@ def _ingest(run: _Run, path: Path, det: Detection, name: str, product: str | Non
         else:
             parser = f"{report.parser}" + (f" + {report.normalizer}" if report.normalizer else "")
         detail = f"{report.accepted:,} of {report.processed:,} records accepted ({parser})"
+        if report.sources:
+            ranked = sorted(report.sources.items(), key=lambda kv: (-kv[1], kv[0]))
+            detail += f"; {len(ranked)} source(s): " + ", ".join(f"{name} {n:,}" for name, n in ranked[:8])
+            if len(ranked) > 8:
+                detail += f" and {len(ranked) - 8} more"
         if report.rejected:
             detail += f"; {report.rejected:,} rejected (raf import report {job.id})"
         if report.files or report.skipped_files:
@@ -358,6 +376,7 @@ def _ingest(run: _Run, path: Path, det: Detection, name: str, product: str | Non
             "rejected": report.rejected,
             "files": len(report.files),
             "skipped_files": len(report.skipped_files),
+            "sources": dict(sorted(report.sources.items(), key=lambda kv: -kv[1])[:50]),
         }
         if det.kind == "pcap":
             extra, extra_stats = _capture_summary(run)
@@ -371,32 +390,50 @@ def _ingest(run: _Run, path: Path, det: Detection, name: str, product: str | Non
 
 def _timeline_step(run: _Run, report: IngestReport) -> None:
     def step() -> tuple[str, dict[str, Any]]:
-        first, last = run.ctx.store.events.bounds(_scope_query(run))
+        query = _scope_query(run)
+        first, last = run.ctx.store.events.bounds(query)
         window = f", {format_ts(first)} → {format_ts(last)}" if first and last else ""
-        dup = f" ({report.events_duplicate:,} already present)" if report.events_duplicate else ""
-        run.stats["events"] = run.stats.get("events", 0) + report.events_created
-        return f"{report.events_created:,} events indexed{dup}{window}", {
-            "events": report.events_created,
-            "duplicates": report.events_duplicate,
-            "first": format_ts(first) if first else None,
-            "last": format_ts(last) if last else None,
-        }
+        notes = []
+        if report.events_reparsed:
+            notes.append(f"{report.events_reparsed:,} re-read with the current parser")
+        if report.events_duplicate:
+            notes.append(f"{report.events_duplicate:,} already present")
+        in_scope = run.ctx.store.events.count(query) if run.jobs else report.events_created
+        run.stats["events"] = in_scope
+        return (
+            f"{report.events_created:,} events indexed" + (f" ({'; '.join(notes)})" if notes else "") + window,
+            {
+                "events": report.events_created,
+                "duplicates": report.events_duplicate,
+                "reparsed": report.events_reparsed,
+                "in_scope": in_scope,
+                "first": format_ts(first) if first else None,
+                "last": format_ts(last) if last else None,
+            },
+        )
 
     run.run("Timeline", "timeline", step)
 
 
 def _graph_step(run: _Run, created: int, updated: int, rels_created: int, rels_updated: int) -> None:
     def step() -> tuple[str, dict[str, Any]]:
-        run.stats["objects"] = run.stats.get("objects", 0) + created
-        run.stats["relationships"] = run.stats.get("relationships", 0) + rels_created
-        return (
+        involved = len(_job_objects(run)) if run.jobs else created
+        run.stats["objects"] = max(involved, run.stats.get("objects", 0) + created)
+        run.stats["relationships"] = run.stats.get("relationships", 0) + rels_created + rels_updated
+        detail = (
             f"{created:,} objects and {rels_created:,} relationships created; "
-            f"{updated:,} objects and {rels_updated:,} relationships updated",
+            f"{updated:,} objects and {rels_updated:,} relationships updated"
+        )
+        if involved > created:
+            detail += f"; {involved:,} objects involved in this input"
+        return (
+            detail,
             {
                 "objects_created": created,
                 "objects_updated": updated,
                 "relationships_created": rels_created,
                 "relationships_updated": rels_updated,
+                "objects_involved": involved,
             },
         )
 
@@ -466,6 +503,49 @@ def _correlate(run: _Run) -> None:
         run.skip("Exposure correlation", "exposure", "no hosts, services or other assets in the input")
 
 
+def _detections_step(run: _Run) -> None:
+    """Timeline detections over the analysis scope; suspected incidents join the analysis."""
+
+    def step() -> tuple[str, dict[str, Any]]:
+        module = importlib.import_module("raf.products.timeline.detections")
+        report = module.DetectionService(run.ctx).run(_scope_query(run), scope_label=run.id)
+        findings = report.findings
+        run.stats["detections"] = len(findings)
+        run.stats["top_findings"] = [
+            {"id": f.id, "severity": f.severity.value, "title": f.title, "rule": f.rule_id} for f in findings[:12]
+        ]
+        run.stats["explained"] = [{"title": e.title, "reason": e.reason} for e in report.explained[:12]]
+        for incident in report.incidents:
+            if incident.id not in run.incidents:
+                run.incidents.insert(0, incident.id)
+        counts = Counter(f.severity.value for f in findings)
+        order = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+        detail = f"{len(findings)} detection(s)" + (
+            " (" + ", ".join(f"{counts[s]} {s.lower()}" for s in order if counts.get(s)) + ")" if findings else ""
+        )
+        detail += f" over {report.events_examined:,} events"
+        if report.explained:
+            detail += f"; {len(report.explained)} explained (approved changes, tickets, scheduled jobs)"
+        created = list(dict.fromkeys(i.name for i in report.incidents if not i.existing))
+        matched = list(dict.fromkeys(i.name for i in report.incidents if i.existing))
+        if created:
+            detail += "; suspected incident " + ", ".join(created)
+        if matched:
+            detail += "; correlated detections match " + ", ".join(matched)
+        if report.resolved:
+            detail += f"; {report.resolved} earlier detection(s) resolved"
+        return detail, {
+            "findings": len(findings),
+            "by_severity": dict(counts),
+            "by_rule": report.by_rule,
+            "explained": len(report.explained),
+            "incidents": list(dict.fromkeys(i.name for i in report.incidents)),
+            "events_examined": report.events_examined,
+        }
+
+    run.run("Detections", "timeline", step)
+
+
 def _findings_step(run: _Run, before: dict[str, int]) -> None:
     def step() -> tuple[str, dict[str, Any]]:
         after = run.ctx.store.findings.count_by_severity()
@@ -500,6 +580,8 @@ def _pipeline_ingested(run: _Run, path: Path, det: Detection) -> None:
     if report.incidents:
         names = [i.split(":", 1)[1].upper() for i in report.incidents]
         run.record(AnalysisStep(name="Incidents", detail="events linked to " + ", ".join(names)))
+    if det.kind in ("events", "pcap", "directory") and run.jobs:
+        _detections_step(run)
     if det.kind == "policy":
 
         def policy() -> tuple[str, dict[str, Any]]:
@@ -625,6 +707,7 @@ def _suggestions(run: _Run, det: Detection, path: Path) -> list[str]:
         out.append(f"raf protocol inspect {shlex.quote(str(path))}")
     for incident in run.incidents[:1]:
         name = incident.split(":", 1)[1].upper()
+        out.append(f"raf timeline {shlex.quote(name)}")
         question = f"Explain the most important security path in {name}"
         asked = f'"{question}"' if re.fullmatch(r"[\w.-]+", name) else shlex.quote(question)
         out += [f"raf replay {shlex.quote(name)}", f"raf oracle ask {asked}"]
@@ -634,7 +717,7 @@ def _suggestions(run: _Run, det: Detection, path: Path) -> list[str]:
         out.append("raf vault findings")
     if run.stats.get("exposed_assets"):
         out.append(f"raf exposure show {shlex.quote(str(run.stats['exposed_assets'][0]))}")
-    if run.stats.get("findings"):
+    if run.stats.get("findings") or run.stats.get("detections"):
         out.append("raf findings --severity high")
     return out
 

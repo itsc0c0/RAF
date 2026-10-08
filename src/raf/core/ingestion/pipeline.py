@@ -51,6 +51,7 @@ from raf.core.timeutil import utcnow
 log = logging.getLogger("raf.ingest")
 
 _SAMPLE = 25
+_MAX_SOURCES = 200  # distinct line sources counted per import report
 
 
 @dataclass(slots=True)
@@ -93,7 +94,10 @@ class IngestReport(RafModel):
     relationships_updated: int = 0
     events_created: int = 0
     events_duplicate: int = 0
+    events_reparsed: int = 0
     findings_created: int = 0
+    sources: dict[str, int] = Field(default_factory=dict)
+    earlier_jobs: list[str] = Field(default_factory=list)  # jobs that first stored events this import met again
     incidents: list[str] = Field(default_factory=list)
     rejections: list[Rejection] = Field(default_factory=list)
     rejects_file: str | None = None
@@ -115,9 +119,16 @@ class IngestReport(RafModel):
             "relationships_updated",
             "events_created",
             "events_duplicate",
+            "events_reparsed",
             "findings_created",
         ):
             setattr(self, key, getattr(self, key) + getattr(other, key))
+        for name, count in other.sources.items():
+            if name in self.sources or len(self.sources) < _MAX_SOURCES:
+                self.sources[name] = self.sources.get(name, 0) + count
+        for job in other.earlier_jobs:
+            if job not in self.earlier_jobs and len(self.earlier_jobs) < 50:
+                self.earlier_jobs.append(job)
         self.incidents = sorted(set(self.incidents) | set(other.incidents))
         room = 1000 - len(self.rejections)
         if room > 0:
@@ -389,6 +400,10 @@ class IngestionPipeline:
                         label = f"{label}+{chosen.name}/{chosen.version}"
                     self._accept(normalized, record, label, source, batch)
                     report.accepted += 1
+                    if record.origin is not None and (
+                        record.origin in report.sources or len(report.sources) < _MAX_SOURCES
+                    ):
+                        report.sources[record.origin] = report.sources.get(record.origin, 0) + 1
                 except (RafError, ValueError, TypeError, KeyError, OverflowError) as exc:
                     rejection = _rejection(record, exc, source)
                     report.rejected += 1
@@ -536,9 +551,13 @@ class IngestionPipeline:
             rstats = self.store.relationships.upsert_drafts(list(batch.relationships.values()), conn=conn)
             report.relationships_created += rstats.created
             report.relationships_updated += rstats.updated
-            estats = self.store.events.insert_drafts(batch.events, job_id=self.job_id, conn=conn)
+            estats = self.store.events.insert_drafts(batch.events, job_id=self.job_id, conn=conn, reparse=True)
             report.events_created += estats.created
             report.events_duplicate += estats.duplicates
+            report.events_reparsed += estats.reparsed
+            for earlier in sorted(estats.existing_jobs - {self.job_id or ""}):
+                if earlier and earlier not in report.earlier_jobs and len(report.earlier_jobs) < 50:
+                    report.earlier_jobs.append(earlier)
             self.store.provenance.add_many(batch.provenance, job_id=self.job_id, conn=conn)
             if batch.findings:
                 fstats = self.store.findings.upsert(batch.findings, conn=conn)

@@ -11,8 +11,10 @@ import re
 from typing import Any, ClassVar
 
 from raf.core.ingestion.base import NormalizedRecord, Normalizer, ParseContext, RawRecord, RecordRejected
+from raf.core.ingestion.logs.records import bucket_ref, credential_ref, ip, object_ref
 from raf.core.ingestion.normalizers.native import NativeNormalizer
 from raf.core.objects.types import ObjectType
+from raf.core.security.redaction import redact_text
 
 
 def _get(data: dict[str, Any], dotted: str) -> Any:
@@ -77,222 +79,299 @@ class EcsNormalizer(_Adapter):
         return min(0.9, 0.2 * hits) if "@timestamp" in record or _get(record, "ecs.version") else 0.1 * hits
 
     def adapt(self, data: dict[str, Any], ctx: ParseContext) -> dict[str, Any]:
-        categories = _get(data, "event.category") or []
-        categories = categories if isinstance(categories, list) else [categories]
-        types = _get(data, "event.type") or []
-        types = types if isinstance(types, list) else [types]
-        action = str(_first(data, "event.action") or "")
-        outcome = _first(data, "event.outcome")
-        attrs: dict[str, Any] = {}
-        for key, field in (
-            ("src_ip", "source.ip"),
-            ("dst_ip", "destination.ip"),
-            ("dst_port", "destination.port"),
-            ("src_port", "source.port"),
-            ("protocol", "network.transport"),
-            ("bytes_out", "source.bytes"),
-            ("bytes_in", "destination.bytes"),
-            ("pid", "process.pid"),
-            ("image", "process.executable"),
-            ("command_line", "process.command_line"),
-            ("parent_pid", "process.parent.pid"),
-            ("parent_image", "process.parent.executable"),
-            ("method", "http.request.method"),
-            ("status", "http.response.status_code"),
-            ("user_agent", "user_agent.original"),
-            ("dataset", "event.dataset"),
-            ("rule", "rule.name"),
-        ):
-            value = _first(data, field)
-            if value is not None:
-                attrs[key] = value
-        actor = _first(data, "user.name", "user.id")
-        host = _first(data, "host.name", "host.hostname", "agent.hostname")
-        target: Any = host
-        cats = {str(c).lower() for c in categories}
-        kinds = {str(t).lower() for t in types}
-        if "authentication" in cats:
-            event_type = (
-                "auth.failure"
-                if str(outcome).lower() == "failure"
-                else ("auth.logout" if "end" in kinds else "auth.login")
-            )
-        elif "process" in cats:
-            event_type = "process.end" if "end" in kinds else "process.start"
-            target = None
-            attrs.setdefault("image", _first(data, "process.name"))
-        elif "file" in cats:
-            mapping = {
-                "creation": "file.create",
-                "deletion": "file.delete",
-                "change": "file.modify",
-                "access": "file.read",
-            }
-            event_type = next((mapping[k] for k in kinds if k in mapping), "file.modify")
-            target = _first(data, "file.path", "file.name")
-            if _first(data, "process.name"):
-                attrs["process"] = _first(data, "process.name")
-        elif _first(data, "dns.question.name"):
-            event_type = "dns.query"
-            target = _first(data, "dns.question.name")
-            answers = _first(data, "dns.resolved_ip")
-            if answers:
-                attrs["answers"] = answers
-        elif "web" in cats or _first(data, "url.full", "url.original"):
-            event_type = "http.request"
-            target = _first(data, "url.full", "url.original")
-            actor = actor or attrs.get("src_ip")
-        elif "network" in cats:
-            event_type = "network.connection"
-            actor = host or attrs.get("src_ip")
-            target = attrs.get("dst_ip")
-        elif "iam" in cats:
-            event_type = (
-                "iam.group.add"
-                if "group" in action
-                else "iam.user.create"
-                if "creat" in action
-                else ("iam.permission.grant")
-            )
-            target = _first(data, "user.target.name", "related.user") or actor
-            actor = _first(data, "user.changes.name") or actor
-            if _first(data, "group.name"):
-                attrs["group"] = _first(data, "group.name")
-        elif "intrusion_detection" in cats or "malware" in cats or _first(data, "rule.name"):
-            event_type = "alert"
-        else:
-            event_type = f"log.{_slug(action)}" if action else "log.message"
-        if isinstance(target, list):
-            target = target[0] if target else None
-        return {
-            "timestamp": _first(data, "@timestamp", "event.created"),
-            "event_type": event_type,
-            "action": action or None,
-            "outcome": outcome,
-            "actor": actor,
-            "target": target,
-            "host": host,
-            "message": _first(data, "message"),
-            "severity": _first(data, "event.severity", "log.level"),
-            "attributes": {k: v for k, v in attrs.items() if v is not None},
+        return ecs_record(data)
+
+
+def ecs_record(data: dict[str, Any]) -> dict[str, Any]:
+    """An Elastic Common Schema document as a native event record."""
+    categories = _get(data, "event.category") or []
+    categories = categories if isinstance(categories, list) else [categories]
+    types = _get(data, "event.type") or []
+    types = types if isinstance(types, list) else [types]
+    action = str(_first(data, "event.action") or "")
+    outcome = _first(data, "event.outcome")
+    attrs: dict[str, Any] = {}
+    for key, field in (
+        ("src_ip", "source.ip"),
+        ("dst_ip", "destination.ip"),
+        ("dst_port", "destination.port"),
+        ("src_port", "source.port"),
+        ("protocol", "network.transport"),
+        ("bytes_out", "source.bytes"),
+        ("bytes_in", "destination.bytes"),
+        ("pid", "process.pid"),
+        ("image", "process.executable"),
+        ("command_line", "process.command_line"),
+        ("parent_pid", "process.parent.pid"),
+        ("parent_image", "process.parent.executable"),
+        ("method", "http.request.method"),
+        ("status", "http.response.status_code"),
+        ("user_agent", "user_agent.original"),
+        ("dataset", "event.dataset"),
+        ("rule", "rule.name"),
+    ):
+        value = _first(data, field)
+        if value is not None:
+            attrs[key] = value
+    actor = _first(data, "user.name", "user.id")
+    host = _first(data, "host.name", "host.hostname", "agent.hostname")
+    target: Any = host
+    cats = {str(c).lower() for c in categories}
+    kinds = {str(t).lower() for t in types}
+    if "authentication" in cats:
+        event_type = (
+            "auth.failure" if str(outcome).lower() == "failure" else ("auth.logout" if "end" in kinds else "auth.login")
+        )
+    elif "process" in cats:
+        event_type = "process.end" if "end" in kinds else "process.start"
+        target = None
+        attrs.setdefault("image", _first(data, "process.name"))
+    elif "file" in cats:
+        mapping = {
+            "creation": "file.create",
+            "deletion": "file.delete",
+            "change": "file.modify",
+            "access": "file.read",
         }
+        event_type = next((mapping[k] for k in kinds if k in mapping), "file.modify")
+        target = _first(data, "file.path", "file.name")
+        if _first(data, "process.name"):
+            attrs["process"] = _first(data, "process.name")
+    elif _first(data, "dns.question.name"):
+        event_type = "dns.query"
+        target = _first(data, "dns.question.name")
+        answers = _first(data, "dns.resolved_ip")
+        if answers:
+            attrs["answers"] = answers
+    elif "web" in cats or _first(data, "url.full", "url.original"):
+        event_type = "http.request"
+        target = _first(data, "url.full", "url.original")
+        actor = actor or attrs.get("src_ip")
+    elif "network" in cats:
+        event_type = "network.connection"
+        actor = host or attrs.get("src_ip")
+        target = attrs.get("dst_ip")
+    elif "iam" in cats:
+        event_type = (
+            "iam.group.add"
+            if "group" in action
+            else "iam.user.create"
+            if "creat" in action
+            else ("iam.permission.grant")
+        )
+        target = _first(data, "user.target.name", "related.user") or actor
+        actor = _first(data, "user.changes.name") or actor
+        if _first(data, "group.name"):
+            attrs["group"] = _first(data, "group.name")
+    elif "intrusion_detection" in cats or "malware" in cats or _first(data, "rule.name"):
+        event_type = "alert"
+    else:
+        event_type = f"log.{_slug(action)}" if action else "log.message"
+    if isinstance(target, list):
+        target = target[0] if target else None
+    return {
+        "timestamp": _first(data, "@timestamp", "event.created"),
+        "event_type": event_type,
+        "action": action or None,
+        "outcome": outcome,
+        "actor": actor,
+        "target": target,
+        "host": host,
+        "message": _first(data, "message"),
+        "severity": _first(data, "event.severity", "log.level"),
+        "attributes": {k: v for k, v in attrs.items() if v is not None},
+    }
 
 
 # --------------------------------------------------------------------------- CloudTrail
 
+_ASSUMED_ROLE = re.compile(r"^arn:aws[\w-]*:sts::(?P<account>\d{12}):assumed-role/(?P<role>[^/]+)/(?P<session>.+)$")
+_FEDERATED = re.compile(r"^arn:aws[\w-]*:sts::(?P<account>\d{12}):federated-user/(?P<user>.+)$")
+_IAM_GRANTS = {
+    "AttachUserPolicy",
+    "AttachRolePolicy",
+    "AttachGroupPolicy",
+    "PutUserPolicy",
+    "PutRolePolicy",
+    "PutGroupPolicy",
+}
+_IAM_REVOKES = {
+    "DetachUserPolicy",
+    "DetachRolePolicy",
+    "DetachGroupPolicy",
+    "DeleteUserPolicy",
+    "DeleteRolePolicy",
+    "DeleteGroupPolicy",
+}
+_IAM_CREDENTIALS = {"CreateAccessKey", "CreateLoginProfile", "UpdateLoginProfile", "CreateServiceSpecificCredential"}
+_OBJECT_APIS = {"GetObject", "PutObject", "DeleteObject", "CopyObject", "HeadObject", "GetObjectAcl", "PutObjectAcl"}
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _cloudtrail_actor(identity: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The principal of a CloudTrail ``userIdentity``: an assumed role is its role (the session name
+    is an attribute), an IAM user its user, anything else its ARN or type."""
+    arn = str(identity.get("arn") or "")
+    account = identity.get("accountId")
+    itype = identity.get("type")
+    issuer = _get(identity, "sessionContext.sessionIssuer") or {}
+    attrs: dict[str, Any] = {"identity_type": itype}
+    if (m := _ASSUMED_ROLE.match(arn)) is not None:
+        role_arn = str(issuer.get("arn") or f"arn:aws:iam::{m['account']}:role/{m['role']}")
+        attrs["role_session"] = m["session"]
+        meta = {"arn": role_arn, "account": m["account"], "identity_type": itype, "platform": "aws"}
+        return {"type": ObjectType.ROLE, "name": m["role"], "key": role_arn, "metadata": meta}, attrs
+    if (m := _FEDERATED.match(arn)) is not None:
+        meta = {"arn": arn, "account": m["account"], "identity_type": itype, "platform": "aws"}
+        return {"type": ObjectType.IDENTITY, "name": m["user"], "key": arn, "metadata": meta}, attrs
+    user = (
+        identity.get("userName")
+        or issuer.get("userName")
+        or identity.get("invokedBy")
+        or identity.get("principalId")
+        or (arn.rsplit("/", 1)[-1] if "/" in arn else None)
+        or itype
+    )
+    meta = {k: v for k, v in {"arn": arn, "account": account, "identity_type": itype, "platform": "aws"}.items() if v}
+    return {
+        "type": ObjectType.IDENTITY,
+        "name": str(user or arn or "unknown"),
+        "key": str(arn or user or "unknown"),
+        "metadata": meta,
+    }, attrs
+
+
+def cloudtrail_record(data: dict[str, Any]) -> dict[str, Any]:
+    """A CloudTrail record as a native event record (shared by the adapter and the mixed-log parser).
+
+    The access key a call was signed with becomes a ``secret`` object (redacted name, fingerprint
+    key) with the role ``credential``; S3 object keys become ``file`` objects (``s3://bucket/key``)."""
+    identity = _mapping(data.get("userIdentity"))
+    actor, actor_attrs = _cloudtrail_actor(identity)
+    user = actor["name"]
+    name = str(data.get("eventName"))
+    service = str(data.get("eventSource") or "aws").split(".")[0]
+    params = _mapping(data.get("requestParameters"))
+    extra = _mapping(data.get("additionalEventData"))
+    failed = bool(data.get("errorCode"))
+    source_address = data.get("sourceIPAddress")
+    src_ip = ip(source_address)
+    attrs: dict[str, Any] = {
+        **actor_attrs,
+        "api": name,
+        "event_source": data.get("eventSource"),
+        "region": data.get("awsRegion"),
+        "src_ip": src_ip,
+        "source_service": source_address if source_address and not src_ip else None,
+        "user_agent": data.get("userAgent"),
+        "error_code": data.get("errorCode"),
+        "error_message": redact_text(str(data["errorMessage"]))[:500] if data.get("errorMessage") else None,
+        "account": data.get("recipientAccountId"),
+        "request_id": data.get("requestID"),
+        "cloudtrail_event_id": data.get("eventID"),
+        "cloudtrail_event_type": data.get("eventType"),
+        "read_only": data.get("readOnly"),
+        "platform": "aws",
+        "bytes_out": extra.get("bytesTransferredOut"),
+        "bytes_in": extra.get("bytesTransferredIn"),
+    }
+    objects: list[dict[str, Any]] = []
+    key_id = identity.get("accessKeyId")
+    if isinstance(key_id, str) and key_id.strip():
+        credential = credential_ref(key_id)
+        if credential is not None:
+            objects.append({**credential, "role": "credential"})
+            attrs["access_key"] = credential["name"]
+    bucket = params.get("bucketName")
+    object_key = params.get("key")
+    if bucket:
+        attrs["bucket"] = bucket
+    if object_key:
+        attrs["object_key"] = object_key
+    if params.get("prefix"):
+        attrs["prefix"] = params.get("prefix")
+    target_name = (
+        bucket
+        or params.get("roleName")
+        or params.get("groupName")
+        or params.get("instanceId")
+        or params.get("functionName")
+        or params.get("userName")
+        or params.get("policyArn")
+        or service
+    )
+    target: Any = {
+        "type": ObjectType.CLOUD_RESOURCE,
+        "name": str(target_name),
+        "key": f"aws/{service}/{target_name}",
+        "metadata": {"service": service},
+    }
+    if bucket:
+        target = bucket_ref(str(bucket)) or target
+        if object_key and name in _OBJECT_APIS:
+            obj = object_ref(str(bucket), str(object_key))
+            if obj is not None:
+                objects.append({**obj, "role": "object"})
+    event_type = "cloud.api"
+    if name == "ConsoleLogin":
+        event_type = (
+            "auth.failure" if failed or _get(data, "responseElements.ConsoleLogin") == "Failure" else "auth.login"
+        )
+        attrs["mfa"] = extra.get("MFAUsed")
+        target = {
+            "type": ObjectType.CLOUD_RESOURCE,
+            "name": f"aws-console/{data.get('recipientAccountId')}",
+            "metadata": {"service": "signin"},
+        }
+    elif name in _IAM_GRANTS or name in _IAM_REVOKES:
+        event_type = "iam.permission.grant" if name in _IAM_GRANTS else "iam.permission.revoke"
+        principal = params.get("userName") or params.get("roleName") or params.get("groupName")
+        target = {"type": ObjectType.IDENTITY, "name": str(principal)} if principal else target
+        attrs["resource"] = params.get("policyArn") or params.get("policyName")
+        attrs["resource_type"] = ObjectType.POLICY
+    elif name in ("AddUserToGroup", "RemoveUserFromGroup"):
+        event_type = "iam.group.add" if name == "AddUserToGroup" else "iam.group.remove"
+        target = {"type": ObjectType.IDENTITY, "name": str(params.get("userName"))}
+        attrs["group"] = params.get("groupName")
+    elif name in _IAM_CREDENTIALS:
+        event_type = "iam.credential.create"
+        target = {"type": ObjectType.IDENTITY, "name": str(params.get("userName") or user)}
+    elif name == "CreateUser":
+        event_type = "iam.user.create"
+        target = {"type": ObjectType.IDENTITY, "name": str(params.get("userName") or "unknown")}
+    elif name == "AssumeRole":
+        role_arn = params.get("roleArn")
+        target = {"type": ObjectType.ROLE, "name": str(role_arn).split("/")[-1], "key": str(role_arn)}
+    message = f"{name} via {data.get('eventSource')}" + (f" failed: {data.get('errorCode')}" if failed else "")
+    if bucket:
+        message += f" on {bucket}" + (f"/{object_key}" if object_key else "")
+    return {
+        "id": data.get("eventID"),
+        "timestamp": data.get("eventTime"),
+        "event_type": event_type,
+        "action": name,
+        "outcome": "failure" if failed else "success",
+        "actor": actor,
+        "target": target,
+        "severity": "low" if failed else "info",
+        "message": message,
+        "attributes": {k: v for k, v in attrs.items() if v is not None and v != ""},
+        "objects": objects,
+    }
+
 
 class CloudTrailNormalizer(_Adapter):
     name: ClassVar[str] = "cloudtrail"
-
-    _IAM_GRANTS = {
-        "AttachUserPolicy",
-        "AttachRolePolicy",
-        "AttachGroupPolicy",
-        "PutUserPolicy",
-        "PutRolePolicy",
-        "PutGroupPolicy",
-    }
 
     @classmethod
     def score(cls, record: dict[str, Any]) -> float:
         return 0.95 if {"eventTime", "eventName", "eventSource"} <= record.keys() else 0.0
 
     def adapt(self, data: dict[str, Any], ctx: ParseContext) -> dict[str, Any]:
-        identity = data.get("userIdentity") or {}
-        if not isinstance(identity, dict):
-            identity = {}
-        arn = identity.get("arn")
-        user = (
-            identity.get("userName")
-            or _get(identity, "sessionContext.sessionIssuer.userName")
-            or identity.get("principalId")
-            or identity.get("type")
-        )
-        actor = {
-            "type": ObjectType.IDENTITY,
-            "name": str(user or arn or "unknown"),
-            "key": str(arn or user or "unknown"),
-            "metadata": {
-                k: v
-                for k, v in {
-                    "arn": arn,
-                    "account": identity.get("accountId"),
-                    "identity_type": identity.get("type"),
-                }.items()
-                if v
-            },
-        }
-        name = str(data.get("eventName"))
-        service = str(data.get("eventSource") or "aws").split(".")[0]
-        params = data.get("requestParameters") or {}
-        if not isinstance(params, dict):
-            params = {}
-        failed = bool(data.get("errorCode"))
-        attrs: dict[str, Any] = {
-            "service": None,
-            "api": name,
-            "event_source": data.get("eventSource"),
-            "region": data.get("awsRegion"),
-            "src_ip": data.get("sourceIPAddress"),
-            "user_agent": data.get("userAgent"),
-            "error_code": data.get("errorCode"),
-            "account": data.get("recipientAccountId"),
-        }
-        target_name = (
-            params.get("bucketName")
-            or params.get("roleName")
-            or params.get("groupName")
-            or params.get("instanceId")
-            or params.get("functionName")
-            or params.get("userName")
-            or params.get("policyArn")
-            or service
-        )
-        target: Any = {
-            "type": ObjectType.CLOUD_RESOURCE,
-            "name": str(target_name),
-            "key": f"aws/{service}/{target_name}",
-            "metadata": {"service": service},
-        }
-        event_type = "cloud.api"
-        if name == "ConsoleLogin":
-            event_type = (
-                "auth.failure" if failed or _get(data, "responseElements.ConsoleLogin") == "Failure" else "auth.login"
-            )
-            target = {
-                "type": ObjectType.CLOUD_RESOURCE,
-                "name": f"aws-console/{data.get('recipientAccountId')}",
-                "metadata": {"service": "signin"},
-            }
-        elif name in self._IAM_GRANTS:
-            event_type = "iam.permission.grant"
-            principal = params.get("userName") or params.get("roleName") or params.get("groupName")
-            target = {"type": ObjectType.IDENTITY, "name": str(principal)} if principal else target
-            attrs["resource"] = params.get("policyArn") or params.get("policyName")
-            attrs["resource_type"] = ObjectType.POLICY
-        elif name == "AddUserToGroup":
-            event_type = "iam.group.add"
-            target = {"type": ObjectType.IDENTITY, "name": str(params.get("userName"))}
-            attrs["group"] = params.get("groupName")
-        elif name == "CreateAccessKey":
-            event_type = "iam.credential.create"
-            target = {"type": ObjectType.IDENTITY, "name": str(params.get("userName") or user)}
-        elif name == "AssumeRole":
-            role_arn = params.get("roleArn")
-            target = {"type": ObjectType.ROLE, "name": str(role_arn).split("/")[-1], "key": str(role_arn)}
-        return {
-            "id": data.get("eventID"),
-            "timestamp": data.get("eventTime"),
-            "event_type": event_type,
-            "action": name,
-            "outcome": "failure" if failed else "success",
-            "actor": actor,
-            "target": target,
-            "severity": "low" if failed else "info",
-            "message": f"{name} via {data.get('eventSource')}"
-            + (f" failed: {data.get('errorCode')}" if failed else ""),
-            "attributes": {k: v for k, v in attrs.items() if v is not None},
-        }
+        return cloudtrail_record(data)
 
 
 # --------------------------------------------------------------------------- tabular / generic

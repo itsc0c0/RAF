@@ -116,9 +116,21 @@ raf serve                      # API + web workbench on http://127.0.0.1:8765
 ```
 
 `raf analyze <file or directory>` is the general entry point for your own data: it detects what the
-input is (packet capture, JSON/JSONL/CSV/syslog/access logs, policy documents, SBOMs, repositories,
-R$F bundles), runs the matching products, shows every step, and records the result as `analysis-N`
-for `raf lens|graph|timeline analysis-N`. See [docs/analyze.md](docs/analyze.md).
+input is (packet capture, JSON/JSONL/CSV/syslog/access logs, mixed multi-source logs, policy
+documents, SBOMs, repositories, R$F bundles), runs the matching products, shows every step, and
+records the result as `analysis-N` for `raf lens|graph|timeline analysis-N`. See
+[docs/analyze.md](docs/analyze.md).
+
+Logs that interleave many sources - web servers, CloudTrail, Kubernetes audit, identity providers,
+databases, EDR, flows, Windows events, CEF/LEEF, application JSON, syslog daemons - are decoded line
+by line ([docs/logs.md](docs/logs.md)); detection rules then turn the events into findings with
+their evidence, say what an approved change, a ticket or a scheduled job explains, and correlate the
+rest into a suspected incident:
+
+```bash
+raf analyze fixtures/logs/raven-multisource.log   # 15 sources; an exposed credential, misused to copy 320 MB
+raf detect                                        # the detections over the whole workspace (--dry-run: store nothing)
+```
 
 Every command supports `--json` (documents carry a `schema` id), `--quiet`, `--no-color`,
 `--debug`, `--yes` and `--workspace NAME`; `raf` without arguments opens an interactive shell.
@@ -170,7 +182,7 @@ nothing is changed in the workspace. `raf tui --dump PAGE` prints a page as plai
 | Product | Command | Status | What it does |
 |---|---|---|---|
 | Graph | `raf graph` | BETA | Security relationship graph: neighborhoods, paths, temporal views, export |
-| Timeline | `raf timeline` | BETA | Unified event timelines with filters, grouping and JSON/CSV/R$F export |
+| Timeline | `raf timeline`, `raf detect` | BETA | Unified event timelines with filters, grouping and JSON/CSV/R$F export; detections and correlated incidents |
 | Trace | `raf trace` | BETA | Causal chains around an object: observed links vs. labeled correlations |
 | Replay | `raf replay` | BETA | Deterministic incident reconstruction (state at T, windows, playback) |
 | Diff | `raf diff` | BETA | Compare snapshots, the current state and Ghost models, with explained importance |
@@ -256,6 +268,8 @@ fails when they are out of date. More: [docs/development.md](docs/development.md
 | HTTP API | [docs/api.md](docs/api.md) |
 | R$F OS terminal panel (`raf tui`) | [docs/tui.md](docs/tui.md) |
 | `raf analyze` | [docs/analyze.md](docs/analyze.md) |
+| Mixed and multi-source logs (formats, redaction, re-reading imports) | [docs/logs.md](docs/logs.md) |
+| Detections (`raf detect`) | [docs/products/timeline.md](docs/products/timeline.md#detections) |
 | Web workbench | [docs/web-ui.md](docs/web-ui.md) |
 | Products | [docs/products/](docs/products/) |
 | Plugins | [docs/plugin-development.md](docs/plugin-development.md) |

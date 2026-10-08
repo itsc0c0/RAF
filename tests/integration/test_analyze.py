@@ -94,6 +94,7 @@ def test_events_pipeline_and_scope(actx: RafContext) -> None:
         "Timeline",
         "Graph",
         "Incidents",
+        "Detections",
         "IAM analysis",
         "Exposure correlation",
         "Findings",

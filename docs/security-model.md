@@ -64,6 +64,13 @@ evidence, API request bodies) may be malformed or hostile.
   whether a secret is set.
 * **Logs** pass messages through the shared redaction patterns (private keys, bearer tokens,
   `password=`/`token=`-style assignments, cloud and SaaS token formats, credentials in URLs).
+* **Imported log values.** Credential-like fields of imported records (`password`, `token`,
+  `secret`, `api_key`, `Authorization`, `cookie` ...) are stored redacted, and secrets in messages,
+  query strings and SQL statements are masked. An access key ID a cloud call was signed with becomes
+  a `secret` object whose name is redacted (`AKIA****MPLE`) and whose key is a SHA-256 fingerprint,
+  so detections and the graph can follow one credential without showing it. The raw excerpt of a line
+  is evidence and is kept as received, bounded (`ingest.store_raw false` keeps none);
+  see [logs](logs.md#redaction).
 * **Model providers** receive retrieved R$F facts; Oracle's status warns when that data would leave
   the host or travel over plain HTTP.
 * No secrets are kept in the repository; fixtures contain only synthetic, non-functional values.

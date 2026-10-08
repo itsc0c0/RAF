@@ -9,7 +9,21 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import BigInteger, Connection, Engine, Integer, and_, cast, delete, func, or_, select, text
+from sqlalchemy import (
+    BigInteger,
+    Connection,
+    Engine,
+    Integer,
+    and_,
+    bindparam,
+    cast,
+    delete,
+    func,
+    or_,
+    select,
+    text,
+    update,
+)
 
 from raf.core.errors import InvalidInputError
 from raf.core.objects.models import Event, EventDraft, EventObject
@@ -58,7 +72,9 @@ class EventPage:
 class InsertStats:
     created: int = 0
     duplicates: int = 0
+    reparsed: int = 0  # existing events replaced by a new parse of the same record
     created_ids: list[str] = field(default_factory=list)
+    existing_jobs: set[str] = field(default_factory=set)  # import jobs that first stored the existing events
 
 
 def encode_cursor(ts: datetime, event_id: str) -> str:
@@ -109,8 +125,16 @@ class EventRepository:
 
     # ------------------------------------------------------------------ writes
     def insert_drafts(
-        self, drafts: Sequence[EventDraft], *, job_id: str | None = None, conn: Connection | None = None
+        self,
+        drafts: Sequence[EventDraft],
+        *,
+        job_id: str | None = None,
+        conn: Connection | None = None,
+        reparse: bool = False,
     ) -> InsertStats:
+        """Insert new events; existing IDs are duplicates. With ``reparse``, an existing event that a
+        different parser produced (same source and record, so the same ID) is replaced by the new
+        parse - its content and involved objects, not its identity, import job or incident links."""
         stats = InsertStats()
         if not drafts:
             return stats
@@ -122,10 +146,18 @@ class EventRepository:
             else:
                 unique[draft.id] = draft
         with transaction(self.engine, conn) as c:
-            existing: set[str] = set()
+            existing: dict[str, str] = {}
             for batch in chunks(list(unique), 500):
-                existing.update(r[0] for r in c.execute(select(s.events.c.id).where(s.events.c.id.in_(batch))))
-            stats.duplicates += len(existing)
+                stmt = select(s.events.c.id, s.events.c.parser, s.events.c.job_id).where(s.events.c.id.in_(batch))
+                for eid, parser, earlier_job in c.execute(stmt):
+                    existing[eid] = parser
+                    if earlier_job:
+                        stats.existing_jobs.add(earlier_job)
+            changed = [eid for eid, parser in existing.items() if reparse and parser != unique[eid].parser]
+            stats.duplicates += len(existing) - len(changed)
+            if changed:
+                self._replace(c, [unique[eid] for eid in changed])
+                stats.reparsed = len(changed)
             rows: list[dict[str, Any]] = []
             obj_rows: list[dict[str, Any]] = []
             inc_rows: list[dict[str, Any]] = []
@@ -172,6 +204,77 @@ class EventRepository:
             upsert(c, s.incident_events, inc_rows, ["incident_id", "event_id"], update=False)
             stats.created = len(rows)
         return stats
+
+    def _replace(self, c: Connection, drafts: Sequence[EventDraft]) -> None:
+        statement = (
+            update(s.events)
+            .where(s.events.c.id == bindparam("b_id"))
+            .values(
+                ts=bindparam("b_ts"),
+                event_type=bindparam("b_event_type"),
+                category=bindparam("b_category"),
+                action=bindparam("b_action"),
+                outcome=bindparam("b_outcome"),
+                actor_id=bindparam("b_actor"),
+                target_id=bindparam("b_target"),
+                severity=bindparam("b_severity"),
+                confidence=bindparam("b_confidence"),
+                source=bindparam("b_source"),
+                parser=bindparam("b_parser"),
+                record=bindparam("b_record"),
+                raw_ref=bindparam("b_raw_ref"),
+                raw=bindparam("b_raw"),
+                attributes=bindparam("b_attributes"),
+                rel_ids=bindparam("b_rel_ids"),
+                message=bindparam("b_message"),
+                synthetic=bindparam("b_synthetic"),
+            )
+        )
+        for batch in chunks(list(drafts), 500):
+            c.execute(
+                statement,
+                [
+                    {
+                        "b_id": d.id,
+                        "b_ts": d.timestamp,
+                        "b_event_type": d.event_type,
+                        "b_category": d.category,
+                        "b_action": d.action,
+                        "b_outcome": d.outcome,
+                        "b_actor": d.actor,
+                        "b_target": d.target,
+                        "b_severity": d.severity.value,
+                        "b_confidence": d.confidence,
+                        "b_source": d.source,
+                        "b_parser": d.parser,
+                        "b_record": d.record,
+                        "b_raw_ref": d.raw_reference,
+                        "b_raw": d.raw,
+                        "b_attributes": d.attributes,
+                        "b_rel_ids": d.relationships,
+                        "b_message": d.message,
+                        "b_synthetic": d.synthetic,
+                    }
+                    for d in batch
+                ],
+            )
+            ids = [d.id for d in batch]
+            c.execute(delete(s.event_objects).where(s.event_objects.c.event_id.in_(ids)))
+            obj_rows: list[dict[str, Any]] = []
+            inc_rows: list[dict[str, Any]] = []
+            for d in batch:
+                seen: set[tuple[str, str]] = set()
+                for ref in d.objects:
+                    if (ref.object_id, ref.role) not in seen:
+                        seen.add((ref.object_id, ref.role))
+                        obj_rows.append(
+                            {"event_id": d.id, "object_id": ref.object_id, "role": ref.role, "ts": d.timestamp}
+                        )
+                inc_rows += [
+                    {"incident_id": i, "event_id": d.id, "ts": d.timestamp} for i in dict.fromkeys(d.incidents)
+                ]
+            upsert(c, s.event_objects, obj_rows, ["event_id", "object_id", "role"], update=False)
+            upsert(c, s.incident_events, inc_rows, ["incident_id", "event_id"], update=False)
 
     def link_incident(self, incident_id: str, event_ids: Iterable[str], conn: Connection | None = None) -> int:
         ids = sorted(set(event_ids))

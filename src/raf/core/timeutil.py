@@ -56,7 +56,7 @@ _US_RE = re.compile(
 )
 _DURATION_RE = re.compile(r"^(?P<sign>[+-])?(?P<num>\d+(?:\.\d+)?)(?P<unit>ms|s|m|h|d|w)$")
 _TIME_OF_DAY_RE = re.compile(r"^(?P<h>\d{1,2}):(?P<m>\d{2})(?::(?P<s>\d{2})(?:\.(?P<frac>\d{1,6}))?)?$")
-_ISO_SPACE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}")
+_ISO_SPACE_RE = re.compile(r"^\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}")
 
 # Plausible range for security telemetry. Values outside are almost always unit mistakes.
 _MIN_TS = datetime(1990, 1, 1, tzinfo=UTC)
@@ -119,7 +119,7 @@ def parse_timestamp_ex(
     """Parse a timestamp from many common formats.
 
     Supported: ``datetime``, epoch seconds/ms/us/ns (number or numeric string),
-    ISO-8601 (``Z`` or offsets, ``T`` or space separator, comma fractions),
+    ISO-8601 (``Z`` or offsets, ``T`` or space separator, comma fractions, ``/`` date separators),
     RFC 2822, Apache/NCSA ``07/Oct/2026:09:14:11 +0000``, RFC 3164 syslog
     ``Oct  7 09:14:11`` (year inferred from ``reference``) and US
     ``10/07/2026 09:14:11 PM``.
@@ -156,6 +156,8 @@ def parse_timestamp_ex(
     # ISO-8601 variants.
     if _ISO_SPACE_RE.match(text):
         iso = text.replace(",", ".", 1) if re.search(r":\d{2},\d", text) else text
+        if iso[4] == "/":  # 2026/10/07 19:00:00 (nginx error logs and others)
+            iso = iso[:10].replace("/", "-") + iso[10:]
         if iso.endswith(("Z", "z")):
             iso = iso[:-1] + "+00:00"
         iso = re.sub(r"\s+(?=[+-]\d{2}:?\d{2}$)", "", iso)

@@ -37,6 +37,12 @@ Known gaps and the planned order of work after 0.1.0. Each item names what remai
 * **Evidence:** externally signed custody (operator key), disk and memory image metadata parsers.
 * **Surface:** public-suffix awareness, domain expiry rule, RDAP import.
 * **Protocol:** more application protocols (SMB, Kerberos metadata, QUIC SNI) — always offline.
+* **Detections:** user-defined rules (an import format with the same evidence and explanation
+  model, Sigma as a source), per-rule thresholds in the configuration, and an evaluation set of
+  labeled logs per rule; Oracle answers that cite detection findings.
+* **Multi-source logs:** multi-line documents (XML exports, pretty-printed JSON arrays) decoded
+  field by field instead of folded into one message; more vendor formats (Palo Alto, FortiGate,
+  Check Point, Exchange message tracking).
 * **Oracle:** better intent detection (still deterministic), multi-turn follow-ups that reuse the
   retrieved facts, evaluation set with expected citations.
 * **Graph/Blast:** port-aware propagation that consumes the Policy model directly.

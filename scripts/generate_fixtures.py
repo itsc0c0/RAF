@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from raf.data import raven  # noqa: E402
+from raf.data.multisource import multisource_log  # noqa: E402
 from raf.products.protocol.synthetic import raven_inc001_capture as raven_capture  # noqa: E402
 from raf.products.surface.sample import raven_surface_json  # noqa: E402
 
@@ -46,6 +47,7 @@ def outputs() -> dict[str, Callable[[], str | bytes]]:
         "policies/raven-edge.nft.json": raven.firewall_nftables_json,
         "pcap/raven-inc001.pcap": lambda: raven_capture(seed=1),
         "surface/raven-surface.json": raven_surface_json,
+        "logs/raven-multisource.log": multisource_log,
     }
     return files
 

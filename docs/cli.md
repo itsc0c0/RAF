@@ -307,10 +307,12 @@ Plugin management is described in [plugin-development.md](plugin-development.md)
 | `raf import report JOB` | the rejected records of an earlier import (up to 500, raw text truncated) (`raf.import.report/v1`) | `raf import report job-5` |
 | `raf analyze TARGET [-f FORMAT] [--incident NAME] [--source-name NAME] [--synthetic] [--no-correlate]` | detect the input type and run the matching pipeline; records `analysis-N`; `raf analyze analysis-N` shows a recorded one (`raf.analysis/v1`); see [analyze.md](analyze.md) | `raf analyze fixtures/pcap/raven-inc001.pcap` |
 | `raf analyses [--limit 20]` | earlier analyses, newest first (`raf.analyses/v1`) | `raf analyses` |
+| `raf detect [SCOPE] [--dry-run]` | the [Timeline detections](products/timeline.md#detections) over a scope (default: the workspace): findings, activity explained by changes, tickets or scheduled jobs, and suspected incidents (`raf.detections/v1`); `--dry-run` stores nothing | `raf detect analysis-1` |
 | `raf audit [--limit 30] [--operation PREFIX]` | R$F's own hash-chained audit log (`raf.audit/v1`) | `raf audit --operation graph` |
 | `raf audit verify` | recompute the audit hash chain; exit 5 when it is broken (`raf.audit.verify/v1`) | `raf audit verify` |
 
-`raf import --format` names a parser: `jsonl`, `json`, `csv`, `syslog`, `access-log`, `text`,
+`raf import --format` names a parser: `jsonl`, `json`, `csv`, `syslog`, `access-log`, `multilog`
+([mixed and multi-source logs](logs.md)), `text`,
 `raf-policy` (Policy), `pcap` (Protocol), `raf-surface` (Surface), parsers of trusted plugins, and
 `filesystem` (directories only: a file-metadata timeline instead of parsing each file; files and
 directories become objects on the `--host` host (default `local`) linked by `CONTAINS`, with size,

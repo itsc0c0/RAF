@@ -162,7 +162,10 @@ confidence is at most 0.9):
 | `iam.permission.grant`, `iam.permission.revoke` | target `CAN_ACCESS` resource (`granted_by`, `access`; ended by revoke) | nothing |
 | `iam.user.disable`, `iam.user.enable` | sets `metadata.disabled` and `state_changed_at` on the target | nothing |
 | `service.access` | actor `CAN_ACCESS` service (≤ 0.8, `observed`) | nothing |
-| `cloud.api` | actor `CAN_ASSUME` role (target is a role), else principal `CAN_ACCESS` resource (≤ 0.7, `observed`, `api`) | nothing |
+| `cloud.api` | actor `CAN_ASSUME` role (target is a role), else principal `CAN_ACCESS` resource (≤ 0.7, `observed`, `api`); with an `object` (S3 object) the bucket `CONTAINS` it (≤ 0.95) and the actor `READ`s, `CREATED` or `DELETED` it (`GetObject`, `PutObject`/`CopyObject`, `DeleteObject`) | nothing |
+| any event with a `credential` (the access key a call was signed with) | credential `AUTHENTICATES_AS` actor (≤ 0.95; not when the error code says the credential did not authenticate); `src_ip USES` credential (≤ 0.9) | the same |
+| `db.query` | actor (database role) `CAN_ACCESS` database (≤ 0.8, `observed`); host `RUNS` database (≤ 0.9) | nothing |
+| `file.read`, `file.create`, `file.delete` with a `bucket` | bucket `CONTAINS` file (≤ 0.95) | nothing |
 | `policy.change` | actor `MODIFIED` policy | nothing |
 
 Removal events *end* relationships (`valid_to` = event time) instead of deleting them, so history
@@ -274,17 +277,20 @@ attributes into involved objects: `src_ip`, `dst_ip`, `ip`; `domain` / `query` /
 | `dns.query` | host | domain | DNS resolution |
 | `http.request` | host | url | HTTP request |
 | `tls.handshake` | ip | domain | TLS handshake (server name) |
-| `iam.role.assign`, `iam.role.remove`, `iam.group.add`, `iam.group.remove`, `iam.permission.grant`, `iam.permission.revoke`, `iam.user.create`, `iam.user.disable`, `iam.user.enable` | identity | user | identity administration |
+| `auth.lockout` | user | host | account locked out |
+| `iam.role.assign`, `iam.role.remove`, `iam.group.add`, `iam.group.remove`, `iam.permission.grant`, `iam.permission.revoke`, `iam.user.create`, `iam.user.disable`, `iam.user.enable`, `iam.user.modify`, `iam.user.delete` | identity | user | identity administration |
 | `iam.credential.create` | identity | identity | credential or key created |
 | `service.access` | user | service | access to an application |
 | `policy.change` | identity | policy | policy modified |
-| `cloud.api` | identity | cloud_resource | cloud control-plane call |
+| `cloud.api` | identity | cloud_resource | cloud control-plane call (also Kubernetes audit: `platform: kubernetes`) |
+| `db.query` | identity | service | database statement (verb, tables, risky operations; the statement redacted) |
+| `change.record` | user | service | change record: ticket, status, window (`window_start`, `window_end`) |
 | `alert` (and `alert.*`) | host | host | detection from a security tool |
 | `evidence.collected` | user | evidence | evidence acquisition |
 | `log.message` | host | host | unstructured log line |
 
 Categories: `auth`, `process`, `file`, `network`, `dns`, `http`, `tls`, `iam`, `service`, `policy`,
-`cloud`, `alert`, `evidence`, `log`. Unknown types are accepted (their category is their first
+`cloud`, `db`, `change`, `alert`, `evidence`, `log`. Unknown types are accepted (their category is their first
 segment; a bare actor is then a user and a bare target a host).
 
 ## Findings

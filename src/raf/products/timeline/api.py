@@ -8,6 +8,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 from raf.core.query.scope import resolve_scope
@@ -99,3 +100,21 @@ def export(
         filename=f"timeline-{scope.label}.{fmt}",
         background=BackgroundTask(path.unlink, missing_ok=True),
     )
+
+
+class DetectRequest(BaseModel):
+    ref: str | None = None  # analysis-N, an incident or object reference; None or "workspace": everything
+    dry_run: bool = False
+
+
+@router.post("/detect")
+def detect(ctx: Ctx, body: DetectRequest) -> dict[str, Any]:
+    """Run the detections over a scope (as ``raf detect``): findings, explained activity and suspected incidents."""
+    from raf.products.timeline.detections import DetectionService
+
+    scope = resolve_scope(ctx, [] if not body.ref or body.ref == "workspace" else [body.ref])
+    report = DetectionService(ctx).run(scope.event_query(), scope_label=scope.id, persist=not body.dry_run)
+    if not body.dry_run:
+        ctx.audit.record("detections.run", affected=[scope.id], details={"findings": len(report.findings)})
+    data: dict[str, Any] = report.to_json_dict()
+    return data

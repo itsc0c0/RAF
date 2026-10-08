@@ -48,6 +48,7 @@ class RawRecord:
     normalizer: str | None = None  # force a normalizer for this record
     parser_label: str | None = None  # e.g. "syslog-sshd/1.0" (defaults to the parser's label)
     error: RecordRejected | None = None  # framing error: the record is rejected, the import continues
+    origin: str | None = None  # the source a mixed log's line came from (counted in the import report)
 
     @classmethod
     def rejected(cls, locator: str, message: str, raw: str | None = None) -> RawRecord:
