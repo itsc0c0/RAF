@@ -53,6 +53,11 @@ WORKFLOW: list[tuple[str, ...]] = [
     ("ghost", "simulate", "hardened"),
     ("diff", "ghost-hardened-base", "ghost:hardened"),
     ("analyze", "./fixtures/pcap/raven-inc001.pcap"),
+    # a mixed log imported as plain text, then re-read in place by the multilog parser; detections
+    ("analyze", "./fixtures/logs/raven-multisource.log", "--format", "text"),
+    ("analyze", "./fixtures/logs/raven-multisource.log"),
+    ("detect",),
+    ("timeline", "workspace", "--filter", "type:db.query", "--limit", "100"),
     ("diff", "before", "current"),
     ("timeline", "workspace", "--filter", "category:network", "--limit", "500"),
     ("snapshot", "list"),
@@ -119,6 +124,9 @@ def test_workflow_gives_the_same_results_as_on_sqlite(
         _run(("--yes", "demo", "load"))
         results[backend] = [(command, _run(command)) for command in WORKFLOW]
     window = (started, datetime.now(UTC))
+    reread = dict(results["postgresql"])[("analyze", "./fixtures/logs/raven-multisource.log")]
+    timeline = next(step for step in reread["steps"] if step["name"] == "Timeline")
+    assert timeline["stats"]["reparsed"] == timeline["stats"]["in_scope"] > 2000  # re-read in place
     _content_hashes_match(tmp_path / "sqlite", tmp_path / "postgresql", postgres_url)
     for (command, on_sqlite), (_command, on_postgres) in zip(results["sqlite"], results["postgresql"], strict=True):
         a = _normalize(on_sqlite, str(tmp_path / "sqlite"), window)
