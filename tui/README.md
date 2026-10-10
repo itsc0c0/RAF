@@ -8,7 +8,7 @@ evidence), lets you follow any object into an inspector, and never blocks: every
 worker thread.
 
 ```
- R$F OS  v0.1.0 │ workspace default │ ● ONLINE 8ms │ api 127.0.0.1:41234           2026-10-07 14:45:44 UTC
+ R$F OS  v0.2.0 │ workspace default │ ● ONLINE 8ms │ api 127.0.0.1:41234           2026-10-07 14:45:44 UTC
   HOME   TIMELINE   TRACE   IAM   BLAST   EXPOSURE   POLICY   GHOST   GRAPH   ORACLE   FINDINGS   EVIDENCE
 ┌ ◢ PAGES ───────────────┐┌ ◈ TIMELINE ─────────────────────────────────────────────────────── 11/208 ┐
 │ 1  HOME                ││ incident or object ❯ INC-001                                       / edit │

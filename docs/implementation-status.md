@@ -1,4 +1,4 @@
-# Implementation status (0.1.0)
+# Implementation status (0.2.0)
 
 What works today, what is partial, and what is missing. "Implemented" here means: core logic,
 input validation, meaningful output, error handling, tests, CLI/API (and UI where it exists)

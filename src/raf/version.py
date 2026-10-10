@@ -8,7 +8,7 @@ identifiers so automation can detect incompatibilities explicitly.
 
 from __future__ import annotations
 
-RAF_VERSION = "0.1.0"
+RAF_VERSION = "0.2.0"
 
 #: HTTP API version prefix (``/api/v1``).
 API_VERSION = "v1"

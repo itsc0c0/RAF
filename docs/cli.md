@@ -24,7 +24,7 @@ is the same topic), `refs` (context references), `exit-codes`, `plugins`.
 | `--debug` | full tracebacks for errors and debug-level logs on the console (whatever `core.log_level` says) |
 | `--yes`, `-y` | confirm destructive operations (delete, uninstall, trust, reset ...) without a prompt (`raf config set core.confirm_destructive false` does this for every command) |
 | `--workspace NAME`, `-w NAME`, `--workspace=NAME` | run this command in another workspace |
-| `--version` | print `R$F 0.1.0` and exit; only directly after `raf` (`raf version` shows every version identifier) |
+| `--version` | print `R$F 0.2.0` and exit; only directly after `raf` (`raf version` shows every version identifier) |
 
 Global flags are accepted **anywhere** on the command line (`raf graph alice --json -w verify` is the
 same as `raf --json -w verify graph alice`); they are removed before the command is parsed. Arguments

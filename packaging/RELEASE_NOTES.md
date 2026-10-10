@@ -2,6 +2,32 @@ R$F @VERSION@ for Linux, as offline installation bundles: everything R$F needs i
 runtime, every dependency, the web workbench and the R$F OS terminal panel - so the installer
 downloads nothing and needs no Python, Node.js or Rust on the machine.
 
+## What's new in 0.2.0
+
+* **Mixed and multi-source logs.** The new `multilog` parser decodes every line of a log on its own,
+  so one file can interleave web servers, AWS CloudTrail, Kubernetes audit, identity providers (Okta,
+  Azure AD and others), DNS servers, PostgreSQL, Windows/Sysmon, EDR, Suricata/Zeek, flows, CEF/LEEF,
+  auditd, Cisco ASA, Squid, S3 access logs, application JSON, key=value and free text. Sessions,
+  request IDs, status and error codes, SQL statements, process trees and every unmapped field are
+  kept; credential values are redacted, and access key IDs become `secret` objects with a redacted
+  name and a SHA-256 fingerprint. See [docs/logs.md](https://github.com/@REPO@/blob/@TAG@/docs/logs.md).
+* **Detections.** `raf detect`, a Detections step in `raf analyze` and `POST /api/v1/timeline/detect`
+  run 20 rules over normalized events from any source (exposed and misused credentials, bulk storage
+  reads, large transfers, persistence attempts, brute force and password spraying, MFA fatigue,
+  destructive changes, log tampering, suspicious commands and SQL, DNS tunneling ...), each finding
+  with its evidence and ATT&CK techniques. Activity covered by an approved change, a ticket or a
+  scheduled job is explained instead of flagged; detections that share pivots are correlated into a
+  suspected incident (`CASE-...`) or matched to an existing one.
+* **Earlier imports are re-read.** Data imported before with another parser (a mixed log that 0.1.0
+  read as plain text) is re-read in place by `raf analyze <file>`: its events keep their identity,
+  import job and incident links.
+
+## Upgrading from 0.1.0
+
+Run the new bundle's installer: it upgrades the installation in place, and workspaces in `~/.raf`
+need no migration. For the new parsing of a log imported with 0.1.0, analyze it again
+(`raf analyze <file>`); `raf detect` runs the detections over the whole workspace.
+
 ## Install
 
 Pick the bundle for your machine (`uname -m`: `x86_64` or `aarch64`), unpack it and run the installer:

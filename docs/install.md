@@ -11,9 +11,9 @@ Download the bundle for your machine from the
 run `install.sh`:
 
 ```sh
-curl -LO https://github.com/itsc0c0/RAF/releases/download/v0.1.0/raf-0.1.0-linux-x86_64.tar.gz
-tar -xzf raf-0.1.0-linux-x86_64.tar.gz
-cd raf-0.1.0-linux-x86_64
+curl -LO https://github.com/itsc0c0/RAF/releases/download/v0.2.0/raf-0.2.0-linux-x86_64.tar.gz
+tar -xzf raf-0.2.0-linux-x86_64.tar.gz
+cd raf-0.2.0-linux-x86_64
 sudo ./install.sh
 ```
 
@@ -40,7 +40,7 @@ raf tui           # R$F OS, the full-screen terminal panel
 ### What the bundle holds
 
 ```text
-raf-0.1.0-linux-x86_64/
+raf-0.2.0-linux-x86_64/
   install.sh, uninstall.sh   the installer (POSIX sh) and the uninstaller it copies to /opt/raf
   README.txt, LICENSE, VERSION
   BUNDLE                     version, architecture, Python version, minimum glibc, source commit
@@ -99,7 +99,7 @@ source .venv/bin/activate
 ```
 
 Or a wheel with the built workbench: `(cd web && npm ci && npm run build) && ./scripts/check-wheel`,
-then `pipx install dist/raf-0.1.0-py3-none-any.whl`.
+then `pipx install dist/raf-0.2.0-py3-none-any.whl`.
 
 ## Building a release bundle
 

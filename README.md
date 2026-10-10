@@ -19,7 +19,7 @@ HTTP API and a web workbench, over a SQLite workspace.
 > (Range, Forge) or as benign actions inside isolated, local labs (Lab). See
 > [docs/security-model.md](docs/security-model.md).
 
-Version 0.1.0 (initial development; see [product status](#products) and
+Version 0.2.0 (initial development; see [product status](#products) and
 [docs/implementation-status.md](docs/implementation-status.md)).
 
 ## Screenshots
@@ -29,7 +29,7 @@ address to production. A text capture of the terminal; in color, observed edges 
 modeled ones dim.
 
 ```text
- R$F OS  v0.1.0 │ workspace default │ ● ONLINE 195ms │ api 127.0.0.1:44447              2026-10-07 15:09:54 UTC
+ R$F OS  v0.2.0 │ workspace default │ ● ONLINE 195ms │ api 127.0.0.1:44447              2026-10-07 15:09:54 UTC
   HOME   TIMELINE   TRACE   IAM   BLAST   EXPOSURE   POLICY   GHOST   GRAPH   ORACLE   FINDINGS   EVIDENCE  ────
 ┌ ◢ PAGES ─────────────┐┌ ◈ TRACE ─────────────────────────────────────────────────────────────────────── 1/61 ┐
 │ 1  HOME              ││ incident or object ❯ INC-001                                                  / edit │
@@ -75,7 +75,7 @@ On Linux (x86_64 or aarch64), take the offline bundle of a
 the web workbench and R$F OS, and needs nothing on the machine but glibc 2.17+.
 
 ```bash
-tar -xzf raf-0.1.0-linux-x86_64.tar.gz && cd raf-0.1.0-linux-x86_64
+tar -xzf raf-0.2.0-linux-x86_64.tar.gz && cd raf-0.2.0-linux-x86_64
 sudo ./install.sh              # /opt/raf, with raf and raf-os in /usr/local/bin (or: ./install.sh --user)
 ```
 
@@ -98,8 +98,8 @@ workbench, and `cargo build --release --manifest-path tui/Cargo.toml` for R$F OS
 A wheel that carries the built workbench, so `raf serve` needs neither Node.js nor the checkout:
 
 ```bash
-(cd web && npm ci && npm run build) && ./scripts/check-wheel   # builds dist/raf-0.1.0-py3-none-any.whl and tests it
-pipx install dist/raf-0.1.0-py3-none-any.whl                   # or: uv tool install dist/raf-0.1.0-py3-none-any.whl
+(cd web && npm ci && npm run build) && ./scripts/check-wheel   # builds dist/raf-0.2.0-py3-none-any.whl and tests it
+pipx install dist/raf-0.2.0-py3-none-any.whl                   # or: uv tool install dist/raf-0.2.0-py3-none-any.whl
 ```
 
 ## Quick start

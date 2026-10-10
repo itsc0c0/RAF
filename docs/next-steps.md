@@ -1,6 +1,6 @@
 # Next steps
 
-Known gaps and the planned order of work after 0.1.0. Each item names what remains to be done.
+Known gaps and the planned order of work after 0.2.0. Each item names what remains to be done.
 
 ## Toward a first public release
 

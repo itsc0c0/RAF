@@ -7,7 +7,7 @@ workspace. Built-in products use the same manifest model and the same SDK
 ([development.md](development.md#adding-a-product)); this guide is for code that is not part of the
 R$F repository.
 
-Everything below was checked against R$F 0.1.0 (plugin API version 1) with the example plugin at the
+Everything below was checked against R$F 0.2.0 (plugin API version 1) with the example plugin at the
 end of this document, installed into a scratch `RAF_HOME` with the Raven demo loaded.
 
 ## What a plugin can contribute
